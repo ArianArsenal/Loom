@@ -21,6 +21,7 @@ import com.example.loom.ui.home.HomeViewModel
 import com.example.loom.ui.notes.DiaryScreen
 import com.example.loom.ui.health.HealthScreen
 import com.example.loom.ui.settings.SettingsScreen
+import com.example.loom.ui.health.HealthViewModel
 
 sealed class BottomNavItem(val route: String, val title: String, val icon: ImageVector) {
     object Home : BottomNavItem("home", "Home", Icons.Default.Home)
@@ -88,7 +89,8 @@ fun LoomMainScreen(viewModel: HomeViewModel) {
 
             // Health Route
             composable(BottomNavItem.Health.route) {
-                HealthScreen(viewModel = viewModel)
+                val healthViewModel: HealthViewModel = androidx.hilt.navigation.compose.hiltViewModel()
+                HealthScreen(viewModel = healthViewModel)
             }
 
             // Calendar Route

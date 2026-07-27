@@ -7,15 +7,16 @@ import kotlinx.serialization.Serializable
 @Entity(tableName = "daily_records")
 data class DailyRecord(
     @PrimaryKey val dateId: String,
-    var waterIntake: Int = 0,
+    var waterIntakeMl: Int = 0,
     var calories: Int = 0,
     var protein: Int = 0,
-    var amSkincareDone: Boolean = false,
-    var pmSkincareDone: Boolean = false,
+    var carbs: Int = 0,
+    var fats: Int = 0,
+    var completedSkincareRoutinesJson: String = "[]",
+    var completedSkincareStepsJson: String = "[]",
+    var consumedFoodsJson: String = "[]", // <-- NEW: Timeline of today's meals
     var diaryEntry: String = ""
 )
-
-// --- UPGRADED TASK ENGINE ENTITIES ---
 
 @Entity(tableName = "tasks")
 data class Task(
@@ -23,14 +24,28 @@ data class Task(
     val title: String,
     val description: String = "",
     val targetDate: String,
-    var isCompleted: Boolean = false, // Syncs with status "DONE"
-    var status: String = "TO DO", // "TO DO", "IN PROGRESS", "DONE"
-    var priority: Int = 1, // 1 (Low) to 5 (Critical)
-    var tagsJson: String = "[]", // List of Hex colors or Tag Names
-    var sectionId: Int = 1, // Links to TaskSection
-    var subtasksJson: String = "[]", // Serialized list of SubTasks
+    var isCompleted: Boolean = false,
+    var status: String = "TO DO",
+    var priority: Int = 1,
+    var tagsJson: String = "[]",
+    var sectionId: Int = 1,
+    var subtasksJson: String = "[]",
     var isRecurring: Boolean = false,
-    var recurringInterval: String = "NONE" // "DAILY", "WEEKLY", "MONTHLY"
+    var recurringInterval: String = "NONE",
+    var completionDateMillis: Long = 0L
+)
+
+@Serializable
+data class ConsumedFoodLog(
+    val id: String,
+    val foodName: String,
+    val emoji: String,
+    val servings: Float,
+    val calories: Int,
+    val protein: Int,
+    val carbs: Int,
+    val fats: Int,
+    val timestamp: Long
 )
 
 @Entity(tableName = "task_sections")
@@ -46,8 +61,6 @@ data class SubTask(
     val title: String,
     var isCompleted: Boolean = false
 )
-
-// --- HEALTH & DIARY ENTITIES ---
 
 @Entity(tableName = "exercises")
 data class Exercise(
@@ -105,4 +118,29 @@ data class DiaryNote(
 data class NoteTag(
     @PrimaryKey val name: String,
     val colorHex: String
+)
+
+@Entity(tableName = "skincare_products")
+data class SkincareProduct(
+    @PrimaryKey val name: String
+)
+
+@Entity(tableName = "skincare_routines")
+data class SkincareRoutine(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val name: String,
+    val productsJson: String = "[]",
+    val isPinnedToHome: Boolean = true
+)
+
+@Entity(tableName = "food_items")
+data class FoodItem(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val emoji: String,
+    val name: String,
+    val servingUnit: String, // e.g., "Plate", "100g", "Scoop"
+    val calories: Int,
+    val protein: Int,
+    val carbs: Int,
+    val fats: Int
 )

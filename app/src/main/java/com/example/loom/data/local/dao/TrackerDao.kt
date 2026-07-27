@@ -10,7 +10,10 @@ import com.example.loom.data.local.entity.DailyRecord
 import com.example.loom.data.local.entity.DiaryNote
 import com.example.loom.data.local.entity.Exercise
 import com.example.loom.data.local.entity.ExerciseTemplate
+import com.example.loom.data.local.entity.FoodItem
 import com.example.loom.data.local.entity.NoteTag
+import com.example.loom.data.local.entity.SkincareProduct
+import com.example.loom.data.local.entity.SkincareRoutine
 import com.example.loom.data.local.entity.Task
 import com.example.loom.data.local.entity.TaskSection
 import com.example.loom.data.local.entity.WorkoutPreset
@@ -120,4 +123,45 @@ interface TrackerDao {
 
     @Delete
     suspend fun deleteNoteTag(tag: NoteTag)
+
+    @Query("DELETE FROM tasks WHERE status = 'DONE' AND completionDateMillis > 0 AND completionDateMillis < :thresholdMillis")
+    suspend fun deleteOldDoneTasks(thresholdMillis: Long)
+
+    // --- NEW: Skincare Engine ---
+    @Query("SELECT * FROM skincare_routines")
+    fun getAllSkincareRoutines(): Flow<List<SkincareRoutine>>
+
+    @Query("SELECT * FROM skincare_routines WHERE isPinnedToHome = 1")
+    fun getPinnedSkincareRoutines(): Flow<List<SkincareRoutine>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertSkincareRoutine(routine: SkincareRoutine)
+
+    @Delete
+    suspend fun deleteSkincareRoutine(routine: SkincareRoutine)
+
+    @Query("SELECT * FROM skincare_products ORDER BY name ASC")
+    fun getAllSkincareProducts(): Flow<List<SkincareProduct>>
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertSkincareProduct(product: SkincareProduct)
+
+    @Query("SELECT COUNT(*) FROM skincare_products")
+    suspend fun getSkincareProductCount(): Int
+
+    @Delete
+    suspend fun deleteSkincareProduct(product: SkincareProduct)
+
+    // --- NEW: Food Pantry ---
+    @Query("SELECT * FROM food_items ORDER BY name ASC")
+    fun getAllFoodItems(): Flow<List<FoodItem>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertFoodItem(food: FoodItem)
+
+    @Delete
+    suspend fun deleteFoodItem(food: FoodItem)
+
+    @Query("SELECT COUNT(*) FROM food_items")
+    suspend fun getFoodItemCount(): Int
 }

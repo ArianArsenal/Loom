@@ -6,6 +6,8 @@ import com.example.loom.data.local.entity.DiaryNote
 import com.example.loom.data.local.entity.Exercise
 import com.example.loom.data.local.entity.ExerciseTemplate
 import com.example.loom.data.local.entity.NoteTag
+import com.example.loom.data.local.entity.SkincareProduct
+import com.example.loom.data.local.entity.SkincareRoutine
 import com.example.loom.data.local.entity.Task
 import com.example.loom.data.local.entity.TaskSection
 import com.example.loom.data.local.entity.WorkoutPreset
@@ -26,30 +28,24 @@ class TrackerRepository @Inject constructor(private val dao: TrackerDao) {
         }
     }
 
-    fun getTodayRecord(): Flow<DailyRecord?> {
-        return dao.getDailyRecordFlow(DateUtils.getTodayDateId())
-    }
+    fun getTodayRecord(): Flow<DailyRecord?> = dao.getDailyRecordFlow(DateUtils.getTodayDateId())
+    fun getRecordsForMonth(monthPrefix: String): Flow<List<DailyRecord>> = dao.getRecordsForMonth(monthPrefix)
 
-    fun getRecordsForMonth(monthPrefix: String): Flow<List<DailyRecord>> {
-        return dao.getRecordsForMonth(monthPrefix)
-    }
-
-    suspend fun addWater() {
+    suspend fun addWater(amountMl: Int) {
         val record = dao.getDailyRecordSync(DateUtils.getTodayDateId())
         if (record != null) {
-            record.waterIntake += 1
+            record.waterIntakeMl += amountMl
             dao.updateDailyRecord(record)
         }
     }
 
-    suspend fun removeWater() {
+    suspend fun removeWater(amountMl: Int) {
         val record = dao.getDailyRecordSync(DateUtils.getTodayDateId())
-        if (record != null && record.waterIntake > 0) {
-            record.waterIntake -= 1
+        if (record != null && record.waterIntakeMl > 0) {
+            record.waterIntakeMl = (record.waterIntakeMl - amountMl).coerceAtLeast(0)
             dao.updateDailyRecord(record)
         }
     }
-
     suspend fun updateDiaryNote(note: String) {
         val record = dao.getDailyRecordSync(DateUtils.getTodayDateId())
         if (record != null) {
@@ -58,55 +54,66 @@ class TrackerRepository @Inject constructor(private val dao: TrackerDao) {
         }
     }
 
-    suspend fun addNutrition(addedCalories: Int, addedProtein: Int) {
+    suspend fun logConsumedFood(cals: Int, pro: Int, carbs: Int, fats: Int, logsJson: String) {
         val record = dao.getDailyRecordSync(DateUtils.getTodayDateId())
         if (record != null) {
-            record.calories += addedCalories
-            record.protein += addedProtein
+            record.calories += cals
+            record.protein += pro
+            record.carbs += carbs
+            record.fats += fats
+            record.consumedFoodsJson = logsJson
             dao.updateDailyRecord(record)
         }
     }
 
-    suspend fun setNutrition(calories: Int, protein: Int) {
+    suspend fun setNutrition(cals: Int, pro: Int, carbs: Int, fats: Int) {
         val record = dao.getDailyRecordSync(DateUtils.getTodayDateId())
         if (record != null) {
-            record.calories = calories
-            record.protein = protein
+            record.calories = cals
+            record.protein = pro
+            record.carbs = carbs
+            record.fats = fats
             dao.updateDailyRecord(record)
         }
     }
 
-    suspend fun toggleSkincare(isAm: Boolean) {
+    // --- FOOD PANTRY ---
+    fun getAllFoodItems(): Flow<List<com.example.loom.data.local.entity.FoodItem>> = dao.getAllFoodItems()
+    suspend fun insertFoodItem(food: com.example.loom.data.local.entity.FoodItem) = dao.insertFoodItem(food)
+    suspend fun deleteFoodItem(food: com.example.loom.data.local.entity.FoodItem) = dao.deleteFoodItem(food)
+
+    suspend fun prepopulateFoodPantryIfEmpty() {
+        if (dao.getFoodItemCount() == 0) {
+            val defaults = listOf(
+                com.example.loom.data.local.entity.FoodItem(emoji = "🍛", name = "Persian Rice (Kateh)", servingUnit = "Plate", calories = 250, protein = 5, carbs = 55, fats = 1),
+                com.example.loom.data.local.entity.FoodItem(emoji = "🍗", name = "Chicken Breast", servingUnit = "100g", calories = 165, protein = 31, carbs = 0, fats = 3),
+                com.example.loom.data.local.entity.FoodItem(emoji = "🥚", name = "Boiled Egg", servingUnit = "1 Egg", calories = 70, protein = 6, carbs = 0, fats = 5),
+                com.example.loom.data.local.entity.FoodItem(emoji = "🥩", name = "Beef Stew (Ghormeh Sabzi)", servingUnit = "Bowl", calories = 400, protein = 25, carbs = 15, fats = 28),
+                com.example.loom.data.local.entity.FoodItem(emoji = "🥛", name = "Whey Protein Shake", servingUnit = "Scoop", calories = 120, protein = 24, carbs = 3, fats = 1)
+            )
+            defaults.forEach { dao.insertFoodItem(it) }
+        }
+    }
+
+
+
+    suspend fun updateCompletedSkincareRoutines(routinesJson: String) {
         val record = dao.getDailyRecordSync(DateUtils.getTodayDateId())
         if (record != null) {
-            if (isAm) record.amSkincareDone = !record.amSkincareDone
-            else record.pmSkincareDone = !record.pmSkincareDone
+            record.completedSkincareRoutinesJson = routinesJson
             dao.updateDailyRecord(record)
         }
     }
 
     // --- Tasks Engine ---
     fun getAllTasks(): Flow<List<Task>> = dao.getAllTasks()
-
     fun getTasksForDate(date: String): Flow<List<Task>> = dao.getTasksForDate(date)
-
-    suspend fun insertTask(task: Task) {
-        dao.insertTask(task)
-    }
-
-    suspend fun updateTask(task: Task) {
-        dao.updateTask(task)
-    }
-
-    suspend fun deleteTask(task: Task) {
-        dao.deleteTask(task)
-    }
+    suspend fun insertTask(task: Task) = dao.insertTask(task)
+    suspend fun updateTask(task: Task) = dao.updateTask(task)
+    suspend fun deleteTask(task: Task) = dao.deleteTask(task)
 
     fun getAllTaskSections(): Flow<List<TaskSection>> = dao.getAllTaskSections()
-
     suspend fun insertTaskSection(section: TaskSection) = dao.insertTaskSection(section)
-
-    // MISSING FUNCTION ADDED HERE:
     suspend fun deleteTaskSection(section: TaskSection) = dao.deleteTaskSection(section)
 
     suspend fun prepopulateTaskSectionsIfEmpty() {
@@ -121,10 +128,13 @@ class TrackerRepository @Inject constructor(private val dao: TrackerDao) {
         }
     }
 
-    // --- Exercises ---
-    fun getExercisesForDate(date: String): Flow<List<Exercise>> {
-        return dao.getExercisesForDate(date)
+    suspend fun cleanupOldDoneTasks() {
+        val twentyFourHoursAgo = System.currentTimeMillis() - (24 * 60 * 60 * 1000L)
+        dao.deleteOldDoneTasks(twentyFourHoursAgo)
     }
+
+    // --- Exercises ---
+    fun getExercisesForDate(date: String): Flow<List<Exercise>> = dao.getExercisesForDate(date)
 
     suspend fun insertExercise(
         exerciseName: String, sets: Int, reps: Int, weight: Int,
@@ -138,9 +148,7 @@ class TrackerRepository @Inject constructor(private val dao: TrackerDao) {
         dao.insertExercise(newExercise)
     }
 
-    suspend fun deleteExercise(exercise: Exercise) {
-        dao.deleteExercise(exercise)
-    }
+    suspend fun deleteExercise(exercise: Exercise) = dao.deleteExercise(exercise)
 
     // --- Presets ---
     fun getAllPresets(): Flow<List<WorkoutPreset>> = dao.getAllPresets()
@@ -189,6 +197,35 @@ class TrackerRepository @Inject constructor(private val dao: TrackerDao) {
             defaultTags.forEach { dao.insertNoteTag(it) }
         }
     }
-
     suspend fun deleteNoteTag(tag: NoteTag) = dao.deleteNoteTag(tag)
+
+    // --- NEW: Skincare Engine ---
+    fun getAllSkincareRoutines(): Flow<List<SkincareRoutine>> = dao.getAllSkincareRoutines()
+    fun getPinnedSkincareRoutines(): Flow<List<SkincareRoutine>> = dao.getPinnedSkincareRoutines()
+    suspend fun insertSkincareRoutine(routine: SkincareRoutine) = dao.insertSkincareRoutine(routine)
+    suspend fun deleteSkincareRoutine(routine: SkincareRoutine) = dao.deleteSkincareRoutine(routine)
+
+    fun getAllSkincareProducts(): Flow<List<SkincareProduct>> = dao.getAllSkincareProducts()
+    suspend fun insertSkincareProduct(product: SkincareProduct) = dao.insertSkincareProduct(product)
+
+    suspend fun prepopulateSkincareProductsIfEmpty() {
+        if (dao.getSkincareProductCount() == 0) {
+            val defaults = listOf(
+                "Cleanser", "Vitamin C", "Hyaluronic Acid",
+                "Niacinamide", "Salicylic Acid", "Moisturizer",
+                "Sunscreen", "Retinol", "Toner", "Eye Cream"
+            )
+            defaults.forEach { dao.insertSkincareProduct(SkincareProduct(name = it)) }
+        }
+    }
+
+    suspend fun updateCompletedSkincareSteps(stepsJson: String) {
+        val record = dao.getDailyRecordSync(DateUtils.getTodayDateId())
+        if (record != null) {
+            record.completedSkincareStepsJson = stepsJson
+            dao.updateDailyRecord(record)
+        }
+    }
+
+    suspend fun deleteSkincareProduct(product: SkincareProduct) = dao.deleteSkincareProduct(product)
 }

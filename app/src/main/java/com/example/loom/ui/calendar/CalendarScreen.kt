@@ -19,6 +19,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.example.loom.data.local.entity.DailyRecord
+import kotlinx.serialization.json.Json
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
@@ -141,8 +142,16 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
                 Spacer(modifier = Modifier.height(12.dp))
 
                 if (selectedRecord != null) {
-                    Text("Water Intake: ${selectedRecord.waterIntake} Glasses")
-                    Text("AM Skincare: ${if (selectedRecord.amSkincareDone) "Completed" else "Skipped"}")
+                    Text("Water Intake: ${String.format(java.util.Locale.US, "%.1f", selectedRecord.waterIntakeMl / 1000f)} L")
+
+                    // NEW DYNAMIC SKINCARE PARSER
+                    val completedRoutines = try { Json.decodeFromString<List<String>>(selectedRecord.completedSkincareRoutinesJson) } catch (e: Exception) { emptyList() }
+                    if (completedRoutines.isNotEmpty()) {
+                        Text("Skincare: ${completedRoutines.joinToString(", ")}")
+                    } else {
+                        Text("Skincare: None logged")
+                    }
+
                     Spacer(modifier = Modifier.height(8.dp))
                     if (selectedRecord.diaryEntry.isNotEmpty()) {
                         Text(

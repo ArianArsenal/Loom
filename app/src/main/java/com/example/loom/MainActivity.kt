@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.enableEdgeToEdge // <-- ADDED IMPORT
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -23,6 +24,9 @@ import dagger.hilt.android.AndroidEntryPoint
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // --- THIS FIXES THE WHITE STATUS BAR ---
+        enableEdgeToEdge()
 
         setContent {
             LoomTheme {
@@ -61,4 +65,3 @@ class MainActivity : ComponentActivity() {
         }
     }
 }
-

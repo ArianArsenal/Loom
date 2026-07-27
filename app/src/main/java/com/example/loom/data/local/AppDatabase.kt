@@ -14,14 +14,19 @@ import com.example.loom.data.local.entity.WorkoutPreset
 import com.example.loom.data.local.entity.ExerciseTemplate
 import com.example.loom.data.local.entity.DiaryNote
 import com.example.loom.data.local.entity.NoteTag
+import com.example.loom.data.local.entity.SkincareProduct
+import com.example.loom.data.local.entity.SkincareRoutine
+import com.example.loom.data.local.entity.FoodItem
 
 @Database(
     entities = [
         DailyRecord::class, Task::class, TaskSection::class, Exercise::class,
         WorkoutPreset::class, ExerciseTemplate::class,
-        DiaryNote::class, NoteTag::class
+        DiaryNote::class, NoteTag::class,
+        SkincareProduct::class, SkincareRoutine::class,
+        FoodItem::class
     ],
-    version = 10, // Bumped to 10 for the new Kanban Engine
+    version = 15, // <-- BUMPED TO 15
     exportSchema = false
 )
 @TypeConverters(Converters::class)

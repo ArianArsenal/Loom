@@ -42,12 +42,20 @@ class HomeViewModel @Inject constructor(
     val allTaskSections: StateFlow<List<TaskSection>> = repository.getAllTaskSections().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val todayExercises: StateFlow<List<Exercise>> = repository.getExercisesForDate(DateUtils.getTodayDateId()).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    // --- UPDATED MACROS & SETTINGS ---
     val targetCalories: StateFlow<Int> = userPreferences.targetCaloriesFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 2800)
     val targetProtein: StateFlow<Int> = userPreferences.targetProteinFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 140)
+    val targetCarbs: StateFlow<Int> = userPreferences.targetCarbsFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 350)
+    val targetFats: StateFlow<Int> = userPreferences.targetFatsFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 75)
+    val defaultWaterIncrement: StateFlow<Int> = userPreferences.defaultWaterIncrementFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 250)
+
     val allPresets: StateFlow<List<WorkoutPreset>> = repository.getAllPresets().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val exerciseTemplates: StateFlow<List<ExerciseTemplate>> = repository.getAllTemplates().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val allDiaryNotes: StateFlow<List<DiaryNote>> = repository.getAllDiaryNotes().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val allNoteTags: StateFlow<List<NoteTag>> = repository.getAllNoteTags().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val pinnedSkincareRoutines: StateFlow<List<com.example.loom.data.local.entity.SkincareRoutine>> = repository.getPinnedSkincareRoutines().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private val _diaryViewMode = MutableStateFlow(1)
     val diaryViewMode: StateFlow<Int> = _diaryViewMode.asStateFlow()
@@ -59,35 +67,89 @@ class HomeViewModel @Inject constructor(
             repository.prepopulateTemplatesIfEmpty()
             repository.prepopulateTagsIfEmpty()
             repository.prepopulateTaskSectionsIfEmpty()
+            repository.prepopulateFoodPantryIfEmpty() // <-- NEW FOOD PANTRY
+            repository.cleanupOldDoneTasks()
         }
     }
 
-    fun addWater() = viewModelScope.launch { repository.addWater() }
-    fun removeWater() = viewModelScope.launch { repository.removeWater() }
-    fun toggleAmSkincare() = viewModelScope.launch { repository.toggleSkincare(isAm = true) }
-    fun togglePmSkincare() = viewModelScope.launch { repository.toggleSkincare(isAm = false) }
-    fun addNutrition(calories: Int, protein: Int) = viewModelScope.launch { repository.addNutrition(calories, protein) }
-    fun editNutrition(calories: Int, protein: Int) = viewModelScope.launch { repository.setNutrition(calories, protein) }
-    fun saveMacroTargets(calories: Int, protein: Int) = viewModelScope.launch { userPreferences.saveTargets(calories, protein) }
+    // --- UPDATED HYDRATION & NUTRITION ---
+    fun addWater() = viewModelScope.launch { repository.addWater(defaultWaterIncrement.value) }
+    fun removeWater() = viewModelScope.launch { repository.removeWater(defaultWaterIncrement.value) }
+
+    val allFoodItems: StateFlow<List<com.example.loom.data.local.entity.FoodItem>> = repository.getAllFoodItems().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    fun addFoodItemToPantry(food: com.example.loom.data.local.entity.FoodItem) = viewModelScope.launch { repository.insertFoodItem(food) }
+
+    fun logFoodItem(food: com.example.loom.data.local.entity.FoodItem, servings: Float) = viewModelScope.launch {
+        val record = todayRecord.value ?: return@launch
+        val totalCals = (food.calories * servings).toInt()
+        val totalPro = (food.protein * servings).toInt()
+        val totalCarbs = (food.carbs * servings).toInt()
+        val totalFats = (food.fats * servings).toInt()
+
+        val log = com.example.loom.data.local.entity.ConsumedFoodLog(
+            id = java.util.UUID.randomUUID().toString(),
+            foodName = food.name, emoji = food.emoji, servings = servings,
+            calories = totalCals, protein = totalPro, carbs = totalCarbs, fats = totalFats,
+            timestamp = System.currentTimeMillis()
+        )
+
+        val currentLogs = try { Json.decodeFromString<List<com.example.loom.data.local.entity.ConsumedFoodLog>>(record.consumedFoodsJson) } catch (e: Exception) { emptyList() }
+        repository.logConsumedFood(totalCals, totalPro, totalCarbs, totalFats, Json.encodeToString(currentLogs + log))
+    }
+    fun editNutrition(cals: Int, pro: Int, carbs: Int, fats: Int) = viewModelScope.launch { repository.setNutrition(cals, pro, carbs, fats) }
+
+    fun toggleSkincareRoutine(routineName: String) = viewModelScope.launch {
+        val record = todayRecord.value ?: return@launch
+        try {
+            val completedList = Json.decodeFromString<List<String>>(record.completedSkincareRoutinesJson).toMutableList()
+            if (completedList.contains(routineName)) completedList.remove(routineName) else completedList.add(routineName)
+            repository.updateCompletedSkincareRoutines(Json.encodeToString(completedList))
+        } catch (e: Exception) {
+            repository.updateCompletedSkincareRoutines(Json.encodeToString(listOf(routineName)))
+        }
+    }
+
+    fun toggleSkincareStep(routineName: String, productName: String) = viewModelScope.launch {
+        val record = todayRecord.value ?: return@launch
+        val stepId = "${routineName}_${productName}"
+        try {
+            val completedList = Json.decodeFromString<List<String>>(record.completedSkincareStepsJson).toMutableList()
+            if (completedList.contains(stepId)) completedList.remove(stepId) else completedList.add(stepId)
+            repository.updateCompletedSkincareSteps(Json.encodeToString(completedList))
+        } catch (e: Exception) {
+            repository.updateCompletedSkincareSteps(Json.encodeToString(listOf(stepId)))
+        }
+    }
+
     fun updateDiaryNote(note: String) = viewModelScope.launch { repository.updateDiaryNote(note) }
 
-    // --- RECURRING & SUBTASK ENGINE ---
     fun addTask(task: Task) = viewModelScope.launch { repository.insertTask(task) }
-
     fun updateTask(task: Task) = viewModelScope.launch { repository.updateTask(task) }
 
-    fun toggleTaskCompletion(task: Task) = viewModelScope.launch {
-        val isNowDone = !task.isCompleted
-        val newStatus = if (isNowDone) "DONE" else "TO DO"
+    fun updateTaskStatus(task: Task, newStatus: String) = viewModelScope.launch {
+        val isNowDone = newStatus == "DONE"
+        val wasDone = task.isCompleted
 
-        // If completing a recurring task, spawn the next one!
-        if (isNowDone && task.isRecurring && task.recurringInterval != "NONE") {
-            spawnNextRecurringTask(task)
-            // Save current task as DONE history and detach its recurring flag so it doesn't loop
-            repository.updateTask(task.copy(isCompleted = true, status = "DONE", isRecurring = false))
+        val completionTime = if (isNowDone && !wasDone) {
+            System.currentTimeMillis()
+        } else if (isNowDone && wasDone) {
+            task.completionDateMillis
         } else {
-            repository.updateTask(task.copy(isCompleted = isNowDone, status = newStatus))
+            0L
         }
+
+        if (isNowDone && !wasDone && task.isRecurring && task.recurringInterval != "NONE") {
+            spawnNextRecurringTask(task)
+            repository.updateTask(task.copy(status = newStatus, isCompleted = true, isRecurring = false, completionDateMillis = completionTime))
+        } else {
+            repository.updateTask(task.copy(status = newStatus, isCompleted = isNowDone, completionDateMillis = completionTime))
+        }
+    }
+
+    fun toggleTaskCompletion(task: Task) {
+        val newStatus = if (task.isCompleted) "TO DO" else "DONE"
+        updateTaskStatus(task, newStatus)
     }
 
     fun toggleSubtaskCompletion(task: Task, subtaskId: String) = viewModelScope.launch {
@@ -117,15 +179,15 @@ class HomeViewModel @Inject constructor(
         }
         val nextDateStr = format.format(calendar.time)
 
-        // Reset subtasks for the new clone
         val subtasks = try { Json.decodeFromString<List<SubTask>>(task.subtasksJson) } catch (e: Exception) { emptyList() }
         val resetSubtasks = subtasks.map { it.copy(isCompleted = false) }
 
         val nextTask = task.copy(
-            id = 0, // 0 tells Room to auto-generate a new ID
+            id = 0,
             targetDate = nextDateStr,
             isCompleted = false,
             status = "TO DO",
+            completionDateMillis = 0L,
             subtasksJson = Json.encodeToString(resetSubtasks)
         )
         repository.insertTask(nextTask)
@@ -133,7 +195,6 @@ class HomeViewModel @Inject constructor(
 
     fun deleteTask(task: Task) = viewModelScope.launch { repository.deleteTask(task) }
 
-    // --- SECTION CONTROLS ---
     fun addTaskSection(name: String, order: Int = 0) = viewModelScope.launch { repository.insertTaskSection(TaskSection(name = name, orderIndex = order)) }
     fun deleteTaskSection(section: TaskSection) = viewModelScope.launch { repository.deleteTaskSection(section) }
 

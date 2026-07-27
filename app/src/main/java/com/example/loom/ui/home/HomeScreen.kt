@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Circle
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.WaterDrop
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -37,15 +38,39 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.example.loom.data.local.entity.Task
-import com.example.loom.data.local.entity.TaskSection
+import androidx.compose.ui.unit.sp
+import com.example.loom.data.local.entity.FoodItem
 import com.example.loom.data.local.entity.NoteTag
 import com.example.loom.data.local.entity.SubTask
+import com.example.loom.data.local.entity.Task
+import com.example.loom.data.local.entity.TaskSection
 import com.example.loom.util.DateUtils
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.text.SimpleDateFormat
 import java.util.*
+
+// --- CUSTOM GAPLESS PROGRESS BAR ---
+@Composable
+fun GaplessProgressBar(
+    progress: Float,
+    color: Color,
+    modifier: Modifier = Modifier
+) {
+    val trackColor = color.copy(alpha = 0.2f) // Matches track to main color, but faded
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(50))
+            .background(trackColor)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxHeight()
+                .fillMaxWidth(progress.coerceIn(0f, 1f))
+                .background(color)
+        )
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -58,41 +83,159 @@ fun HomeScreen(
     val sections by viewModel.allTaskSections.collectAsState()
     val tags by viewModel.allNoteTags.collectAsState()
 
+    val pinnedRoutines by viewModel.pinnedSkincareRoutines.collectAsState()
+    val completedRoutines = try { Json.decodeFromString<List<String>>(todayRecord?.completedSkincareRoutinesJson ?: "[]") } catch (e: Exception) { emptyList() }
+    val completedSteps = try { Json.decodeFromString<List<String>>(todayRecord?.completedSkincareStepsJson ?: "[]") } catch (e: Exception) { emptyList() }
+
+    val allFoodItems by viewModel.allFoodItems.collectAsState()
+
+    // Targets
     val targetCaloriesInt by viewModel.targetCalories.collectAsState()
     val targetProteinInt by viewModel.targetProtein.collectAsState()
-    val targetCalories = targetCaloriesInt.toFloat()
-    val targetProtein = targetProteinInt.toFloat()
+    val targetCarbsInt by viewModel.targetCarbs.collectAsState()
+    val targetFatsInt by viewModel.targetFats.collectAsState()
+    val defaultWaterIncrement by viewModel.defaultWaterIncrement.collectAsState()
 
     var showNutritionDialog by remember { mutableStateOf(false) }
-    var isEditingNutrition by remember { mutableStateOf(false) }
+    var isManualEntry by remember { mutableStateOf(false) }
+    var showNewFoodDialog by remember { mutableStateOf(false) }
 
     var showTaskDialog by remember { mutableStateOf(false) }
     var taskToEdit by remember { mutableStateOf<Task?>(null) }
     var isKanbanView by remember { mutableStateOf(false) }
-
     var sectionToDelete by remember { mutableStateOf<TaskSection?>(null) }
 
     if (showNutritionDialog) {
-        var inputCalories by remember { mutableStateOf(if (isEditingNutrition) todayRecord?.calories.toString() else "") }
-        var inputProtein by remember { mutableStateOf(if (isEditingNutrition) todayRecord?.protein.toString() else "") }
+        var foodDropdownExpanded by remember { mutableStateOf(false) }
+        var foodSearchText by remember { mutableStateOf("") }
+        var selectedFood by remember { mutableStateOf<FoodItem?>(null) }
+        var servingsStr by remember { mutableStateOf("1") }
 
         AlertDialog(
             onDismissRequest = { showNutritionDialog = false },
-            title = { Text(if (isEditingNutrition) "Edit Totals" else "Log Meal") },
+            title = { Text("Log Meal") },
             text = {
                 Column {
-                    OutlinedTextField(value = inputCalories, onValueChange = { inputCalories = it }, label = { Text("Calories") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Text(if (isManualEntry) "Manual Entry" else "From Pantry", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                        TextButton(onClick = { isManualEntry = !isManualEntry }) { Text(if (isManualEntry) "Use Pantry" else "Manual Entry") }
+                    }
                     Spacer(modifier = Modifier.height(8.dp))
-                    OutlinedTextField(value = inputProtein, onValueChange = { inputProtein = it }, label = { Text("Protein (g)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
+
+                    if (isManualEntry) {
+                        var inputCalories by remember { mutableStateOf("") }
+                        var inputProtein by remember { mutableStateOf("") }
+                        var inputCarbs by remember { mutableStateOf("") }
+                        var inputFats by remember { mutableStateOf("") }
+
+                        OutlinedTextField(value = inputCalories, onValueChange = { inputCalories = it }, label = { Text("Calories") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedTextField(value = inputProtein, onValueChange = { inputProtein = it }, label = { Text("Protein (g)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedTextField(value = inputCarbs, onValueChange = { inputCarbs = it }, label = { Text("Carbs (g)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
+                            OutlinedTextField(value = inputFats, onValueChange = { inputFats = it }, label = { Text("Fats (g)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
+                        }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Button(onClick = {
+                            val c = inputCalories.toIntOrNull() ?: 0
+                            val p = inputProtein.toIntOrNull() ?: 0
+                            val cb = inputCarbs.toIntOrNull() ?: 0
+                            val f = inputFats.toIntOrNull() ?: 0
+                            viewModel.editNutrition( (todayRecord?.calories ?: 0) + c, (todayRecord?.protein ?: 0) + p, (todayRecord?.carbs ?: 0) + cb, (todayRecord?.fats ?: 0) + f )
+                            showNutritionDialog = false
+                        }, modifier = Modifier.fillMaxWidth()) { Text("Add Macros") }
+                    } else {
+                        ExposedDropdownMenuBox(expanded = foodDropdownExpanded, onExpandedChange = { foodDropdownExpanded = it }) {
+                            OutlinedTextField(
+                                value = selectedFood?.name ?: foodSearchText,
+                                onValueChange = { foodSearchText = it; foodDropdownExpanded = true; selectedFood = null },
+                                placeholder = { Text("Search pantry...") },
+                                modifier = Modifier.menuAnchor().fillMaxWidth(),
+                                singleLine = true,
+                                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = foodDropdownExpanded) }
+                            )
+                            val filtered = allFoodItems.filter { it.name.contains(foodSearchText, true) }
+                            if (filtered.isNotEmpty() && foodDropdownExpanded) {
+                                ExposedDropdownMenu(expanded = foodDropdownExpanded, onDismissRequest = { foodDropdownExpanded = false }, modifier = Modifier.heightIn(max = 200.dp)) {
+                                    filtered.forEach { food ->
+                                        DropdownMenuItem(
+                                            text = { Text("${food.emoji} ${food.name}") },
+                                            onClick = { selectedFood = food; foodDropdownExpanded = false }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        if (selectedFood != null) {
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text("1 ${selectedFood!!.servingUnit} = ${selectedFood!!.calories} kcal", style = MaterialTheme.typography.bodyMedium)
+                            OutlinedTextField(
+                                value = servingsStr, onValueChange = { servingsStr = it },
+                                label = { Text("Servings") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+                            )
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Button(onClick = {
+                                viewModel.logFoodItem(selectedFood!!, servingsStr.toFloatOrNull() ?: 1f)
+                                showNutritionDialog = false
+                            }, modifier = Modifier.fillMaxWidth()) { Text("Log Food") }
+                        } else {
+                            Spacer(modifier = Modifier.height(16.dp))
+                            TextButton(onClick = { showNewFoodDialog = true }, modifier = Modifier.fillMaxWidth()) { Text("+ Add New Food to Pantry") }
+                        }
+                    }
                 }
             },
-            confirmButton = { Button(onClick = {
-                val cal = inputCalories.toIntOrNull() ?: 0
-                val pro = inputProtein.toIntOrNull() ?: 0
-                if (isEditingNutrition) viewModel.editNutrition(cal, pro) else viewModel.addNutrition(cal, pro)
-                showNutritionDialog = false
-            }) { Text("Save") } },
+            confirmButton = {},
             dismissButton = { TextButton(onClick = { showNutritionDialog = false }) { Text("Cancel") } }
+        )
+    }
+
+    if (showNewFoodDialog) {
+        var inputEmoji by remember { mutableStateOf("🍽️") }
+        var inputName by remember { mutableStateOf("") }
+        var inputServing by remember { mutableStateOf("Plate") }
+        var inputCals by remember { mutableStateOf("") }
+        var inputPro by remember { mutableStateOf("") }
+        var inputCarbs by remember { mutableStateOf("") }
+        var inputFats by remember { mutableStateOf("") }
+
+        AlertDialog(
+            onDismissRequest = { showNewFoodDialog = false },
+            title = { Text("Add to Pantry") },
+            text = {
+                LazyColumn {
+                    item {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedTextField(value = inputEmoji, onValueChange = { inputEmoji = it.take(2) }, label = { Text("Emoji") }, modifier = Modifier.weight(0.3f), textStyle = LocalTextStyle.current.copy(textAlign = TextAlign.Center, fontSize = 24.sp))
+                            OutlinedTextField(value = inputName, onValueChange = { inputName = it }, label = { Text("Food Name") }, modifier = Modifier.weight(0.7f))
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedTextField(value = inputServing, onValueChange = { inputServing = it }, label = { Text("Serving Unit") }, modifier = Modifier.fillMaxWidth())
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedTextField(value = inputCals, onValueChange = { inputCals = it }, label = { Text("Kcal") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
+                            OutlinedTextField(value = inputPro, onValueChange = { inputPro = it }, label = { Text("Pro (g)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedTextField(value = inputCarbs, onValueChange = { inputCarbs = it }, label = { Text("Carb (g)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
+                            OutlinedTextField(value = inputFats, onValueChange = { inputFats = it }, label = { Text("Fat (g)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    if (inputName.isNotBlank() && inputCals.isNotBlank()) {
+                        viewModel.addFoodItemToPantry(FoodItem(emoji = inputEmoji, name = inputName, servingUnit = inputServing, calories = inputCals.toIntOrNull() ?: 0, protein = inputPro.toIntOrNull() ?: 0, carbs = inputCarbs.toIntOrNull() ?: 0, fats = inputFats.toIntOrNull() ?: 0))
+                        showNewFoodDialog = false
+                    }
+                }) { Text("Save Food") }
+            },
+            dismissButton = { TextButton(onClick = { showNewFoodDialog = false }) { Text("Cancel") } }
         )
     }
 
@@ -131,7 +274,12 @@ fun HomeScreen(
             TopAppBar(
                 title = { Text("Your Daily Loom", fontWeight = FontWeight.Bold) },
                 actions = { IconButton(onClick = onNavigateToSettings) { Icon(Icons.Default.Settings, "Settings") } },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
+                colors = TopAppBarDefaults.topAppBarColors(
+                    // --- FORCES THE LIGHT GREEN TINT ---
+                    containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                    titleContentColor = MaterialTheme.colorScheme.onSurface,
+                    actionIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             )
         },
         floatingActionButton = {
@@ -147,68 +295,139 @@ fun HomeScreen(
             contentPadding = PaddingValues(top = 12.dp, bottom = 80.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+
+            // --- FULL NUTRITION CARD (UPDATED WITH GAPLESS BARS) ---
             item {
                 ElevatedCard(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp), colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                     Column(modifier = Modifier.padding(20.dp)) {
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                             Text("Fuel", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Row {
-                                IconButton(onClick = { isEditingNutrition = true; showNutritionDialog = true }) { Icon(Icons.Default.Edit, "Edit Totals", modifier = Modifier.size(20.dp)) }
-                                TextButton(onClick = { isEditingNutrition = false; showNutritionDialog = true }) { Text("+ Log Meal") }
-                            }
+                            Button(onClick = { showNutritionDialog = true }, shape = RoundedCornerShape(12.dp), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp)) { Text("+ Log Meal") }
                         }
                         Spacer(modifier = Modifier.height(12.dp))
-                        val currentCalories = todayRecord?.calories ?: 0
-                        val calProgress = if (targetCalories > 0) (currentCalories / targetCalories).coerceIn(0f, 1f) else 0f
+
+                        val currentCals = todayRecord?.calories ?: 0
+                        val calProg = if (targetCaloriesInt > 0) (currentCals.toFloat() / targetCaloriesInt).coerceIn(0f, 1f) else 0f
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             Text("Calories", style = MaterialTheme.typography.bodyMedium)
-                            Text("$currentCalories / ${targetCaloriesInt} kcal", fontWeight = FontWeight.Bold)
+                            Text("$currentCals / $targetCaloriesInt kcal", fontWeight = FontWeight.Bold)
                         }
-                        LinearProgressIndicator(progress = { calProgress }, modifier = Modifier.fillMaxWidth().height(8.dp).padding(top = 4.dp), color = MaterialTheme.colorScheme.tertiary, strokeCap = androidx.compose.ui.graphics.StrokeCap.Round)
+
+                        GaplessProgressBar(
+                            progress = calProg,
+                            color = MaterialTheme.colorScheme.tertiary,
+                            modifier = Modifier.fillMaxWidth().height(8.dp).padding(top = 4.dp)
+                        )
+
                         Spacer(modifier = Modifier.height(16.dp))
-                        val currentProtein = todayRecord?.protein ?: 0
-                        val proProgress = if (targetProtein > 0) (currentProtein / targetProtein).coerceIn(0f, 1f) else 0f
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("Protein", style = MaterialTheme.typography.bodyMedium)
-                            Text("${currentProtein}g / ${targetProteinInt}g", fontWeight = FontWeight.Bold)
+
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            val currentPro = todayRecord?.protein ?: 0
+                            val proProg = if (targetProteinInt > 0) (currentPro.toFloat() / targetProteinInt).coerceIn(0f, 1f) else 0f
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Protein", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("${currentPro}g / ${targetProteinInt}g", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                                GaplessProgressBar(
+                                    progress = proProg,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.fillMaxWidth().height(6.dp).padding(top = 2.dp)
+                                )
+                            }
+                            val currentCarbs = todayRecord?.carbs ?: 0
+                            val carbProg = if (targetCarbsInt > 0) (currentCarbs.toFloat() / targetCarbsInt).coerceIn(0f, 1f) else 0f
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Carbs", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("${currentCarbs}g / ${targetCarbsInt}g", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                                GaplessProgressBar(
+                                    progress = carbProg,
+                                    color = Color(0xFFFFA726),
+                                    modifier = Modifier.fillMaxWidth().height(6.dp).padding(top = 2.dp)
+                                )
+                            }
+                            val currentFats = todayRecord?.fats ?: 0
+                            val fatProg = if (targetFatsInt > 0) (currentFats.toFloat() / targetFatsInt).coerceIn(0f, 1f) else 0f
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Fats", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("${currentFats}g / ${targetFatsInt}g", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                                GaplessProgressBar(
+                                    progress = fatProg,
+                                    color = Color(0xFFE53935),
+                                    modifier = Modifier.fillMaxWidth().height(6.dp).padding(top = 2.dp)
+                                )
+                            }
                         }
-                        LinearProgressIndicator(progress = { proProgress }, modifier = Modifier.fillMaxWidth().height(8.dp).padding(top = 4.dp), color = MaterialTheme.colorScheme.primary, strokeCap = androidx.compose.ui.graphics.StrokeCap.Round)
                     }
                 }
             }
 
+            // --- HYDRATION CARD ---
             item {
                 ElevatedCard(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp), colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                     Row(modifier = Modifier.padding(20.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         Column {
-                            Text("Hydration", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text("${todayRecord?.waterIntake ?: 0} Glasses", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Outlined.WaterDrop, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Hydration", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            val waterLiters = (todayRecord?.waterIntakeMl ?: 0) / 1000f
+                            val formattedLiters = String.format(Locale.US, "%.3f", waterLiters).trimEnd('0').trimEnd('.')
+                            Text("$formattedLiters L", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             IconButton(onClick = { viewModel.removeWater() }) { Icon(Icons.Default.Remove, "Remove Water") }
-                            IconButton(onClick = { viewModel.addWater() }, modifier = Modifier.background(MaterialTheme.colorScheme.secondary, RoundedCornerShape(12.dp))) { Icon(Icons.Default.Add, "Add Water", tint = MaterialTheme.colorScheme.onPrimary) }
+                            Button(onClick = { viewModel.addWater() }, shape = RoundedCornerShape(12.dp)) {
+                                Text("+ ${defaultWaterIncrement}ml", fontWeight = FontWeight.Bold)
+                            }
                         }
                     }
                 }
             }
 
+            // --- SKINCARE ROUTINE ---
             item {
                 ElevatedCard(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp), colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                     Column(modifier = Modifier.padding(20.dp)) {
                         Text("Skincare Routine", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(modifier = Modifier.height(8.dp))
-                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                            Checkbox(checked = todayRecord?.amSkincareDone ?: false, onCheckedChange = { viewModel.toggleAmSkincare() })
-                            Column {
-                                Text("Morning Routine", fontWeight = FontWeight.Bold)
-                                Text("Vitamin C, Sunscreen", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                        }
-                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                            Checkbox(checked = todayRecord?.pmSkincareDone ?: false, onCheckedChange = { viewModel.togglePmSkincare() })
-                            Column {
-                                Text("Night Routine", fontWeight = FontWeight.Bold)
-                                Text("Hyaluronic Acid, Niacinamide, Salicylic Acid", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+                        if (pinnedRoutines.isEmpty()) {
+                            Text("No routines pinned yet. Create them in the Health tab!", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        } else {
+                            pinnedRoutines.forEach { routine ->
+                                val isDone = completedRoutines.contains(routine.name)
+                                val products = try { Json.decodeFromString<List<String>>(routine.productsJson) } catch (e: Exception) { emptyList() }
+
+                                Row(verticalAlignment = Alignment.Top, modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+                                    Checkbox(
+                                        checked = isDone,
+                                        onCheckedChange = { viewModel.toggleSkincareRoutine(routine.name) }
+                                    )
+                                    Column(modifier = Modifier.padding(top = 12.dp)) {
+                                        Text(routine.name, fontWeight = FontWeight.Bold, textDecoration = if (isDone) TextDecoration.LineThrough else TextDecoration.None)
+
+                                        if (products.isNotEmpty()) {
+                                            Column(modifier = Modifier.padding(top = 4.dp, start = 4.dp)) {
+                                                products.forEach { product ->
+                                                    val stepId = "${routine.name}_${product}"
+                                                    val isStepDone = completedSteps.contains(stepId)
+
+                                                    Row(
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .clickable { viewModel.toggleSkincareStep(routine.name, product) }
+                                                            .padding(vertical = 4.dp)
+                                                    ) {
+                                                        Icon(if (isStepDone) Icons.Outlined.CheckCircle else Icons.Outlined.Circle, contentDescription = null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
+                                                        Spacer(modifier = Modifier.width(8.dp))
+                                                        Text(product, style = MaterialTheme.typography.bodySmall.copy(textDecoration = if (isStepDone) TextDecoration.LineThrough else TextDecoration.None), color = if(isStepDone) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface)
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -290,6 +509,7 @@ fun HomeScreen(
     }
 }
 
+// ... KEEP getRemainingDaysText, TaskCard, CreateTaskDialog EXACTLY THE SAME FROM PREVIOUS CODE ...
 fun getRemainingDaysText(targetDate: String): String? {
     if (targetDate.isBlank()) return null
     return try {
@@ -312,6 +532,7 @@ fun getRemainingDaysText(targetDate: String): String? {
 @Composable
 fun TaskCard(task: Task, allTags: List<NoteTag>, viewModel: HomeViewModel, isKanbanView: Boolean, onEdit: (Task) -> Unit) {
     val priorityColor = when (task.priority) { 1 -> Color(0xFF4CAF50); 2 -> Color(0xFF8BC34A); 3 -> Color(0xFFFFEB3B); 4 -> Color(0xFFFF9800); 5 -> Color(0xFFF44336); else -> Color.Gray }
+    var showMenu by remember { mutableStateOf(false) }
 
     ElevatedCard(
         modifier = Modifier
@@ -339,7 +560,6 @@ fun TaskCard(task: Task, allTags: List<NoteTag>, viewModel: HomeViewModel, isKan
                 }
             }
 
-            // --- RENDER SUBTASKS ON CARD ---
             val subtasks = try { Json.decodeFromString<List<SubTask>>(task.subtasksJson) } catch (e: Exception) { emptyList() }
             if (subtasks.isNotEmpty()) {
                 Column(modifier = Modifier.fillMaxWidth().padding(start = 16.dp, top = 8.dp, bottom = 4.dp)) {
@@ -408,7 +628,7 @@ fun TaskCard(task: Task, allTags: List<NoteTag>, viewModel: HomeViewModel, isKan
                     if (isKanbanView && currentIndex > 0) {
                         IconButton(onClick = {
                             val prevStatus = statuses[currentIndex - 1]
-                            viewModel.updateTask(task.copy(status = prevStatus, isCompleted = prevStatus == "DONE"))
+                            viewModel.updateTaskStatus(task, prevStatus)
                         }, modifier = Modifier.size(28.dp)) {
                             Icon(Icons.Default.ChevronLeft, "Move Left", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
@@ -417,7 +637,7 @@ fun TaskCard(task: Task, allTags: List<NoteTag>, viewModel: HomeViewModel, isKan
                     Surface(
                         modifier = Modifier.clickable {
                             val nextStatus = when (task.status) { "TO DO" -> "IN PROGRESS"; "IN PROGRESS" -> "DONE"; else -> "TO DO" }
-                            viewModel.updateTask(task.copy(status = nextStatus, isCompleted = nextStatus == "DONE"))
+                            viewModel.updateTaskStatus(task, nextStatus)
                         },
                         color = MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(8.dp)
                     ) { Text(task.status, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)) }
@@ -425,13 +645,22 @@ fun TaskCard(task: Task, allTags: List<NoteTag>, viewModel: HomeViewModel, isKan
                     if (isKanbanView && currentIndex < statuses.size - 1) {
                         IconButton(onClick = {
                             val nextStatus = statuses[currentIndex + 1]
-                            viewModel.updateTask(task.copy(status = nextStatus, isCompleted = nextStatus == "DONE"))
+                            viewModel.updateTaskStatus(task, nextStatus)
                         }, modifier = Modifier.size(28.dp)) {
                             Icon(Icons.Default.ChevronRight, "Move Right", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }
             }
+        }
+
+        DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+            DropdownMenuItem(text = { Text("Move to TO DO") }, onClick = { viewModel.updateTaskStatus(task, "TO DO"); showMenu = false })
+            DropdownMenuItem(text = { Text("Move to IN PROGRESS") }, onClick = { viewModel.updateTaskStatus(task, "IN PROGRESS"); showMenu = false })
+            DropdownMenuItem(text = { Text("Move to DONE") }, onClick = { viewModel.updateTaskStatus(task, "DONE"); showMenu = false })
+            HorizontalDivider()
+            DropdownMenuItem(text = { Text("Edit Task") }, onClick = { onEdit(task); showMenu = false }, leadingIcon = { Icon(Icons.Default.Edit, null) })
+            DropdownMenuItem(text = { Text("Delete Task", color = MaterialTheme.colorScheme.error) }, onClick = { viewModel.deleteTask(task); showMenu = false }, leadingIcon = { Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error) })
         }
     }
 }
@@ -453,7 +682,6 @@ fun CreateTaskDialog(
     val initialTags = try { Json.decodeFromString<List<String>>(initialTask?.tagsJson ?: "[]") } catch (e: Exception) { emptyList() }
     var selectedTags by remember { mutableStateOf(initialTags.toSet()) }
 
-    // --- SUBTASKS STATE ---
     val initialSubtasks = try { Json.decodeFromString<List<SubTask>>(initialTask?.subtasksJson ?: "[]") } catch (e: Exception) { emptyList() }
     var subtasks by remember { mutableStateOf(initialSubtasks) }
     var newSubtaskText by remember { mutableStateOf("") }
@@ -601,7 +829,6 @@ fun CreateTaskDialog(
                 item { OutlinedTextField(value = title, onValueChange = { title = it }, label = { Text("Title") }, modifier = Modifier.fillMaxWidth(), singleLine = true) }
                 item { OutlinedTextField(value = description, onValueChange = { description = it }, label = { Text("Details (Optional)") }, modifier = Modifier.fillMaxWidth(), minLines = 3, maxLines = 4) }
 
-                // --- SUBTASKS UI ---
                 item {
                     Text("Subtasks:", style = MaterialTheme.typography.labelMedium)
                     Column(modifier = Modifier.fillMaxWidth()) {
@@ -796,13 +1023,16 @@ fun CreateTaskDialog(
                 Button(onClick = {
                     if (title.isNotBlank()) {
                         val finalIntervalString = if (isRecurring) "$recurringCount $recurringType" else "NONE"
+                        val completionTime = if (status == "DONE") System.currentTimeMillis() else 0L
+
                         val task = Task(
                             id = initialTask?.id ?: 0, title = title, description = description, priority = priority,
                             sectionId = selectedSectionId, status = status, isCompleted = status == "DONE",
                             targetDate = deadlineStr,
                             tagsJson = Json.encodeToString(selectedTags.toList()),
-                            subtasksJson = Json.encodeToString(subtasks), // <-- SAVES SUBTASKS TO JSON
-                            isRecurring = isRecurring, recurringInterval = finalIntervalString
+                            subtasksJson = Json.encodeToString(subtasks),
+                            isRecurring = isRecurring, recurringInterval = finalIntervalString,
+                            completionDateMillis = completionTime
                         )
                         onSave(task)
                     }
