@@ -29,18 +29,24 @@ class TrackerRepository @Inject constructor(private val dao: TrackerDao) {
     }
 
     fun getTodayRecord(): Flow<DailyRecord?> = dao.getDailyRecordFlow(DateUtils.getTodayDateId())
+
+    fun getDailyRecordFlow(dateId: String): Flow<DailyRecord?> = dao.getDailyRecordFlow(dateId)
     fun getRecordsForMonth(monthPrefix: String): Flow<List<DailyRecord>> = dao.getRecordsForMonth(monthPrefix)
 
-    suspend fun addWater(amountMl: Int) {
-        val record = dao.getDailyRecordSync(DateUtils.getTodayDateId())
+    suspend fun addWater(amountMl: Int, targetDateId: String = DateUtils.getTodayDateId()) {
+        val record = dao.getDailyRecordSync(targetDateId)
         if (record != null) {
             record.waterIntakeMl += amountMl
             dao.updateDailyRecord(record)
+        } else {
+            // If no record exists for that past day, create one
+            val newRecord = DailyRecord(dateId = targetDateId, waterIntakeMl = amountMl)
+            dao.insertDailyRecord(newRecord)
         }
     }
 
-    suspend fun removeWater(amountMl: Int) {
-        val record = dao.getDailyRecordSync(DateUtils.getTodayDateId())
+    suspend fun removeWater(amountMl: Int, targetDateId: String = DateUtils.getTodayDateId()) {
+        val record = dao.getDailyRecordSync(targetDateId)
         if (record != null && record.waterIntakeMl > 0) {
             record.waterIntakeMl = (record.waterIntakeMl - amountMl).coerceAtLeast(0)
             dao.updateDailyRecord(record)
@@ -57,23 +63,33 @@ class TrackerRepository @Inject constructor(private val dao: TrackerDao) {
     suspend fun logConsumedFood(cals: Int, pro: Int, carbs: Int, fats: Int, logsJson: String) {
         val record = dao.getDailyRecordSync(DateUtils.getTodayDateId())
         if (record != null) {
-            record.calories += cals
-            record.protein += pro
-            record.carbs += carbs
-            record.fats += fats
+            // FIX: .coerceAtLeast(0) completely prevents negative macros
+            record.calories = (record.calories + cals).coerceAtLeast(0)
+            record.protein = (record.protein + pro).coerceAtLeast(0)
+            record.carbs = (record.carbs + carbs).coerceAtLeast(0)
+            record.fats = (record.fats + fats).coerceAtLeast(0)
             record.consumedFoodsJson = logsJson
             dao.updateDailyRecord(record)
         }
     }
 
-    suspend fun setNutrition(cals: Int, pro: Int, carbs: Int, fats: Int) {
-        val record = dao.getDailyRecordSync(DateUtils.getTodayDateId())
+    suspend fun setNutrition(cals: Int, pro: Int, carbs: Int, fats: Int, targetDateId: String = DateUtils.getTodayDateId()) {
+        val record = dao.getDailyRecordSync(targetDateId)
         if (record != null) {
-            record.calories = cals
-            record.protein = pro
-            record.carbs = carbs
-            record.fats = fats
+            record.calories = cals.coerceAtLeast(0)
+            record.protein = pro.coerceAtLeast(0)
+            record.carbs = carbs.coerceAtLeast(0)
+            record.fats = fats.coerceAtLeast(0)
+
+            // FIX: Auto-clear food list if macros are explicitly reset to 0 in the Calendar
+            if (cals == 0 && pro == 0 && carbs == 0 && fats == 0) {
+                record.consumedFoodsJson = "[]"
+            }
+
             dao.updateDailyRecord(record)
+        } else {
+            val newRecord = DailyRecord(dateId = targetDateId, calories = cals, protein = pro, carbs = carbs, fats = fats)
+            dao.insertDailyRecord(newRecord)
         }
     }
 
@@ -136,10 +152,15 @@ class TrackerRepository @Inject constructor(private val dao: TrackerDao) {
     // --- Exercises ---
     fun getExercisesForDate(date: String): Flow<List<Exercise>> = dao.getExercisesForDate(date)
 
-    suspend fun insertExercise(name: String, sets: Int, reps: Int, weight: Float, weightListJson: String = "[]", isTimeBased: Boolean, duration: Int, presetName: String? = null) {
+    suspend fun insertExercise(
+        name: String, sets: Int, reps: Int, weight: Float,
+        weightListJson: String = "[]", isTimeBased: Boolean, duration: Int,
+        presetName: String? = null, targetDateId: String = DateUtils.getTodayDateId(),
+        isCompleted: Boolean = false // FIX: Reverted default back to false
+    ) {
         dao.insertExercise(
             Exercise(
-                dateId = DateUtils.getTodayDateId(),
+                dateId = targetDateId,
                 exerciseName = name,
                 sets = sets,
                 reps = reps,
@@ -147,10 +168,12 @@ class TrackerRepository @Inject constructor(private val dao: TrackerDao) {
                 weightListJson = weightListJson,
                 isTimeBased = isTimeBased,
                 durationInSeconds = duration,
-                presetName = presetName
+                presetName = presetName,
+                isCompleted = isCompleted
             )
         )
     }
+
     suspend fun deleteExercise(exercise: Exercise) = dao.deleteExercise(exercise)
 
     suspend fun updateExercise(exercise: Exercise) {
@@ -235,4 +258,6 @@ class TrackerRepository @Inject constructor(private val dao: TrackerDao) {
     }
 
     suspend fun deleteSkincareProduct(product: SkincareProduct) = dao.deleteSkincareProduct(product)
+
+    fun getExercisesForMonth(monthPrefix: String): Flow<List<Exercise>> = dao.getExercisesForMonth(monthPrefix)
 }

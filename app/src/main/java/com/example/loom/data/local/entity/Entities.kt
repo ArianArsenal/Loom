@@ -69,11 +69,12 @@ data class Exercise(
     val exerciseName: String,
     val sets: Int = 0,
     val reps: Int = 0,
-    val weight: Float = 0f, // <-- FIXED: Added 'f' so Kotlin knows it's a Float
+    val weight: Float = 0f,
     val weightListJson: String = "[]",
     val isTimeBased: Boolean = false,
     val durationInSeconds: Int = 0,
-    val presetName: String? = null
+    val presetName: String? = null,
+    val isCompleted: Boolean = false
 )
 
 @Serializable

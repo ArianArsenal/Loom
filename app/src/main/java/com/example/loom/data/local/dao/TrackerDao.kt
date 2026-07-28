@@ -167,4 +167,7 @@ interface TrackerDao {
 
     @Query("SELECT COUNT(*) FROM food_items")
     suspend fun getFoodItemCount(): Int
+
+    @Query("SELECT * FROM exercises WHERE dateId LIKE :monthPrefix || '%'")
+    fun getExercisesForMonth(monthPrefix: String): Flow<List<Exercise>>
 }

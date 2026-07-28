@@ -179,8 +179,6 @@ fun HealthScreen(viewModel: HealthViewModel) {
     var presetExerciseToEdit by remember { mutableStateOf<PresetExercise?>(null) }
     var presetExerciseToEditIndex by remember { mutableIntStateOf(-1) }
 
-    var checkedExercises by remember { mutableStateOf(setOf<Int>()) }
-
     var loggedPresetToManage by remember { mutableStateOf<String?>(null) }
     var showLoggedPresetDialog by remember { mutableStateOf(false) }
     var loggedExerciseToEdit by remember { mutableStateOf<Exercise?>(null) }
@@ -565,7 +563,6 @@ fun HealthScreen(viewModel: HealthViewModel) {
                             (0 until setCount).map { editAdvancedWeights[it]?.toFloatOrNull() ?: 0f }
                         } else emptyList()
 
-                        // FIX: WE UPDATE IN PLACE NOW
                         val updatedEx = loggedExerciseToEdit!!.copy(
                             exerciseName = editName,
                             sets = editSets.toIntOrNull() ?: 0,
@@ -897,7 +894,6 @@ fun HealthScreen(viewModel: HealthViewModel) {
                                                 ),
                                                 verticalAlignment = Alignment.CenterVertically
                                             ) {
-                                                // FIX: Added Up/Down arrows for arranging
                                                 Column {
                                                     IconButton(
                                                         onClick = {
@@ -1140,33 +1136,11 @@ fun HealthScreen(viewModel: HealthViewModel) {
                                             }
                                         ) {
                                             Row(modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                                val isChecked = checkedExercises.contains(exercise.id)
+
+                                                val isChecked = exercise.isCompleted
+
                                                 IconButton(onClick = {
-                                                    if (isChecked) {
-                                                        checkedExercises = checkedExercises - exercise.id
-                                                    } else {
-                                                        checkedExercises = checkedExercises + exercise.id
-                                                        if (exercise.presetName.isNullOrBlank()) {
-                                                            coroutineScope.launch {
-                                                                delay(1200)
-                                                                if (checkedExercises.contains(exercise.id)) {
-                                                                    viewModel.deleteExercise(exercise)
-                                                                }
-                                                            }
-                                                        } else {
-                                                            val presetExs = groupedExercises[exercise.presetName] ?: emptyList()
-                                                            val allChecked = presetExs.all { checkedExercises.contains(it.id) || it.id == exercise.id }
-                                                            if (allChecked) {
-                                                                coroutineScope.launch {
-                                                                    delay(1200)
-                                                                    val stillAllChecked = presetExs.all { checkedExercises.contains(it.id) }
-                                                                    if (stillAllChecked) {
-                                                                        presetExs.forEach { viewModel.deleteExercise(it) }
-                                                                    }
-                                                                }
-                                                            }
-                                                        }
-                                                    }
+                                                    viewModel.toggleExerciseCompletion(exercise)
                                                 }) {
                                                     Icon(
                                                         imageVector = if (isChecked) Icons.Outlined.CheckCircle else Icons.Outlined.Circle,
@@ -1174,6 +1148,7 @@ fun HealthScreen(viewModel: HealthViewModel) {
                                                         tint = if (isChecked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                                                     )
                                                 }
+
                                                 Column(modifier = Modifier.weight(1f)) {
                                                     Text(text = exercise.exerciseName, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold, textDecoration = if (isChecked) TextDecoration.LineThrough else TextDecoration.None)
                                                     if (exercise.isTimeBased) {

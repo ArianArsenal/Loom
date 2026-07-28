@@ -28,7 +28,7 @@ import com.example.loom.data.local.entity.FoodItem
         SkincareProduct::class, SkincareRoutine::class,
         FoodItem::class
     ],
-    version = 17, // <-- BUMPED TO 17 TO FORCE THE MIGRATION
+    version = 18, // <-- BUMPED TO 18
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -43,6 +43,13 @@ abstract class AppDatabase : RoomDatabase() {
         private val MIGRATION_TO_17 = object : Migration(15, 17) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 executeMigration(db)
+            }
+        }
+
+        private val MIGRATION_17_18 = object : Migration(17, 18) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Safely add the new column with a default value of 0 (false)
+                db.execSQL("ALTER TABLE exercises ADD COLUMN isCompleted INTEGER NOT NULL DEFAULT 0")
             }
         }
 
@@ -87,7 +94,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "life_tracker_db"
                 )
-                    .addMigrations(MIGRATION_TO_17, MIGRATION_16_17) // Add both paths
+                    .addMigrations(MIGRATION_TO_17, MIGRATION_16_17, MIGRATION_17_18) // <-- ADD IT HERE
                     .fallbackToDestructiveMigration()
                     .build().also { INSTANCE = it }
             }

@@ -117,6 +117,11 @@ class HealthViewModel @Inject constructor(
     // FIX: Function to update an existing exercise so it stays in place
     fun updateExercise(exercise: Exercise) = viewModelScope.launch { repository.updateExercise(exercise) }
 
+    fun toggleExerciseCompletion(exercise: Exercise) = viewModelScope.launch {
+        val updatedExercise = exercise.copy(isCompleted = !exercise.isCompleted)
+        repository.updateExercise(updatedExercise)
+    }
+
     fun deleteExercise(exercise: Exercise) = viewModelScope.launch { repository.deleteExercise(exercise) }
     fun savePreset(id: Int, name: String, exercises: List<PresetExercise>) = viewModelScope.launch {
         repository.insertPreset(WorkoutPreset(id = id, presetName = name, exercises = exercises))
