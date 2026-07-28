@@ -1,12 +1,12 @@
 package com.example.loom
 
-
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
-import androidx.activity.enableEdgeToEdge // <-- ADDED IMPORT
+import androidx.activity.SystemBarStyle
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -20,13 +20,16 @@ import com.example.loom.ui.theme.LoomTheme
 import com.example.loom.worker.NotificationScheduler
 import dagger.hilt.android.AndroidEntryPoint
 
-@AndroidEntryPoint // This tells Hilt to inject dependencies into this activity
+@AndroidEntryPoint
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // --- THIS FIXES THE WHITE STATUS BAR ---
-        enableEdgeToEdge()
+        // FIX: Forces the system bars to be fully transparent so our Top Bar colors flow to the absolute edge
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.auto(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.auto(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT)
+        )
 
         setContent {
             LoomTheme {
@@ -58,9 +61,7 @@ class MainActivity : ComponentActivity() {
                 }
 
                 val viewModel: HomeViewModel = hiltViewModel()
-                LoomMainScreen(viewModel = viewModel) // Replaced LoomNavigation
-
-
+                LoomMainScreen(viewModel = viewModel)
             }
         }
     }

@@ -76,6 +76,9 @@ interface TrackerDao {
     @Delete
     suspend fun deleteExercise(exercise: Exercise)
 
+    @Update
+    suspend fun updateExercise(exercise: Exercise)
+
     // --- Presets ---
     @Query("SELECT * FROM workout_presets ORDER BY presetName ASC")
     fun getAllPresets(): Flow<List<WorkoutPreset>>

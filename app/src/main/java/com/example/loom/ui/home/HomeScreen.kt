@@ -44,33 +44,24 @@ import com.example.loom.data.local.entity.NoteTag
 import com.example.loom.data.local.entity.SubTask
 import com.example.loom.data.local.entity.Task
 import com.example.loom.data.local.entity.TaskSection
-import com.example.loom.util.DateUtils
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.text.SimpleDateFormat
 import java.util.*
 
-// --- CUSTOM GAPLESS PROGRESS BAR ---
 @Composable
 fun GaplessProgressBar(
     progress: Float,
     color: Color,
     modifier: Modifier = Modifier
 ) {
-    val trackColor = color.copy(alpha = 0.2f) // Matches track to main color, but faded
-    Box(
-        modifier = modifier
-            .clip(RoundedCornerShape(50))
-            .background(trackColor)
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxHeight()
-                .fillMaxWidth(progress.coerceIn(0f, 1f))
-                .background(color)
-        )
+    val trackColor = color.copy(alpha = 0.2f)
+    Box(modifier = modifier.clip(RoundedCornerShape(50)).background(trackColor)) {
+        Box(modifier = Modifier.fillMaxHeight().fillMaxWidth(progress.coerceIn(0f, 1f)).background(color))
     }
 }
+
+private val globalDateFormatter = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -84,12 +75,11 @@ fun HomeScreen(
     val tags by viewModel.allNoteTags.collectAsState()
 
     val pinnedRoutines by viewModel.pinnedSkincareRoutines.collectAsState()
-    val completedRoutines = try { Json.decodeFromString<List<String>>(todayRecord?.completedSkincareRoutinesJson ?: "[]") } catch (e: Exception) { emptyList() }
-    val completedSteps = try { Json.decodeFromString<List<String>>(todayRecord?.completedSkincareStepsJson ?: "[]") } catch (e: Exception) { emptyList() }
+    val completedRoutines by viewModel.completedSkincareRoutines.collectAsState()
+    val completedSteps by viewModel.completedSkincareSteps.collectAsState()
 
     val allFoodItems by viewModel.allFoodItems.collectAsState()
 
-    // Targets
     val targetCaloriesInt by viewModel.targetCalories.collectAsState()
     val targetProteinInt by viewModel.targetProtein.collectAsState()
     val targetCarbsInt by viewModel.targetCarbs.collectAsState()
@@ -275,10 +265,9 @@ fun HomeScreen(
                 title = { Text("Your Daily Loom", fontWeight = FontWeight.Bold) },
                 actions = { IconButton(onClick = onNavigateToSettings) { Icon(Icons.Default.Settings, "Settings") } },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    // --- FORCES THE LIGHT GREEN TINT ---
-                    containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
-                    titleContentColor = MaterialTheme.colorScheme.onSurface,
-                    actionIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                    containerColor = Color(0xFFE4F3E4),
+                    titleContentColor = Color(0xFF1B5E20),
+                    actionIconContentColor = Color(0xFF1B5E20)
                 )
             )
         },
@@ -296,7 +285,6 @@ fun HomeScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
 
-            // --- FULL NUTRITION CARD (UPDATED WITH GAPLESS BARS) ---
             item {
                 ElevatedCard(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp), colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                     Column(modifier = Modifier.padding(20.dp)) {
@@ -360,7 +348,6 @@ fun HomeScreen(
                 }
             }
 
-            // --- HYDRATION CARD ---
             item {
                 ElevatedCard(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp), colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                     Row(modifier = Modifier.padding(20.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
@@ -384,11 +371,13 @@ fun HomeScreen(
                 }
             }
 
-            // --- SKINCARE ROUTINE ---
             item {
                 ElevatedCard(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp), colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                     Column(modifier = Modifier.padding(20.dp)) {
-                        Text("Skincare Routine", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            Text("Skincare Routines", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+
                         Spacer(modifier = Modifier.height(8.dp))
 
                         if (pinnedRoutines.isEmpty()) {
@@ -396,33 +385,35 @@ fun HomeScreen(
                         } else {
                             pinnedRoutines.forEach { routine ->
                                 val isDone = completedRoutines.contains(routine.name)
-                                val products = try { Json.decodeFromString<List<String>>(routine.productsJson) } catch (e: Exception) { emptyList() }
+                                val products = remember(routine.productsJson) { try { Json.decodeFromString<List<String>>(routine.productsJson) } catch (e: Exception) { emptyList() } }
 
-                                Row(verticalAlignment = Alignment.Top, modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
-                                    Checkbox(
-                                        checked = isDone,
-                                        onCheckedChange = { viewModel.toggleSkincareRoutine(routine.name) }
-                                    )
-                                    Column(modifier = Modifier.padding(top = 12.dp)) {
-                                        Text(routine.name, fontWeight = FontWeight.Bold, textDecoration = if (isDone) TextDecoration.LineThrough else TextDecoration.None)
+                                Column(modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                                        Checkbox(checked = isDone, onCheckedChange = { viewModel.toggleSkincareRoutine(routine.name) })
+                                        Column(modifier = Modifier.weight(1f).padding(start = 8.dp)) {
+                                            Text(routine.name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold, textDecoration = if (isDone) TextDecoration.LineThrough else TextDecoration.None)
+                                            if (routine.isPinnedToHome) {
+                                                Text("Pinned to Home Screen", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 2.dp))
+                                            }
+                                        }
+                                    }
 
-                                        if (products.isNotEmpty()) {
-                                            Column(modifier = Modifier.padding(top = 4.dp, start = 4.dp)) {
-                                                products.forEach { product ->
-                                                    val stepId = "${routine.name}_${product}"
-                                                    val isStepDone = completedSteps.contains(stepId)
+                                    if (products.isNotEmpty()) {
+                                        Column(modifier = Modifier.padding(top = 4.dp, start = 48.dp)) {
+                                            products.forEach { product ->
+                                                val stepId = "${routine.name}_${product}"
+                                                val isStepDone = completedSteps.contains(stepId)
 
-                                                    Row(
-                                                        verticalAlignment = Alignment.CenterVertically,
-                                                        modifier = Modifier
-                                                            .fillMaxWidth()
-                                                            .clickable { viewModel.toggleSkincareStep(routine.name, product) }
-                                                            .padding(vertical = 4.dp)
-                                                    ) {
-                                                        Icon(if (isStepDone) Icons.Outlined.CheckCircle else Icons.Outlined.Circle, contentDescription = null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
-                                                        Spacer(modifier = Modifier.width(8.dp))
-                                                        Text(product, style = MaterialTheme.typography.bodySmall.copy(textDecoration = if (isStepDone) TextDecoration.LineThrough else TextDecoration.None), color = if(isStepDone) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface)
-                                                    }
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .clickable { viewModel.toggleSkincareStep(routine.name, product) }
+                                                        .padding(vertical = 4.dp)
+                                                ) {
+                                                    Icon(if (isStepDone) Icons.Outlined.CheckCircle else Icons.Outlined.Circle, contentDescription = null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
+                                                    Spacer(modifier = Modifier.width(8.dp))
+                                                    Text(product, style = MaterialTheme.typography.bodySmall.copy(textDecoration = if (isStepDone) TextDecoration.LineThrough else TextDecoration.None), color = if(isStepDone) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface)
                                                 }
                                             }
                                         }
@@ -509,12 +500,10 @@ fun HomeScreen(
     }
 }
 
-// ... KEEP getRemainingDaysText, TaskCard, CreateTaskDialog EXACTLY THE SAME FROM PREVIOUS CODE ...
 fun getRemainingDaysText(targetDate: String): String? {
     if (targetDate.isBlank()) return null
     return try {
-        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-        val target = sdf.parse(targetDate) ?: return null
+        val target = globalDateFormatter.parse(targetDate) ?: return null
         val today = Calendar.getInstance().apply {
             set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
         }.time
@@ -533,6 +522,9 @@ fun getRemainingDaysText(targetDate: String): String? {
 fun TaskCard(task: Task, allTags: List<NoteTag>, viewModel: HomeViewModel, isKanbanView: Boolean, onEdit: (Task) -> Unit) {
     val priorityColor = when (task.priority) { 1 -> Color(0xFF4CAF50); 2 -> Color(0xFF8BC34A); 3 -> Color(0xFFFFEB3B); 4 -> Color(0xFFFF9800); 5 -> Color(0xFFF44336); else -> Color.Gray }
     var showMenu by remember { mutableStateOf(false) }
+
+    val subtasks = remember(task.subtasksJson) { try { Json.decodeFromString<List<SubTask>>(task.subtasksJson) } catch (e: Exception) { emptyList() } }
+    val taskTags = remember(task.tagsJson) { try { Json.decodeFromString<List<String>>(task.tagsJson) } catch (e: Exception) { emptyList() } }
 
     ElevatedCard(
         modifier = Modifier
@@ -560,7 +552,6 @@ fun TaskCard(task: Task, allTags: List<NoteTag>, viewModel: HomeViewModel, isKan
                 }
             }
 
-            val subtasks = try { Json.decodeFromString<List<SubTask>>(task.subtasksJson) } catch (e: Exception) { emptyList() }
             if (subtasks.isNotEmpty()) {
                 Column(modifier = Modifier.fillMaxWidth().padding(start = 16.dp, top = 8.dp, bottom = 4.dp)) {
                     subtasks.forEach { subtask ->
@@ -593,7 +584,6 @@ fun TaskCard(task: Task, allTags: List<NoteTag>, viewModel: HomeViewModel, isKan
             Row(modifier = Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
 
                 Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
-                    val taskTags = try { Json.decodeFromString<List<String>>(task.tagsJson) } catch (e: Exception) { emptyList() }
                     if (taskTags.isNotEmpty()) {
                         Row(
                             horizontalArrangement = Arrangement.spacedBy(4.dp),

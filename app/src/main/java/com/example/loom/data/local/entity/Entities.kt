@@ -14,7 +14,7 @@ data class DailyRecord(
     var fats: Int = 0,
     var completedSkincareRoutinesJson: String = "[]",
     var completedSkincareStepsJson: String = "[]",
-    var consumedFoodsJson: String = "[]", // <-- NEW: Timeline of today's meals
+    var consumedFoodsJson: String = "[]",
     var diaryEntry: String = ""
 )
 
@@ -69,7 +69,8 @@ data class Exercise(
     val exerciseName: String,
     val sets: Int = 0,
     val reps: Int = 0,
-    val weight: Int = 0,
+    val weight: Float = 0f, // <-- FIXED: Added 'f' so Kotlin knows it's a Float
+    val weightListJson: String = "[]",
     val isTimeBased: Boolean = false,
     val durationInSeconds: Int = 0,
     val presetName: String? = null
@@ -80,7 +81,8 @@ data class PresetExercise(
     val name: String,
     val sets: Int,
     val reps: Int,
-    val weight: Int,
+    val weight: Float,
+    val weightListJson: String = "[]",
     val isTimeBased: Boolean = false,
     val durationInSeconds: Int = 0
 )
@@ -138,7 +140,7 @@ data class FoodItem(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
     val emoji: String,
     val name: String,
-    val servingUnit: String, // e.g., "Plate", "100g", "Scoop"
+    val servingUnit: String,
     val calories: Int,
     val protein: Int,
     val carbs: Int,

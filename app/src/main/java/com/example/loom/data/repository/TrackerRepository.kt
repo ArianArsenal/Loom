@@ -136,19 +136,26 @@ class TrackerRepository @Inject constructor(private val dao: TrackerDao) {
     // --- Exercises ---
     fun getExercisesForDate(date: String): Flow<List<Exercise>> = dao.getExercisesForDate(date)
 
-    suspend fun insertExercise(
-        exerciseName: String, sets: Int, reps: Int, weight: Int,
-        isTimeBased: Boolean, duration: Int, presetName: String?
-    ) {
-        val newExercise = Exercise(
-            dateId = DateUtils.getTodayDateId(), exerciseName = exerciseName,
-            sets = sets, reps = reps, weight = weight,
-            isTimeBased = isTimeBased, durationInSeconds = duration, presetName = presetName
+    suspend fun insertExercise(name: String, sets: Int, reps: Int, weight: Float, weightListJson: String = "[]", isTimeBased: Boolean, duration: Int, presetName: String? = null) {
+        dao.insertExercise(
+            Exercise(
+                dateId = DateUtils.getTodayDateId(),
+                exerciseName = name,
+                sets = sets,
+                reps = reps,
+                weight = weight,
+                weightListJson = weightListJson,
+                isTimeBased = isTimeBased,
+                durationInSeconds = duration,
+                presetName = presetName
+            )
         )
-        dao.insertExercise(newExercise)
     }
-
     suspend fun deleteExercise(exercise: Exercise) = dao.deleteExercise(exercise)
+
+    suspend fun updateExercise(exercise: Exercise) {
+        dao.updateExercise(exercise)
+    }
 
     // --- Presets ---
     fun getAllPresets(): Flow<List<WorkoutPreset>> = dao.getAllPresets()

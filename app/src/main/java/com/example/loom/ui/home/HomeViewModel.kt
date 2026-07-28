@@ -2,16 +2,14 @@ package com.example.loom.ui.home
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.loom.data.local.entity.ConsumedFoodLog
 import com.example.loom.data.local.entity.DailyRecord
 import com.example.loom.data.local.entity.DiaryNote
-import com.example.loom.data.local.entity.Exercise
-import com.example.loom.data.local.entity.ExerciseTemplate
+import com.example.loom.data.local.entity.FoodItem
 import com.example.loom.data.local.entity.NoteTag
-import com.example.loom.data.local.entity.PresetExercise
 import com.example.loom.data.local.entity.SubTask
 import com.example.loom.data.local.entity.Task
 import com.example.loom.data.local.entity.TaskSection
-import com.example.loom.data.local.entity.WorkoutPreset
 import com.example.loom.data.local.preferences.UserPreferences
 import com.example.loom.data.repository.TrackerRepository
 import com.example.loom.util.DateUtils
@@ -20,6 +18,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.serialization.encodeToString
@@ -37,21 +36,29 @@ class HomeViewModel @Inject constructor(
 ) : ViewModel() {
 
     val todayRecord: StateFlow<DailyRecord?> = repository.getTodayRecord().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    val consumedFoods: StateFlow<List<ConsumedFoodLog>> = todayRecord
+        .map { try { Json.decodeFromString<List<ConsumedFoodLog>>(it?.consumedFoodsJson ?: "[]") } catch (e: Exception) { emptyList() } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val completedSkincareRoutines: StateFlow<List<String>> = todayRecord
+        .map { try { Json.decodeFromString<List<String>>(it?.completedSkincareRoutinesJson ?: "[]") } catch (e: Exception) { emptyList() } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val completedSkincareSteps: StateFlow<List<String>> = todayRecord
+        .map { try { Json.decodeFromString<List<String>>(it?.completedSkincareStepsJson ?: "[]") } catch (e: Exception) { emptyList() } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     val allTasks: StateFlow<List<Task>> = repository.getAllTasks().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val todayTasks: StateFlow<List<Task>> = repository.getTasksForDate(DateUtils.getTodayDateId()).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val allTaskSections: StateFlow<List<TaskSection>> = repository.getAllTaskSections().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val todayExercises: StateFlow<List<Exercise>> = repository.getExercisesForDate(DateUtils.getTodayDateId()).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-
-    // --- UPDATED MACROS & SETTINGS ---
     val targetCalories: StateFlow<Int> = userPreferences.targetCaloriesFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 2800)
     val targetProtein: StateFlow<Int> = userPreferences.targetProteinFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 140)
     val targetCarbs: StateFlow<Int> = userPreferences.targetCarbsFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 350)
     val targetFats: StateFlow<Int> = userPreferences.targetFatsFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 75)
     val defaultWaterIncrement: StateFlow<Int> = userPreferences.defaultWaterIncrementFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 250)
 
-    val allPresets: StateFlow<List<WorkoutPreset>> = repository.getAllPresets().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-    val exerciseTemplates: StateFlow<List<ExerciseTemplate>> = repository.getAllTemplates().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val allDiaryNotes: StateFlow<List<DiaryNote>> = repository.getAllDiaryNotes().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val allNoteTags: StateFlow<List<NoteTag>> = repository.getAllNoteTags().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -67,59 +74,52 @@ class HomeViewModel @Inject constructor(
             repository.prepopulateTemplatesIfEmpty()
             repository.prepopulateTagsIfEmpty()
             repository.prepopulateTaskSectionsIfEmpty()
-            repository.prepopulateFoodPantryIfEmpty() // <-- NEW FOOD PANTRY
+            repository.prepopulateFoodPantryIfEmpty()
             repository.cleanupOldDoneTasks()
         }
     }
 
-    // --- UPDATED HYDRATION & NUTRITION ---
     fun addWater() = viewModelScope.launch { repository.addWater(defaultWaterIncrement.value) }
     fun removeWater() = viewModelScope.launch { repository.removeWater(defaultWaterIncrement.value) }
 
-    val allFoodItems: StateFlow<List<com.example.loom.data.local.entity.FoodItem>> = repository.getAllFoodItems().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val allFoodItems: StateFlow<List<FoodItem>> = repository.getAllFoodItems().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    fun addFoodItemToPantry(food: com.example.loom.data.local.entity.FoodItem) = viewModelScope.launch { repository.insertFoodItem(food) }
+    fun addFoodItemToPantry(food: FoodItem) = viewModelScope.launch { repository.insertFoodItem(food) }
 
-    fun logFoodItem(food: com.example.loom.data.local.entity.FoodItem, servings: Float) = viewModelScope.launch {
+    fun logFoodItem(food: FoodItem, servings: Float) = viewModelScope.launch {
         val record = todayRecord.value ?: return@launch
+
         val totalCals = (food.calories * servings).toInt()
         val totalPro = (food.protein * servings).toInt()
         val totalCarbs = (food.carbs * servings).toInt()
         val totalFats = (food.fats * servings).toInt()
 
-        val log = com.example.loom.data.local.entity.ConsumedFoodLog(
+        val log = ConsumedFoodLog(
             id = java.util.UUID.randomUUID().toString(),
             foodName = food.name, emoji = food.emoji, servings = servings,
             calories = totalCals, protein = totalPro, carbs = totalCarbs, fats = totalFats,
             timestamp = System.currentTimeMillis()
         )
 
-        val currentLogs = try { Json.decodeFromString<List<com.example.loom.data.local.entity.ConsumedFoodLog>>(record.consumedFoodsJson) } catch (e: Exception) { emptyList() }
+        val currentLogs = try { Json.decodeFromString<List<ConsumedFoodLog>>(record.consumedFoodsJson) } catch (e: Exception) { emptyList() }
         repository.logConsumedFood(totalCals, totalPro, totalCarbs, totalFats, Json.encodeToString(currentLogs + log))
     }
+
     fun editNutrition(cals: Int, pro: Int, carbs: Int, fats: Int) = viewModelScope.launch { repository.setNutrition(cals, pro, carbs, fats) }
 
     fun toggleSkincareRoutine(routineName: String) = viewModelScope.launch {
         val record = todayRecord.value ?: return@launch
-        try {
-            val completedList = Json.decodeFromString<List<String>>(record.completedSkincareRoutinesJson).toMutableList()
-            if (completedList.contains(routineName)) completedList.remove(routineName) else completedList.add(routineName)
-            repository.updateCompletedSkincareRoutines(Json.encodeToString(completedList))
-        } catch (e: Exception) {
-            repository.updateCompletedSkincareRoutines(Json.encodeToString(listOf(routineName)))
-        }
+        val currentList = try { Json.decodeFromString<List<String>>(record.completedSkincareRoutinesJson) } catch (e: Exception) { emptyList() }.toMutableList()
+        if (currentList.contains(routineName)) currentList.remove(routineName) else currentList.add(routineName)
+        repository.updateCompletedSkincareRoutines(Json.encodeToString(currentList))
     }
 
     fun toggleSkincareStep(routineName: String, productName: String) = viewModelScope.launch {
         val record = todayRecord.value ?: return@launch
         val stepId = "${routineName}_${productName}"
-        try {
-            val completedList = Json.decodeFromString<List<String>>(record.completedSkincareStepsJson).toMutableList()
-            if (completedList.contains(stepId)) completedList.remove(stepId) else completedList.add(stepId)
-            repository.updateCompletedSkincareSteps(Json.encodeToString(completedList))
-        } catch (e: Exception) {
-            repository.updateCompletedSkincareSteps(Json.encodeToString(listOf(stepId)))
-        }
+        val currentList = try { Json.decodeFromString<List<String>>(record.completedSkincareStepsJson) } catch (e: Exception) { emptyList() }.toMutableList()
+        if (currentList.contains(stepId)) currentList.remove(stepId) else currentList.add(stepId)
+        repository.updateCompletedSkincareSteps(Json.encodeToString(currentList))
     }
 
     fun updateDiaryNote(note: String) = viewModelScope.launch { repository.updateDiaryNote(note) }
@@ -194,29 +194,10 @@ class HomeViewModel @Inject constructor(
     }
 
     fun deleteTask(task: Task) = viewModelScope.launch { repository.deleteTask(task) }
-
     fun addTaskSection(name: String, order: Int = 0) = viewModelScope.launch { repository.insertTaskSection(TaskSection(name = name, orderIndex = order)) }
     fun deleteTaskSection(section: TaskSection) = viewModelScope.launch { repository.deleteTaskSection(section) }
 
-    fun addExercise(name: String, sets: Int, reps: Int, weight: Int, isTimeBased: Boolean, duration: Int, presetName: String? = null) = viewModelScope.launch {
-        repository.insertExercise(name, sets, reps, weight, isTimeBased, duration, presetName)
-        repository.insertTemplateIfNotExists(name)
-    }
-    fun deleteExercise(exercise: Exercise) = viewModelScope.launch { repository.deleteExercise(exercise) }
-    fun savePreset(id: Int, name: String, exercises: List<PresetExercise>) = viewModelScope.launch {
-        repository.insertPreset(WorkoutPreset(id = id, presetName = name, exercises = exercises))
-        exercises.forEach { repository.insertTemplateIfNotExists(it.name) }
-    }
-    fun deletePreset(preset: WorkoutPreset) = viewModelScope.launch { repository.deletePreset(preset) }
-    fun logPresetExercises(presetName: String, exercises: List<PresetExercise>) = viewModelScope.launch {
-        exercises.forEach { repository.insertExercise(it.name, it.sets, it.reps, it.weight, it.isTimeBased, it.durationInSeconds, presetName) }
-    }
-    fun updateTemplate(template: ExerciseTemplate) = viewModelScope.launch { repository.updateTemplate(template) }
-    fun deleteTemplate(template: ExerciseTemplate) = viewModelScope.launch { repository.deleteTemplate(template) }
-    suspend fun saveDiaryNoteWithReturn(id: Int, title: String, content: String, tag: String, imagesJson: String, blocksJson: String, isFav: Boolean, isPriv: Boolean, isPinned: Boolean, isChecklist: Boolean): Long {
-        val note = DiaryNote(id = id, title = title, content = content, tag = tag, imagesJson = imagesJson, blocksJson = blocksJson, isFavorite = isFav, isPrivate = isPriv, isPinned = isPinned, isChecklistMode = isChecklist)
-        return repository.insertDiaryNoteAndGetId(note)
-    }
+    suspend fun saveDiaryNoteWithReturn(id: Int, title: String, content: String, tag: String, imagesJson: String, blocksJson: String, isFav: Boolean, isPriv: Boolean, isPinned: Boolean, isChecklist: Boolean): Long { return repository.insertDiaryNoteAndGetId(DiaryNote(id = id, title = title, content = content, tag = tag, imagesJson = imagesJson, blocksJson = blocksJson, isFavorite = isFav, isPrivate = isPriv, isPinned = isPinned, isChecklistMode = isChecklist)) }
     fun deleteDiaryNote(note: DiaryNote) = viewModelScope.launch { repository.deleteDiaryNote(note) }
     fun addNoteTag(name: String, colorHex: String) = viewModelScope.launch { repository.insertNoteTag(name, colorHex) }
     fun deleteNoteTag(tag: NoteTag) = viewModelScope.launch { repository.deleteNoteTag(tag) }

@@ -1,6 +1,7 @@
 package com.example.loom.ui.health
 
 import android.widget.NumberPicker
+import android.widget.Toast
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -10,8 +11,10 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Circle
@@ -23,13 +26,16 @@ import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Circle
+import androidx.compose.material.icons.outlined.WaterDrop
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -46,10 +52,41 @@ import com.example.loom.data.local.entity.FoodItem
 import com.example.loom.data.local.entity.PresetExercise
 import com.example.loom.data.local.entity.SkincareProduct
 import com.example.loom.data.local.entity.SkincareRoutine
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import java.text.SimpleDateFormat
 import java.util.Collections
+import java.util.Date
 import java.util.Locale
+
+private val timelineDateFormatter = SimpleDateFormat("h:mm a", Locale.getDefault())
+
+private fun Float.formatWeight(): String {
+    return if (this % 1f == 0f) this.toInt().toString() else this.toString()
+}
+
+@Composable
+fun GaplessProgressBar(
+    progress: Float,
+    color: Color,
+    modifier: Modifier = Modifier
+) {
+    val trackColor = color.copy(alpha = 0.2f)
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(50))
+            .background(trackColor)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxHeight()
+                .fillMaxWidth(progress.coerceIn(0f, 1f))
+                .background(color)
+        )
+    }
+}
 
 @Composable
 fun ReorderableProductList(
@@ -103,6 +140,9 @@ fun ReorderableProductList(
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun HealthScreen(viewModel: HealthViewModel) {
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+
     val todayRecord by viewModel.todayRecord.collectAsState()
     val todayExercises by viewModel.todayExercises.collectAsState()
     val allPresets by viewModel.allPresets.collectAsState()
@@ -114,7 +154,10 @@ fun HealthScreen(viewModel: HealthViewModel) {
     val allFoodItems by viewModel.allFoodItems.collectAsState()
     val defaultWaterIncrement by viewModel.defaultWaterIncrement.collectAsState()
 
-    // Bio States
+    val consumedList by viewModel.consumedFoods.collectAsState()
+    val completedRoutines by viewModel.completedSkincareRoutines.collectAsState()
+    val completedSteps by viewModel.completedSkincareSteps.collectAsState()
+
     val weight by viewModel.weight.collectAsState()
     val height by viewModel.height.collectAsState()
     val age by viewModel.age.collectAsState()
@@ -123,13 +166,20 @@ fun HealthScreen(viewModel: HealthViewModel) {
     val goal by viewModel.goal.collectAsState()
 
     var showExerciseDialog by remember { mutableStateOf(false) }
+    var selectedTabIndex by remember { mutableIntStateOf(0) }
     var templateToEdit by remember { mutableStateOf<ExerciseTemplate?>(null) }
     var showTemplateEditDialog by remember { mutableStateOf(false) }
 
-    var selectedTabIndex by remember { mutableIntStateOf(0) }
     var activePresetId by remember { mutableIntStateOf(0) }
     var activePresetName by remember { mutableStateOf("") }
     var activeExercises by remember { mutableStateOf(listOf<PresetExercise>()) }
+    var isCurrentPresetSaved by remember { mutableStateOf(true) }
+    var showUnsavedPrompt by remember { mutableStateOf(false) }
+
+    var presetExerciseToEdit by remember { mutableStateOf<PresetExercise?>(null) }
+    var presetExerciseToEditIndex by remember { mutableIntStateOf(-1) }
+
+    var checkedExercises by remember { mutableStateOf(setOf<Int>()) }
 
     var loggedPresetToManage by remember { mutableStateOf<String?>(null) }
     var showLoggedPresetDialog by remember { mutableStateOf(false) }
@@ -139,7 +189,6 @@ fun HealthScreen(viewModel: HealthViewModel) {
     var routineToEdit by remember { mutableStateOf<SkincareRoutine?>(null) }
     var productToDelete by remember { mutableStateOf<SkincareProduct?>(null) }
 
-    // Food Dialog States
     var showFoodDialog by remember { mutableStateOf(false) }
     var showFoodPantryDialog by remember { mutableStateOf(false) }
     var foodToLog by remember { mutableStateOf<FoodItem?>(null) }
@@ -200,7 +249,6 @@ fun HealthScreen(viewModel: HealthViewModel) {
         )
     }
 
-    // --- PANTRY MANAGER DIALOG ---
     if (showFoodPantryDialog) {
         AlertDialog(
             onDismissRequest = { showFoodPantryDialog = false },
@@ -440,13 +488,23 @@ fun HealthScreen(viewModel: HealthViewModel) {
         var editSets by remember { mutableStateOf(loggedExerciseToEdit!!.sets.toString()) }
         var editReps by remember { mutableStateOf(loggedExerciseToEdit!!.reps.toString()) }
         var editDuration by remember { mutableStateOf(loggedExerciseToEdit!!.durationInSeconds.toString()) }
-        var editWeight by remember { mutableStateOf(loggedExerciseToEdit!!.weight) }
+
+        var editVaryWeight by remember { mutableStateOf(loggedExerciseToEdit!!.weightListJson != "[]") }
+        var editWeight by remember { mutableStateOf(loggedExerciseToEdit!!.weight.formatWeight()) }
+        var editAdvancedWeights by remember {
+            mutableStateOf<Map<Int, String>>(
+                try {
+                    val list = Json.decodeFromString<List<Float>>(loggedExerciseToEdit!!.weightListJson)
+                    list.mapIndexed { index, w -> index to w.formatWeight() }.toMap()
+                } catch(e: Exception) { emptyMap() }
+            )
+        }
 
         AlertDialog(
             onDismissRequest = { loggedExerciseToEdit = null },
             title = { Text("Edit Logged Exercise") },
             text = {
-                Column {
+                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                     OutlinedTextField(value = editName, onValueChange = { editName = it }, label = { Text("Name") }, modifier = Modifier.fillMaxWidth())
                     Spacer(modifier = Modifier.height(8.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -465,19 +523,59 @@ fun HealthScreen(viewModel: HealthViewModel) {
                     }
                     if (!editIsTimeBased) {
                         Spacer(modifier = Modifier.height(16.dp))
-                        Text("Weight (kg)", style = MaterialTheme.typography.labelLarge)
-                        AndroidView(
-                            factory = { context -> NumberPicker(context).apply { minValue = 0; maxValue = 300; value = editWeight; setOnValueChangedListener { _, _, newVal -> editWeight = newVal } } },
-                            update = { it.value = editWeight }, modifier = Modifier.fillMaxWidth().height(120.dp)
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Switch(checked = editVaryWeight, onCheckedChange = { editVaryWeight = it }, modifier = Modifier.scale(0.8f))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Different weight per set", style = MaterialTheme.typography.bodySmall)
+                        }
+
+                        if (editVaryWeight) {
+                            val setCount = editSets.toIntOrNull() ?: 0
+                            if (setCount > 0) {
+                                Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    for (i in 0 until setCount) {
+                                        OutlinedTextField(
+                                            value = editAdvancedWeights[i] ?: "",
+                                            onValueChange = { newVal -> editAdvancedWeights = editAdvancedWeights.toMutableMap().apply { put(i, newVal) } },
+                                            label = { Text("Set ${i + 1} (kg)") },
+                                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                            modifier = Modifier.fillMaxWidth().height(56.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        } else {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            OutlinedTextField(
+                                value = editWeight,
+                                onValueChange = { editWeight = it },
+                                label = { Text("Weight (kg)") },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
                     }
                 }
             },
             confirmButton = {
                 Button(onClick = {
                     if (editName.isNotBlank()) {
-                        viewModel.deleteExercise(loggedExerciseToEdit!!)
-                        viewModel.addExercise(name = editName, sets = editSets.toIntOrNull() ?: 0, reps = editReps.toIntOrNull() ?: 0, weight = editWeight, isTimeBased = editIsTimeBased, duration = editDuration.toIntOrNull() ?: 0, presetName = loggedExerciseToEdit!!.presetName)
+                        val wList = if (editVaryWeight) {
+                            val setCount = editSets.toIntOrNull() ?: 0
+                            (0 until setCount).map { editAdvancedWeights[it]?.toFloatOrNull() ?: 0f }
+                        } else emptyList()
+
+                        // FIX: WE UPDATE IN PLACE NOW
+                        val updatedEx = loggedExerciseToEdit!!.copy(
+                            exerciseName = editName,
+                            sets = editSets.toIntOrNull() ?: 0,
+                            reps = editReps.toIntOrNull() ?: 0,
+                            weight = editWeight.toFloatOrNull() ?: 0f,
+                            weightListJson = Json.encodeToString(wList),
+                            isTimeBased = editIsTimeBased,
+                            durationInSeconds = editDuration.toIntOrNull() ?: 0
+                        )
+                        viewModel.updateExercise(updatedEx)
                         loggedExerciseToEdit = null
                     }
                 }) { Text("Update") }
@@ -486,16 +584,152 @@ fun HealthScreen(viewModel: HealthViewModel) {
         )
     }
 
+    if (showUnsavedPrompt) {
+        AlertDialog(
+            onDismissRequest = { showUnsavedPrompt = false },
+            title = { Text("Unsaved Changes") },
+            text = { Text("You made changes to this preset. Would you like to save it to your list before logging?") },
+            confirmButton = {
+                Button(onClick = {
+                    if (activePresetName.isNotBlank()) {
+                        viewModel.savePreset(activePresetId, activePresetName, activeExercises)
+                        isCurrentPresetSaved = true
+                    }
+                    viewModel.logPresetExercises(activePresetName.ifBlank { "Custom Preset" }, activeExercises)
+                    showUnsavedPrompt = false
+                    showExerciseDialog = false
+                }) { Text("Save & Log") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    viewModel.logPresetExercises(activePresetName.ifBlank { "Custom Preset" }, activeExercises)
+                    showUnsavedPrompt = false
+                    showExerciseDialog = false
+                }) { Text("Log Only") }
+            }
+        )
+    }
+
+    if (presetExerciseToEdit != null) {
+        var editIsTimeBased by remember { mutableStateOf(presetExerciseToEdit!!.isTimeBased) }
+        var editSets by remember { mutableStateOf(presetExerciseToEdit!!.sets.toString()) }
+        var editReps by remember { mutableStateOf(presetExerciseToEdit!!.reps.toString()) }
+        var editDuration by remember { mutableStateOf(presetExerciseToEdit!!.durationInSeconds.toString()) }
+
+        var editVaryWeight by remember { mutableStateOf(presetExerciseToEdit!!.weightListJson != "[]") }
+        var editWeight by remember { mutableStateOf(presetExerciseToEdit!!.weight.formatWeight()) }
+        var editAdvancedWeights by remember {
+            mutableStateOf<Map<Int, String>>(
+                try {
+                    val list = Json.decodeFromString<List<Float>>(presetExerciseToEdit!!.weightListJson)
+                    list.mapIndexed { index, w -> index to w.formatWeight() }.toMap()
+                } catch(e: Exception) { emptyMap() }
+            )
+        }
+
+        AlertDialog(
+            onDismissRequest = { presetExerciseToEdit = null },
+            title = { Text("Edit ${presetExerciseToEdit!!.name}") },
+            text = {
+                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Switch(checked = editIsTimeBased, onCheckedChange = { editIsTimeBased = it }, modifier = Modifier.scale(0.8f))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Time-based", style = MaterialTheme.typography.bodyMedium)
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(value = editSets, onValueChange = { editSets = it }, label = { Text("Sets") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
+                        if (editIsTimeBased) {
+                            OutlinedTextField(value = editDuration, onValueChange = { editDuration = it }, label = { Text("Secs") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
+                        } else {
+                            OutlinedTextField(value = editReps, onValueChange = { editReps = it }, label = { Text("Reps") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
+                        }
+                    }
+                    if (!editIsTimeBased) {
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Switch(checked = editVaryWeight, onCheckedChange = { editVaryWeight = it }, modifier = Modifier.scale(0.8f))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Different weight per set", style = MaterialTheme.typography.bodySmall)
+                        }
+
+                        if (editVaryWeight) {
+                            val setCount = editSets.toIntOrNull() ?: 0
+                            if (setCount > 0) {
+                                Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    for (i in 0 until setCount) {
+                                        OutlinedTextField(
+                                            value = editAdvancedWeights[i] ?: "",
+                                            onValueChange = { newVal -> editAdvancedWeights = editAdvancedWeights.toMutableMap().apply { put(i, newVal) } },
+                                            label = { Text("Set ${i + 1} (kg)") },
+                                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                            modifier = Modifier.fillMaxWidth().height(56.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        } else {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            OutlinedTextField(
+                                value = editWeight,
+                                onValueChange = { editWeight = it },
+                                label = { Text("Weight (kg)") },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    val wList = if (editVaryWeight) {
+                        val setCount = editSets.toIntOrNull() ?: 0
+                        (0 until setCount).map { editAdvancedWeights[it]?.toFloatOrNull() ?: 0f }
+                    } else emptyList()
+
+                    val updatedEx = PresetExercise(
+                        name = presetExerciseToEdit!!.name,
+                        sets = editSets.toIntOrNull() ?: 0, reps = editReps.toIntOrNull() ?: 0,
+                        weight = editWeight.toFloatOrNull() ?: 0f, weightListJson = Json.encodeToString(wList),
+                        isTimeBased = editIsTimeBased, durationInSeconds = editDuration.toIntOrNull() ?: 0
+                    )
+                    val newList = activeExercises.toMutableList()
+                    newList[presetExerciseToEditIndex] = updatedEx
+                    activeExercises = newList
+                    isCurrentPresetSaved = false
+                    presetExerciseToEdit = null
+                }) { Text("Update") }
+            },
+            dismissButton = { TextButton(onClick = { presetExerciseToEdit = null }) { Text("Cancel") } }
+        )
+    }
+
     if (showExerciseDialog) {
-        Dialog(onDismissRequest = { showExerciseDialog = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-            Surface(modifier = Modifier.fillMaxWidth(0.95f).wrapContentHeight(), shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.surface) {
+        Dialog(
+            onDismissRequest = { showExerciseDialog = false },
+            properties = DialogProperties(
+                usePlatformDefaultWidth = false,
+                decorFitsSystemWindows = false
+            )
+        ) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth(0.95f)
+                    .imePadding()
+                    .padding(vertical = 24.dp)
+                    .heightIn(max = 750.dp),
+                shape = RoundedCornerShape(24.dp),
+                color = MaterialTheme.colorScheme.surface
+            ) {
                 Column(modifier = Modifier.fillMaxWidth()) {
                     TabRow(selectedTabIndex = selectedTabIndex) {
                         Tab(selected = selectedTabIndex == 0, onClick = { selectedTabIndex = 0 }, text = { Text("Single Log") })
                         Tab(selected = selectedTabIndex == 1, onClick = { selectedTabIndex = 1 }, text = { Text("Presets") })
                     }
 
-                    Box(modifier = Modifier.padding(16.dp)) {
+                    Box(modifier = Modifier.padding(16.dp).weight(1f)) {
                         if (selectedTabIndex == 0) {
                             var inputName by remember { mutableStateOf("") }
                             var expanded by remember { mutableStateOf(false) }
@@ -503,59 +737,91 @@ fun HealthScreen(viewModel: HealthViewModel) {
                             var inputSets by remember { mutableStateOf("3") }
                             var inputReps by remember { mutableStateOf("10") }
                             var inputDuration by remember { mutableStateOf("60") }
-                            var inputWeight by remember { mutableStateOf(60) }
+                            var varyWeight by remember { mutableStateOf(false) }
+                            var inputWeight by remember { mutableStateOf("60") }
+                            var advancedWeights by remember { mutableStateOf(mapOf<Int, String>()) }
 
-                            Column(modifier = Modifier.fillMaxWidth()) {
-                                ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
-                                    OutlinedTextField(
-                                        value = inputName, onValueChange = { inputName = it; expanded = true },
-                                        label = { Text("Search Exercise") }, leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search") },
-                                        modifier = Modifier.menuAnchor().fillMaxWidth()
-                                    )
-                                    val filtered = globalTemplates.filter { it.name.contains(inputName, true) }
-                                    if (filtered.isNotEmpty() && expanded) {
-                                        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }, modifier = Modifier.heightIn(max = 240.dp)) {
-                                            filtered.forEach { option ->
-                                                Box(modifier = Modifier.fillMaxWidth().combinedClickable(
-                                                    onClick = { inputName = option.name; expanded = false },
-                                                    onLongClick = { templateToEdit = option; showTemplateEditDialog = true }
-                                                ).padding(16.dp)) { Text(option.name) }
+                            Column(modifier = Modifier.fillMaxSize()) {
+                                Column(modifier = Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
+                                    ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
+                                        OutlinedTextField(
+                                            value = inputName, onValueChange = { inputName = it; expanded = true },
+                                            label = { Text("Search Exercise") }, leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search") },
+                                            modifier = Modifier.menuAnchor().fillMaxWidth()
+                                        )
+                                        val filtered = globalTemplates.filter { it.name.contains(inputName, true) }
+                                        val exactMatch = globalTemplates.any { it.name.equals(inputName, ignoreCase = true) }
+
+                                        if ((filtered.isNotEmpty() || (inputName.isNotBlank() && !exactMatch)) && expanded) {
+                                            ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }, modifier = Modifier.heightIn(max = 200.dp)) {
+                                                filtered.forEach { option ->
+                                                    Box(modifier = Modifier.fillMaxWidth().combinedClickable(
+                                                        onClick = { inputName = option.name; expanded = false },
+                                                        onLongClick = { templateToEdit = option; showTemplateEditDialog = true }
+                                                    ).padding(16.dp)) { Text(option.name) }
+                                                }
+                                                if (inputName.isNotBlank() && !exactMatch) {
+                                                    Box(modifier = Modifier.fillMaxWidth().clickable {
+                                                        viewModel.createExerciseTemplate(inputName)
+                                                        expanded = false
+                                                    }.padding(16.dp)) {
+                                                        Text("Create new exercise: \"$inputName\"", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                                                    }
+                                                }
                                             }
                                         }
                                     }
-                                }
 
-                                Spacer(modifier = Modifier.height(12.dp))
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Switch(checked = isTimeBased, onCheckedChange = { isTimeBased = it })
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text("Time-based (e.g., Plank)", style = MaterialTheme.typography.bodyMedium)
-                                }
-                                Spacer(modifier = Modifier.height(12.dp))
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    OutlinedTextField(value = inputSets, onValueChange = { inputSets = it }, label = { Text("Sets") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
-                                    if (isTimeBased) {
-                                        OutlinedTextField(value = inputDuration, onValueChange = { inputDuration = it }, label = { Text("Seconds") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
-                                    } else {
-                                        OutlinedTextField(value = inputReps, onValueChange = { inputReps = it }, label = { Text("Reps") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Switch(checked = isTimeBased, onCheckedChange = { isTimeBased = it }, modifier = Modifier.scale(0.8f))
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text("Time-based (e.g., Plank)", style = MaterialTheme.typography.bodyMedium)
                                     }
-                                }
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        OutlinedTextField(value = inputSets, onValueChange = { inputSets = it }, label = { Text("Sets") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
+                                        if (isTimeBased) {
+                                            OutlinedTextField(value = inputDuration, onValueChange = { inputDuration = it }, label = { Text("Seconds") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
+                                        } else {
+                                            OutlinedTextField(value = inputReps, onValueChange = { inputReps = it }, label = { Text("Reps") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
+                                        }
+                                    }
 
-                                if (!isTimeBased) {
-                                    Spacer(modifier = Modifier.height(16.dp))
-                                    Text("Weight (kg)", style = MaterialTheme.typography.labelLarge)
-                                    AndroidView(
-                                        factory = { context ->
-                                            NumberPicker(context).apply {
-                                                minValue = 0;
-                                                maxValue = 300;
-                                                value = inputWeight;
-                                                setOnValueChangedListener { _, _, newVal -> inputWeight = newVal } // <-- Fixed from editWeight to inputWeight
+                                    if (!isTimeBased) {
+                                        Spacer(modifier = Modifier.height(16.dp))
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Switch(checked = varyWeight, onCheckedChange = { varyWeight = it }, modifier = Modifier.scale(0.8f))
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text("Different weight per set", style = MaterialTheme.typography.bodySmall)
+                                        }
+
+                                        if (varyWeight) {
+                                            val setCount = inputSets.toIntOrNull() ?: 0
+                                            if (setCount > 0) {
+                                                Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                    for (i in 0 until setCount) {
+                                                        OutlinedTextField(
+                                                            value = advancedWeights[i] ?: "",
+                                                            onValueChange = { newVal -> advancedWeights = advancedWeights.toMutableMap().apply { put(i, newVal) } },
+                                                            label = { Text("Set ${i + 1} (kg)") },
+                                                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                                            modifier = Modifier.fillMaxWidth().height(56.dp)
+                                                        )
+                                                    }
+                                                }
                                             }
-                                        },
-                                        update = { it.value = inputWeight },
-                                        modifier = Modifier.fillMaxWidth().height(120.dp)
-                                    )
+                                        } else {
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                            OutlinedTextField(
+                                                value = inputWeight,
+                                                onValueChange = { inputWeight = it },
+                                                label = { Text("Weight (kg)") },
+                                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                                modifier = Modifier.fillMaxWidth()
+                                            )
+                                        }
+                                    }
                                 }
 
                                 Spacer(modifier = Modifier.height(16.dp))
@@ -563,7 +829,16 @@ fun HealthScreen(viewModel: HealthViewModel) {
                                     TextButton(onClick = { showExerciseDialog = false }) { Text("Cancel") }
                                     Button(onClick = {
                                         if (inputName.isNotBlank()) {
-                                            viewModel.addExercise(name = inputName, sets = inputSets.toIntOrNull() ?: 0, reps = inputReps.toIntOrNull() ?: 0, weight = inputWeight, isTimeBased = isTimeBased, duration = inputDuration.toIntOrNull() ?: 0)
+                                            val wList = if (varyWeight) {
+                                                val setCount = inputSets.toIntOrNull() ?: 0
+                                                (0 until setCount).map { advancedWeights[it]?.toFloatOrNull() ?: 0f }
+                                            } else emptyList()
+
+                                            viewModel.addExercise(
+                                                name = inputName, sets = inputSets.toIntOrNull() ?: 0, reps = inputReps.toIntOrNull() ?: 0,
+                                                weight = inputWeight.toFloatOrNull() ?: 0f, weightListJson = Json.encodeToString(wList),
+                                                isTimeBased = isTimeBased, duration = inputDuration.toIntOrNull() ?: 0
+                                            )
                                         }
                                         showExerciseDialog = false
                                     }) { Text("Log Exercise") }
@@ -577,101 +852,199 @@ fun HealthScreen(viewModel: HealthViewModel) {
                             var builderSets by remember { mutableStateOf("3") }
                             var builderReps by remember { mutableStateOf("10") }
                             var builderDuration by remember { mutableStateOf("60") }
+                            var builderVaryWeight by remember { mutableStateOf(false) }
                             var builderWeight by remember { mutableStateOf("60") }
+                            var builderAdvancedWeights by remember { mutableStateOf(mapOf<Int, String>()) }
 
-                            Column(modifier = Modifier.fillMaxWidth()) {
-                                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                                    ExposedDropdownMenuBox(expanded = presetDropdownExpanded, onExpandedChange = { presetDropdownExpanded = it }, modifier = Modifier.weight(1f)) {
-                                        OutlinedTextField(
-                                            value = if (activePresetId == 0) "Create New Preset..." else "Editing: $activePresetName",
-                                            onValueChange = {}, readOnly = true, modifier = Modifier.menuAnchor().fillMaxWidth(),
-                                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = presetDropdownExpanded) },
-                                            colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors()
-                                        )
-                                        ExposedDropdownMenu(expanded = presetDropdownExpanded, onDismissRequest = { presetDropdownExpanded = false }) {
-                                            allPresets.forEach { preset ->
-                                                DropdownMenuItem(text = { Text(preset.presetName) }, onClick = {
-                                                    activePresetId = preset.id; activePresetName = preset.presetName; activeExercises = preset.exercises; presetDropdownExpanded = false
-                                                })
-                                            }
-                                        }
-                                    }
-                                    if (activePresetId != 0 || activeExercises.isNotEmpty()) {
-                                        IconButton(onClick = { activePresetId = 0; activePresetName = ""; activeExercises = emptyList() }) { Icon(Icons.Default.Add, contentDescription = "New") }
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.height(12.dp))
-                                OutlinedTextField(value = activePresetName, onValueChange = { activePresetName = it }, label = { Text("Preset Title (e.g., Push Day)") }, modifier = Modifier.fillMaxWidth())
-                                Spacer(modifier = Modifier.height(12.dp))
-
-                                LazyColumn(modifier = Modifier.heightIn(min = 50.dp, max = 150.dp).background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), RoundedCornerShape(12.dp)).padding(8.dp)) {
-                                    if (activeExercises.isEmpty()) item { Text("No exercises in this preset.", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(8.dp)) }
-                                    items(activeExercises) { ex ->
-                                        Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                            Column(modifier = Modifier.weight(1f)) {
-                                                Text(ex.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
-                                                if (ex.isTimeBased) Text("${ex.sets} Sets × ${ex.durationInSeconds} Secs", style = MaterialTheme.typography.bodySmall)
-                                                else Text("${ex.sets} Sets × ${ex.reps} Reps @ ${ex.weight}kg", style = MaterialTheme.typography.bodySmall)
-                                            }
-                                            IconButton(onClick = { activeExercises = activeExercises.filter { it != ex } }, modifier = Modifier.size(24.dp)) { Icon(Icons.Default.Close, "Remove", tint = MaterialTheme.colorScheme.error) }
-                                        }
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.height(12.dp))
-                                Text("Add Exercise to Preset:", style = MaterialTheme.typography.labelMedium)
-
-                                ExposedDropdownMenuBox(expanded = builderExpanded, onExpandedChange = { builderExpanded = it }) {
-                                    OutlinedTextField(
-                                        value = builderName, onValueChange = { builderName = it; builderExpanded = true }, label = { Text("Search Exercise") },
-                                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search") },
-                                        modifier = Modifier.menuAnchor().fillMaxWidth().height(56.dp)
-                                    )
-                                    val filtered = globalTemplates.filter { it.name.contains(builderName, true) }
-                                    if (filtered.isNotEmpty() && builderExpanded) {
-                                        ExposedDropdownMenu(expanded = builderExpanded, onDismissRequest = { builderExpanded = false }, modifier = Modifier.heightIn(max = 240.dp)) {
-                                            filtered.forEach { option ->
-                                                Box(modifier = Modifier.fillMaxWidth().combinedClickable(
-                                                    onClick = { builderName = option.name; builderExpanded = false },
-                                                    onLongClick = { templateToEdit = option; showTemplateEditDialog = true }
-                                                ).padding(16.dp)) { Text(option.name) }
-                                            }
-                                        }
-                                    }
-                                }
-
-                                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 4.dp)) {
-                                    Switch(checked = builderIsTimeBased, onCheckedChange = { builderIsTimeBased = it }, modifier = Modifier.scale(0.8f))
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text("Time-based", style = MaterialTheme.typography.bodySmall)
-                                }
-
-                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    OutlinedTextField(value = builderSets, onValueChange = { builderSets = it }, label = { Text("Sets") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f).height(56.dp))
-                                    if (builderIsTimeBased) {
-                                        OutlinedTextField(value = builderDuration, onValueChange = { builderDuration = it }, label = { Text("Secs") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f).height(56.dp))
-                                    } else {
-                                        OutlinedTextField(value = builderReps, onValueChange = { builderReps = it }, label = { Text("Reps") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f).height(56.dp))
-                                        OutlinedTextField(value = builderWeight, onValueChange = { builderWeight = it }, label = { Text("Kg") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f).height(56.dp))
-                                    }
-                                }
-
-                                Button(
-                                    onClick = {
-                                        if (builderName.isNotBlank()) {
-                                            activeExercises = activeExercises + PresetExercise(
-                                                name = builderName, sets = builderSets.toIntOrNull() ?: 0, reps = builderReps.toIntOrNull() ?: 0,
-                                                weight = builderWeight.toIntOrNull() ?: 0, isTimeBased = builderIsTimeBased, durationInSeconds = builderDuration.toIntOrNull() ?: 0
+                            Column(modifier = Modifier.fillMaxSize()) {
+                                Column(modifier = Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
+                                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                                        ExposedDropdownMenuBox(expanded = presetDropdownExpanded, onExpandedChange = { presetDropdownExpanded = it }, modifier = Modifier.weight(1f)) {
+                                            OutlinedTextField(
+                                                value = if (activePresetId == 0) "Create New Preset..." else "Editing: $activePresetName",
+                                                onValueChange = {}, readOnly = true, modifier = Modifier.menuAnchor().fillMaxWidth(),
+                                                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = presetDropdownExpanded) },
+                                                colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors()
                                             )
-                                            builderName = ""
+                                            ExposedDropdownMenu(expanded = presetDropdownExpanded, onDismissRequest = { presetDropdownExpanded = false }) {
+                                                allPresets.forEach { preset ->
+                                                    DropdownMenuItem(text = { Text(preset.presetName) }, onClick = {
+                                                        activePresetId = preset.id; activePresetName = preset.presetName; activeExercises = preset.exercises;
+                                                        isCurrentPresetSaved = true
+                                                        presetDropdownExpanded = false
+                                                    })
+                                                }
+                                            }
                                         }
-                                    },
-                                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
-                                ) { Text("+ Add to List") }
+                                        if (activePresetId != 0 || activeExercises.isNotEmpty()) {
+                                            IconButton(onClick = { activePresetId = 0; activePresetName = ""; activeExercises = emptyList(); isCurrentPresetSaved = true }) { Icon(Icons.Default.Add, contentDescription = "New") }
+                                        }
+                                    }
 
-                                Spacer(modifier = Modifier.height(24.dp))
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                    OutlinedTextField(value = activePresetName, onValueChange = { activePresetName = it; isCurrentPresetSaved = false }, label = { Text("Preset Title (e.g., Push Day)") }, modifier = Modifier.fillMaxWidth())
+                                    Spacer(modifier = Modifier.height(12.dp))
 
+                                    Column(modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), RoundedCornerShape(12.dp)).padding(8.dp)) {
+                                        if (activeExercises.isEmpty()) {
+                                            Text("No exercises in this preset.", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(8.dp))
+                                        }
+                                        activeExercises.forEachIndexed { idx, ex ->
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).combinedClickable(
+                                                    onClick = {},
+                                                    onLongClick = { presetExerciseToEditIndex = idx; presetExerciseToEdit = ex }
+                                                ),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                // FIX: Added Up/Down arrows for arranging
+                                                Column {
+                                                    IconButton(
+                                                        onClick = {
+                                                            if (idx > 0) {
+                                                                val newList = activeExercises.toMutableList()
+                                                                Collections.swap(newList, idx, idx - 1)
+                                                                activeExercises = newList
+                                                                isCurrentPresetSaved = false
+                                                            }
+                                                        },
+                                                        modifier = Modifier.size(24.dp)
+                                                    ) { Icon(Icons.Default.KeyboardArrowUp, contentDescription = "Move Up") }
+                                                    IconButton(
+                                                        onClick = {
+                                                            if (idx < activeExercises.size - 1) {
+                                                                val newList = activeExercises.toMutableList()
+                                                                Collections.swap(newList, idx, idx + 1)
+                                                                activeExercises = newList
+                                                                isCurrentPresetSaved = false
+                                                            }
+                                                        },
+                                                        modifier = Modifier.size(24.dp)
+                                                    ) { Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Move Down") }
+                                                }
+                                                Spacer(modifier = Modifier.width(8.dp))
+
+                                                Column(modifier = Modifier.weight(1f)) {
+                                                    Text(ex.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                                                    if (ex.isTimeBased) {
+                                                        Text("${ex.sets} Sets × ${ex.durationInSeconds} Secs", style = MaterialTheme.typography.bodySmall)
+                                                    } else {
+                                                        val wList = try { Json.decodeFromString<List<Float>>(ex.weightListJson) } catch(e:Exception){ emptyList() }
+                                                        if (wList.isNotEmpty()) {
+                                                            Text("${ex.sets} Sets × ${ex.reps} Reps @ ${wList.joinToString(", ") { it.formatWeight() }}kg", style = MaterialTheme.typography.bodySmall)
+                                                        } else {
+                                                            Text("${ex.sets} Sets × ${ex.reps} Reps @ ${ex.weight.formatWeight()}kg", style = MaterialTheme.typography.bodySmall)
+                                                        }
+                                                    }
+                                                }
+                                                IconButton(onClick = { activeExercises = activeExercises.filter { it != ex }; isCurrentPresetSaved = false }, modifier = Modifier.size(24.dp)) { Icon(Icons.Default.Close, "Remove", tint = MaterialTheme.colorScheme.error) }
+                                            }
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                    Text("Add Exercise to Preset:", style = MaterialTheme.typography.labelMedium)
+
+                                    ExposedDropdownMenuBox(expanded = builderExpanded, onExpandedChange = { builderExpanded = it }) {
+                                        OutlinedTextField(
+                                            value = builderName, onValueChange = { builderName = it; builderExpanded = true }, label = { Text("Search Exercise") },
+                                            leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search") },
+                                            modifier = Modifier.menuAnchor().fillMaxWidth().height(56.dp)
+                                        )
+                                        val filtered = globalTemplates.filter { it.name.contains(builderName, true) }
+                                        val exactMatch = globalTemplates.any { it.name.equals(builderName, ignoreCase = true) }
+
+                                        if ((filtered.isNotEmpty() || (builderName.isNotBlank() && !exactMatch)) && builderExpanded) {
+                                            ExposedDropdownMenu(expanded = builderExpanded, onDismissRequest = { builderExpanded = false }, modifier = Modifier.heightIn(max = 200.dp)) {
+                                                filtered.forEach { option ->
+                                                    Box(modifier = Modifier.fillMaxWidth().combinedClickable(
+                                                        onClick = { builderName = option.name; builderExpanded = false },
+                                                        onLongClick = { templateToEdit = option; showTemplateEditDialog = true }
+                                                    ).padding(16.dp)) { Text(option.name) }
+                                                }
+                                                if (builderName.isNotBlank() && !exactMatch) {
+                                                    Box(modifier = Modifier.fillMaxWidth().clickable {
+                                                        viewModel.createExerciseTemplate(builderName)
+                                                        builderExpanded = false
+                                                    }.padding(16.dp)) {
+                                                        Text("Create new exercise: \"$builderName\"", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 4.dp)) {
+                                        Switch(checked = builderIsTimeBased, onCheckedChange = { builderIsTimeBased = it }, modifier = Modifier.scale(0.8f))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("Time-based", style = MaterialTheme.typography.bodySmall)
+                                    }
+
+                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        OutlinedTextField(value = builderSets, onValueChange = { builderSets = it }, label = { Text("Sets") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f).height(56.dp))
+                                        if (builderIsTimeBased) {
+                                            OutlinedTextField(value = builderDuration, onValueChange = { builderDuration = it }, label = { Text("Secs") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f).height(56.dp))
+                                        } else {
+                                            OutlinedTextField(value = builderReps, onValueChange = { builderReps = it }, label = { Text("Reps") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f).height(56.dp))
+                                        }
+                                    }
+
+                                    if (!builderIsTimeBased) {
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Switch(checked = builderVaryWeight, onCheckedChange = { builderVaryWeight = it }, modifier = Modifier.scale(0.8f))
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text("Different weight per set", style = MaterialTheme.typography.bodySmall)
+                                        }
+                                        if (builderVaryWeight) {
+                                            val setCount = builderSets.toIntOrNull() ?: 0
+                                            if (setCount > 0) {
+                                                Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                    for (i in 0 until setCount) {
+                                                        OutlinedTextField(
+                                                            value = builderAdvancedWeights[i] ?: "",
+                                                            onValueChange = { newVal -> builderAdvancedWeights = builderAdvancedWeights.toMutableMap().apply { put(i, newVal) } },
+                                                            label = { Text("Set ${i + 1} (kg)") },
+                                                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                                            modifier = Modifier.fillMaxWidth().height(56.dp)
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        } else {
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                            OutlinedTextField(
+                                                value = builderWeight,
+                                                onValueChange = { builderWeight = it },
+                                                label = { Text("Weight (kg)") },
+                                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                                modifier = Modifier.fillMaxWidth()
+                                            )
+                                        }
+                                    }
+
+                                    Button(
+                                        onClick = {
+                                            if (builderName.isNotBlank()) {
+                                                val wList = if (builderVaryWeight) {
+                                                    val setCount = builderSets.toIntOrNull() ?: 0
+                                                    (0 until setCount).map { builderAdvancedWeights[it]?.toFloatOrNull() ?: 0f }
+                                                } else emptyList()
+
+                                                activeExercises = activeExercises + PresetExercise(
+                                                    name = builderName, sets = builderSets.toIntOrNull() ?: 0, reps = builderReps.toIntOrNull() ?: 0,
+                                                    weight = builderWeight.toFloatOrNull() ?: 0f, weightListJson = Json.encodeToString(wList),
+                                                    isTimeBased = builderIsTimeBased, durationInSeconds = builderDuration.toIntOrNull() ?: 0
+                                                )
+                                                builderName = ""
+                                                isCurrentPresetSaved = false
+                                            }
+                                        },
+                                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+                                    ) { Text("+ Add to List") }
+                                }
+
+                                Spacer(modifier = Modifier.height(16.dp))
                                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                     if (activePresetId != 0) {
                                         TextButton(
@@ -685,14 +1058,21 @@ fun HealthScreen(viewModel: HealthViewModel) {
 
                                     Row {
                                         OutlinedButton(onClick = {
-                                            if (activeExercises.isNotEmpty()) viewModel.logPresetExercises(activePresetName.ifBlank { "Custom Preset" }, activeExercises)
-                                            showExerciseDialog = false
+                                            if (activeExercises.isNotEmpty()) {
+                                                if (!isCurrentPresetSaved) {
+                                                    showUnsavedPrompt = true
+                                                } else {
+                                                    viewModel.logPresetExercises(activePresetName.ifBlank { "Custom Preset" }, activeExercises)
+                                                    showExerciseDialog = false
+                                                }
+                                            }
                                         }) { Text("Log") }
                                         Spacer(modifier = Modifier.width(8.dp))
                                         Button(onClick = {
                                             if (activePresetName.isNotBlank() && activeExercises.isNotEmpty()) {
                                                 viewModel.savePreset(activePresetId, activePresetName, activeExercises)
-                                                showExerciseDialog = false
+                                                isCurrentPresetSaved = true
+                                                Toast.makeText(context, "Preset Saved!", Toast.LENGTH_SHORT).show()
                                             }
                                         }) { Text("Save") }
                                     }
@@ -716,7 +1096,6 @@ fun HealthScreen(viewModel: HealthViewModel) {
                 Spacer(modifier = Modifier.height(8.dp))
             }
 
-            // 1. WORKOUT CARD
             item {
                 ElevatedCard(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp), colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                     Column(modifier = Modifier.padding(20.dp)) {
@@ -730,10 +1109,23 @@ fun HealthScreen(viewModel: HealthViewModel) {
                         } else {
                             val groupedExercises = todayExercises.groupBy { it.presetName }
                             groupedExercises.forEach { (presetName, exercises) ->
-                                if (presetName != null) {
-                                    Text(text = presetName, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, modifier = Modifier.fillMaxWidth().combinedClickable(onClick = {}, onLongClick = { loggedPresetToManage = presetName; showLoggedPresetDialog = true }).padding(top = 16.dp, bottom = 4.dp))
-                                    HorizontalDivider(modifier = Modifier.padding(bottom = 8.dp), color = MaterialTheme.colorScheme.surfaceVariant)
-                                }
+                                val displayTitle = if (presetName.isNullOrBlank()) "Single Exercises" else presetName
+                                Text(
+                                    text = displayTitle,
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.fillMaxWidth().combinedClickable(
+                                        onClick = {},
+                                        onLongClick = {
+                                            if (!presetName.isNullOrBlank()) {
+                                                loggedPresetToManage = presetName
+                                                showLoggedPresetDialog = true
+                                            }
+                                        }
+                                    ).padding(top = 16.dp, bottom = 4.dp)
+                                )
+                                HorizontalDivider(modifier = Modifier.padding(bottom = 8.dp), color = MaterialTheme.colorScheme.surfaceVariant)
+
                                 exercises.forEach { exercise ->
                                     key(exercise.id) {
                                         val dismissState = rememberSwipeToDismissBoxState(confirmValueChange = { dismissValue -> when (dismissValue) { SwipeToDismissBoxValue.EndToStart -> { viewModel.deleteExercise(exercise); true }; SwipeToDismissBoxValue.StartToEnd -> { loggedExerciseToEdit = exercise; false }; else -> false } })
@@ -748,10 +1140,52 @@ fun HealthScreen(viewModel: HealthViewModel) {
                                             }
                                         ) {
                                             Row(modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                                val isChecked = checkedExercises.contains(exercise.id)
+                                                IconButton(onClick = {
+                                                    if (isChecked) {
+                                                        checkedExercises = checkedExercises - exercise.id
+                                                    } else {
+                                                        checkedExercises = checkedExercises + exercise.id
+                                                        if (exercise.presetName.isNullOrBlank()) {
+                                                            coroutineScope.launch {
+                                                                delay(1200)
+                                                                if (checkedExercises.contains(exercise.id)) {
+                                                                    viewModel.deleteExercise(exercise)
+                                                                }
+                                                            }
+                                                        } else {
+                                                            val presetExs = groupedExercises[exercise.presetName] ?: emptyList()
+                                                            val allChecked = presetExs.all { checkedExercises.contains(it.id) || it.id == exercise.id }
+                                                            if (allChecked) {
+                                                                coroutineScope.launch {
+                                                                    delay(1200)
+                                                                    val stillAllChecked = presetExs.all { checkedExercises.contains(it.id) }
+                                                                    if (stillAllChecked) {
+                                                                        presetExs.forEach { viewModel.deleteExercise(it) }
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }) {
+                                                    Icon(
+                                                        imageVector = if (isChecked) Icons.Outlined.CheckCircle else Icons.Outlined.Circle,
+                                                        contentDescription = "Complete",
+                                                        tint = if (isChecked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                                    )
+                                                }
                                                 Column(modifier = Modifier.weight(1f)) {
-                                                    Text(text = exercise.exerciseName, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
-                                                    if (exercise.isTimeBased) Text("${exercise.sets} Sets × ${exercise.durationInSeconds} Seconds", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
-                                                    else Text("${exercise.sets} Sets × ${exercise.reps} Reps  |  ${exercise.weight} kg", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
+                                                    Text(text = exercise.exerciseName, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold, textDecoration = if (isChecked) TextDecoration.LineThrough else TextDecoration.None)
+                                                    if (exercise.isTimeBased) {
+                                                        Text("${exercise.sets} Sets × ${exercise.durationInSeconds} Seconds", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
+                                                    } else {
+                                                        val wList = try { Json.decodeFromString<List<Float>>(exercise.weightListJson) } catch(e:Exception){ emptyList() }
+                                                        if (wList.isNotEmpty()) {
+                                                            Text("${exercise.sets} Sets × ${exercise.reps} Reps  |  ${wList.joinToString(", ") { it.formatWeight() }} kg", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
+                                                        } else {
+                                                            Text("${exercise.sets} Sets × ${exercise.reps} Reps  |  ${exercise.weight.formatWeight()} kg", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
+                                                        }
+                                                    }
                                                 }
                                             }
                                         }
@@ -763,7 +1197,6 @@ fun HealthScreen(viewModel: HealthViewModel) {
                 }
             }
 
-            // 2. FUEL CARD (DONUT CHART WITH EXACT STORED KCAL + TIMELINE WITH SWIPE-TO-DELETE)
             item {
                 ElevatedCard(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp), colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                     Column(modifier = Modifier.padding(20.dp)) {
@@ -813,8 +1246,6 @@ fun HealthScreen(viewModel: HealthViewModel) {
                         Text("Consumed Today", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
                         HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.surfaceVariant)
 
-                        val consumedList = try { Json.decodeFromString<List<com.example.loom.data.local.entity.ConsumedFoodLog>>(todayRecord?.consumedFoodsJson ?: "[]") } catch(e: Exception) { emptyList() }
-
                         if (consumedList.isEmpty()) {
                             Text("No meals logged yet.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         } else {
@@ -839,12 +1270,12 @@ fun HealthScreen(viewModel: HealthViewModel) {
                                             }
                                         }
                                     ) {
-                                        val timeStr = java.text.SimpleDateFormat("h:mm a", Locale.getDefault()).format(java.util.Date(log.timestamp))
+                                        val timeStr = timelineDateFormatter.format(Date(log.timestamp))
                                         Row(modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                                             Text(log.emoji, fontSize = 24.sp)
                                             Spacer(modifier = Modifier.width(12.dp))
                                             Column(modifier = Modifier.weight(1f)) {
-                                                Text("${log.foodName} (${log.servings.toString().removeSuffix(".0")})", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                                                Text("${log.foodName} (${log.servings.formatWeight()})", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
                                                 Text("${log.calories} kcal • P:${log.protein} C:${log.carbs} F:${log.fats}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                             }
                                             Text(timeStr, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha=0.5f))
@@ -857,7 +1288,6 @@ fun HealthScreen(viewModel: HealthViewModel) {
                 }
             }
 
-            // 3. SKINCARE CARD
             item {
                 ElevatedCard(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp), colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                     Column(modifier = Modifier.padding(20.dp)) {
@@ -867,15 +1297,13 @@ fun HealthScreen(viewModel: HealthViewModel) {
                         }
 
                         Spacer(modifier = Modifier.height(8.dp))
-                        val completedRoutines = try { Json.decodeFromString<List<String>>(todayRecord?.completedSkincareRoutinesJson ?: "[]") } catch (e: Exception) { emptyList() }
-                        val completedSteps = try { Json.decodeFromString<List<String>>(todayRecord?.completedSkincareStepsJson ?: "[]") } catch (e: Exception) { emptyList() }
 
                         if (skincareRoutines.isEmpty()) {
                             Text("No skincare routines created.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 8.dp))
                         } else {
                             skincareRoutines.forEach { routine ->
                                 val isRoutineDone = completedRoutines.contains(routine.name)
-                                val products = try { Json.decodeFromString<List<String>>(routine.productsJson) } catch (e: Exception) { emptyList() }
+                                val products = remember(routine.productsJson) { try { Json.decodeFromString<List<String>>(routine.productsJson) } catch (e: Exception) { emptyList() } }
 
                                 Column(modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
                                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
@@ -918,7 +1346,6 @@ fun HealthScreen(viewModel: HealthViewModel) {
                 }
             }
 
-            // 4. HYDRATION SETTINGS CARD (NOW WITH EXACT 3-DECIMAL LITER DISPLAY)
             item {
                 ElevatedCard(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp), colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                     Column(modifier = Modifier.padding(20.dp)) {
@@ -951,7 +1378,6 @@ fun HealthScreen(viewModel: HealthViewModel) {
                 }
             }
 
-            // 5. BIO ENGINE CARD
             item {
                 var isEditingBio by remember { mutableStateOf(false) }
 
@@ -963,7 +1389,7 @@ fun HealthScreen(viewModel: HealthViewModel) {
                         }
 
                         if (isEditingBio) {
-                            var editWeight by remember { mutableStateOf(weight.toString()) }
+                            var editWeight by remember { mutableStateOf(weight.formatWeight()) }
                             var editHeight by remember { mutableStateOf(height.toString()) }
                             var editAge by remember { mutableStateOf(age.toString()) }
                             var editGender by remember { mutableStateOf(gender) }
@@ -976,7 +1402,7 @@ fun HealthScreen(viewModel: HealthViewModel) {
 
                             Column {
                                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    OutlinedTextField(value = editWeight, onValueChange = { editWeight = it }, label = { Text("Weight (kg)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
+                                    OutlinedTextField(value = editWeight, onValueChange = { editWeight = it }, label = { Text("Weight (kg)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.weight(1f))
                                     OutlinedTextField(value = editHeight, onValueChange = { editHeight = it }, label = { Text("Height (cm)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
                                     OutlinedTextField(value = editAge, onValueChange = { editAge = it }, label = { Text("Age") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
                                 }
@@ -1009,7 +1435,7 @@ fun HealthScreen(viewModel: HealthViewModel) {
                             }
                         } else {
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("$weight kg | $height cm | $age yrs", style = MaterialTheme.typography.bodyLarge)
+                                Text("${weight.formatWeight()} kg | $height cm | $age yrs", style = MaterialTheme.typography.bodyLarge)
                                 Text(goal, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                             }
                         }
