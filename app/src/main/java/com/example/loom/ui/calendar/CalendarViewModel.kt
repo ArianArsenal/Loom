@@ -14,8 +14,11 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
+import java.util.Date
+import java.util.Locale
 import javax.inject.Inject
 
 data class DailySnapshot(
@@ -61,7 +64,6 @@ class CalendarViewModel @Inject constructor(
                 val activeSet = mutableSetOf<String>()
 
                 records.forEach { record ->
-                    // FIX 1: Strip all whitespaces, newlines, and tabs to completely prevent Ghost Highlights
                     val cleanFoods = record.consumedFoodsJson.replace("\\s".toRegex(), "")
                     val hasFood = cleanFoods != "" && cleanFoods != "[]" && cleanFoods != "null"
 
@@ -71,7 +73,6 @@ class CalendarViewModel @Inject constructor(
                     val cleanSteps = record.completedSkincareStepsJson.replace("\\s".toRegex(), "")
                     val hasSteps = cleanSteps != "" && cleanSteps != "[]" && cleanSteps != "null"
 
-                    // FIX 2: Check for ANY macro, not just calories
                     val hasMacros = record.calories > 0 || record.protein > 0 || record.carbs > 0 || record.fats > 0
 
                     if (hasMacros || record.waterIntakeMl > 0 || record.diaryEntry.isNotBlank() || hasFood || hasRoutine || hasSteps) {
@@ -80,8 +81,19 @@ class CalendarViewModel @Inject constructor(
                 }
 
                 exercises.forEach { ex -> activeSet.add(ex.dateId) }
+
+                // NEW LOGIC: Map tasks based on actual completion date vs target date
                 tasks.forEach { task ->
-                    if (task.targetDate.startsWith(prefix)) activeSet.add(task.targetDate)
+                    if (task.isCompleted) {
+                        val dateStr = if (task.completionDateMillis > 0) {
+                            SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date(task.completionDateMillis))
+                        } else {
+                            task.targetDate
+                        }
+                        if (dateStr.startsWith(prefix)) activeSet.add(dateStr)
+                    } else {
+                        if (task.targetDate.startsWith(prefix)) activeSet.add(task.targetDate)
+                    }
                 }
 
                 activeSet
@@ -101,10 +113,30 @@ class CalendarViewModel @Inject constructor(
         snapshotJob = viewModelScope.launch {
             combine(
                 repository.getDailyRecordFlow(dateId),
-                repository.getTasksForDate(dateId),
+                repository.getAllTasks(), // Fetch all tasks and filter in memory
                 repository.getExercisesForDate(dateId)
-            ) { record, tasks, exercises ->
-                DailySnapshot(record, tasks, exercises)
+            ) { record, allTasks, exercises ->
+
+                // NEW LOGIC: Calculate exactly which tasks belong to this day
+                val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+                val dateMillis = sdf.parse(dateId)?.time ?: 0L
+                val endOfDay = dateMillis + 86400000L
+
+                val tasksForDay = allTasks.filter { task ->
+                    if (task.isCompleted) {
+                        if (task.completionDateMillis > 0) {
+                            // If completed, it ONLY shows on the exact day it was completed
+                            task.completionDateMillis in dateMillis until endOfDay
+                        } else {
+                            task.targetDate == dateId
+                        }
+                    } else {
+                        // If not completed, it shows on its due date
+                        task.targetDate == dateId
+                    }
+                }.sortedWith(compareBy({ it.isCompleted }, { -it.priority }))
+
+                DailySnapshot(record, tasksForDay, exercises)
             }.collect { snapshot ->
                 _selectedDateSnapshot.value = snapshot
             }

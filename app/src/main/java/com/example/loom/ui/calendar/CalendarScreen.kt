@@ -120,7 +120,6 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
 
     if (showMacroEditDialog) {
         val record = snapshot?.record
-        // FIX: Added 'record' to remember keys so the state resets properly when opened for a new day
         var editCals by remember(record) { mutableStateOf(record?.calories?.toString() ?: "0") }
         var editPro by remember(record) { mutableStateOf(record?.protein?.toString() ?: "0") }
         var editCarbs by remember(record) { mutableStateOf(record?.carbs?.toString() ?: "0") }

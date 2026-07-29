@@ -1,6 +1,7 @@
 package com.example.loom.ui.notes
 
 import android.content.Intent
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
@@ -20,9 +21,12 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.CheckCircle
@@ -34,21 +38,31 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -57,17 +71,18 @@ import com.example.loom.data.local.entity.DiaryNote
 import com.example.loom.data.local.entity.NoteTag
 import com.example.loom.ui.home.HomeViewModel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import java.text.SimpleDateFormat
 import java.util.*
 
-// --- BLOCK EDITOR DATA MODEL ---
+private const val ZWSP = "\u200B"
+
 @Serializable
 data class NoteBlock(
     val id: String,
-    var type: String, // "text", "check", "image"
+    var type: String,
     var content: String = "",
     var isChecked: Boolean = false,
     var width: Float = 250f,
@@ -152,10 +167,17 @@ fun NoteListScreen(
     if (tagToDelete != null) {
         AlertDialog(
             onDismissRequest = { tagToDelete = null },
-            title = { Text("Delete Tag?") },
-            text = { Text("Are you sure you want to delete '${tagToDelete?.name}'? Your notes will remain.") },
+            title = { Text("Delete Tag & Notes?") },
+            text = { Text("Are you sure you want to delete '${tagToDelete?.name}'? This will permanently delete ALL notes associated with this tag.") },
             confirmButton = {
-                Button(onClick = { viewModel.deleteNoteTag(tagToDelete!!); tagToDelete = null }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) { Text("Delete") }
+                Button(onClick = {
+                    val associatedNotes = notes.filter { it.tag == tagToDelete!!.name }
+                    associatedNotes.forEach { viewModel.deleteDiaryNote(it) }
+
+                    viewModel.deleteNoteTag(tagToDelete!!)
+                    if (searchQuery == tagToDelete?.name) searchQuery = ""
+                    tagToDelete = null
+                }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) { Text("Delete All") }
             },
             dismissButton = { TextButton(onClick = { tagToDelete = null }) { Text("Cancel") } }
         )
@@ -191,13 +213,16 @@ fun NoteListScreen(
             LazyRow(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(allTags) { tag ->
                     val tagColor = try { Color(android.graphics.Color.parseColor(tag.colorHex)) } catch (e: Exception) { MaterialTheme.colorScheme.primary }
-                    FilterChip(
-                        selected = searchQuery == tag.name,
-                        onClick = { searchQuery = if (searchQuery == tag.name) "" else tag.name },
-                        label = { Text(tag.name) },
-                        modifier = Modifier.combinedClickable(onClick = { searchQuery = if (searchQuery == tag.name) "" else tag.name }, onLongClick = { tagToDelete = tag }),
-                        colors = FilterChipDefaults.filterChipColors(selectedContainerColor = tagColor.copy(alpha = 0.2f), selectedLabelColor = tagColor)
-                    )
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = if (searchQuery == tag.name) tagColor.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surfaceVariant,
+                        modifier = Modifier.combinedClickable(
+                            onClick = { searchQuery = if (searchQuery == tag.name) "" else tag.name },
+                            onLongClick = { tagToDelete = tag }
+                        )
+                    ) {
+                        Text(tag.name, style = MaterialTheme.typography.labelMedium, color = if (searchQuery == tag.name) tagColor else MaterialTheme.colorScheme.onSurface, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
+                    }
                 }
             }
 
@@ -207,7 +232,7 @@ fun NoteListScreen(
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("It's quiet here. Tap + to start.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
             } else {
                 val gridColumns = when (viewMode) { 0 -> 1; 1 -> 2; else -> 3 }
-                val cardHeight = when (viewMode) { 0 -> 140.dp; 1 -> 180.dp; else -> 160.dp } // Uniform height
+                val cardHeight = when (viewMode) { 0 -> 140.dp; 1 -> 180.dp; else -> 160.dp }
 
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(gridColumns),
@@ -216,7 +241,6 @@ fun NoteListScreen(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    // Pinned Section
                     if (pinnedNotes.isNotEmpty()) {
                         item(span = { GridItemSpan(maxLineSpan) }) {
                             Text("Pinned", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 8.dp, bottom = 4.dp))
@@ -226,7 +250,6 @@ fun NoteListScreen(
                         }
                     }
 
-                    // Unpinned Section
                     if (unpinnedNotes.isNotEmpty()) {
                         item(span = { GridItemSpan(maxLineSpan) }) {
                             Text("Notes", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 16.dp, bottom = 4.dp))
@@ -284,10 +307,9 @@ fun NoteCard(note: DiaryNote, allTags: List<NoteTag>, height: androidx.compose.u
                         Text("Locked", style = MaterialTheme.typography.bodySmall, fontStyle = FontStyle.Italic)
                     }
                 } else {
-                    // Extract preview text from blocks
                     val blocks = try { Json.decodeFromString<List<NoteBlock>>(note.blocksJson) } catch (e: Exception) { emptyList() }
                     val previewText = blocks.filter { it.type == "text" || it.type == "check" }
-                        .joinToString("\n") { if (it.type == "check") (if (it.isChecked) "[x] " else "[ ] ") + it.content else it.content }
+                        .joinToString("\n") { if (it.type == "check") (if (it.isChecked) "[x] " else "[ ] ") + it.content.replace(ZWSP, "") else it.content.replace(ZWSP, "") }
 
                     Text(if (previewText.isBlank()) note.content else previewText, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 3, overflow = TextOverflow.Ellipsis)
                 }
@@ -311,37 +333,69 @@ fun NoteEditor(initialNote: DiaryNote?, allTags: List<NoteTag>, viewModel: HomeV
     var isPrivate by remember { mutableStateOf(initialNote?.isPrivate ?: false) }
     var isPinned by remember { mutableStateOf(initialNote?.isPinned ?: false) }
 
-    // --- BLOCK SYSTEM ---
     val initialBlocks = try { Json.decodeFromString<List<NoteBlock>>(initialNote?.blocksJson ?: "[]") } catch (e: Exception) { emptyList() }
     val blocks = remember { mutableStateListOf<NoteBlock>().apply {
-        if (initialBlocks.isEmpty() && initialNote?.content?.isNotBlank() == true) add(NoteBlock(id = UUID.randomUUID().toString(), type = "text", content = initialNote.content))
-        else if (initialBlocks.isEmpty()) add(NoteBlock(id = UUID.randomUUID().toString(), type = "text"))
-        else addAll(initialBlocks)
+        if (initialBlocks.isEmpty() && initialNote?.content?.isNotBlank() == true) {
+            add(NoteBlock(id = UUID.randomUUID().toString(), type = "text", content = ZWSP + initialNote.content))
+        } else if (initialBlocks.isEmpty()) {
+            add(NoteBlock(id = UUID.randomUUID().toString(), type = "text", content = ZWSP))
+        } else {
+            addAll(initialBlocks.map {
+                if (it.type == "text" || it.type == "check") {
+                    it.copy(content = if (!it.content.startsWith(ZWSP)) ZWSP + it.content else it.content)
+                } else it
+            })
+        }
     }}
 
     var focusedBlockId by remember { mutableStateOf<String?>(null) }
     var showTagDialog by remember { mutableStateOf(false) }
+    var tagToDelete by remember { mutableStateOf<NoteTag?>(null) }
 
+    val focusRequesters = remember { mutableStateMapOf<String, FocusRequester>() }
     val density = LocalDensity.current
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
+    val scope = rememberCoroutineScope()
+
+    LaunchedEffect(focusedBlockId) {
+        focusedBlockId?.let { id ->
+            try { focusRequesters[id]?.requestFocus() } catch (e: Exception) {}
+        }
+    }
 
     val photoPickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia()) { uris ->
         uris.forEach { uri ->
             context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
             val insertIndex = blocks.indexOfFirst { it.id == focusedBlockId }.takeIf { it >= 0 }?.plus(1) ?: blocks.size
             blocks.add(insertIndex, NoteBlock(id = UUID.randomUUID().toString(), type = "image", content = uri.toString()))
-            blocks.add(insertIndex + 1, NoteBlock(id = UUID.randomUUID().toString(), type = "text")) // Auto add text block after image
+
+            val newTextId = UUID.randomUUID().toString()
+            blocks.add(insertIndex + 1, NoteBlock(id = newTextId, type = "text", content = ZWSP))
+            focusedBlockId = newTextId
         }
     }
 
-    // Auto-Save
-    LaunchedEffect(title, selectedTag, isFavorite, isPrivate, isPinned, blocks.toList()) {
-        delay(500)
-        if (title.isNotBlank() || blocks.any { it.content.isNotBlank() || it.type == "image" }) {
-            val blocksJson = Json.encodeToString(blocks.toList())
+    val performSave: suspend () -> Unit = {
+        val cleanBlocks = blocks.map {
+            if (it.type == "text" || it.type == "check") it.copy(content = it.content.replace(ZWSP, "")) else it
+        }
+        if (currentId != 0 || title.isNotBlank() || cleanBlocks.any { it.content.isNotBlank() || it.type == "image" }) {
+            val blocksJson = Json.encodeToString(cleanBlocks)
             val returnedId = viewModel.saveDiaryNoteWithReturn(currentId, title, "", selectedTag, "[]", blocksJson, isFavorite, isPrivate, isPinned, false)
             if (currentId == 0) currentId = returnedId.toInt()
+        }
+    }
+
+    LaunchedEffect(title, selectedTag, isFavorite, isPrivate, isPinned, blocks.toList()) {
+        delay(500)
+        performSave()
+    }
+
+    BackHandler {
+        scope.launch {
+            performSave()
+            onNavigateBack()
         }
     }
 
@@ -387,118 +441,292 @@ fun NoteEditor(initialNote: DiaryNote?, allTags: List<NoteTag>, viewModel: HomeV
         )
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("") },
-                navigationIcon = { IconButton(onClick = onNavigateBack) { Icon(Icons.Default.ArrowBack, "Back") } },
-                actions = {
-                    IconButton(onClick = { isPinned = !isPinned }) { Icon(if (isPinned) Icons.Default.PushPin else Icons.Outlined.PushPin, "Pin", tint = if (isPinned) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) }
-                    IconButton(onClick = { isPrivate = !isPrivate }) { Icon(if (isPrivate) Icons.Default.Lock else Icons.Outlined.Lock, "Toggle Private", tint = if (isPrivate) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) }
-                    IconButton(onClick = { isFavorite = !isFavorite }) { Icon(if (isFavorite) Icons.Default.Favorite else Icons.Outlined.FavoriteBorder, "Toggle Favorite", tint = if (isFavorite) Color.Red else MaterialTheme.colorScheme.onSurfaceVariant) }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
-            )
-        },
-        bottomBar = {
-            BottomAppBar(containerColor = MaterialTheme.colorScheme.surface) {
-                IconButton(onClick = { photoPickerLauncher.launch(androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }) { Icon(Icons.Default.Image, "Add Image") }
-                IconButton(onClick = {
-                    val insertIndex = blocks.indexOfFirst { it.id == focusedBlockId }.takeIf { it >= 0 }?.plus(1) ?: blocks.size
-                    blocks.add(insertIndex, NoteBlock(id = UUID.randomUUID().toString(), type = "check"))
-                }) { Icon(Icons.Default.Checklist, "Add Checklist") }
-                IconButton(onClick = {
-                    val insertIndex = blocks.indexOfFirst { it.id == focusedBlockId }.takeIf { it >= 0 }?.plus(1) ?: blocks.size
-                    blocks.add(insertIndex, NoteBlock(id = UUID.randomUUID().toString(), type = "text"))
-                }) { Icon(Icons.Default.TextFields, "Add Text") }
-            }
-        }
-    ) { paddingValues ->
-        Column(modifier = Modifier.fillMaxSize().padding(paddingValues).pointerInput(Unit) { detectTapGestures(onTap = { focusManager.clearFocus(); focusedBlockId = null }) }) {
+    if (tagToDelete != null) {
+        AlertDialog(
+            onDismissRequest = { tagToDelete = null },
+            title = { Text("Delete Tag?") },
+            text = { Text("Are you sure you want to delete '${tagToDelete?.name}'? It will be removed from the system.") },
+            confirmButton = {
+                Button(onClick = {
+                    viewModel.deleteNoteTag(tagToDelete!!)
+                    if (selectedTag == tagToDelete?.name) selectedTag = "Personal"
+                    tagToDelete = null
+                }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) { Text("Delete") }
+            },
+            dismissButton = { TextButton(onClick = { tagToDelete = null }) { Text("Cancel") } }
+        )
+    }
 
-            LazyRow(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                item { AssistChip(onClick = { showTagDialog = true }, label = { Text("+ New Tag") }) }
-                items(allTags) { tag ->
-                    val tagColor = try { Color(android.graphics.Color.parseColor(tag.colorHex)) } catch (e: Exception) { MaterialTheme.colorScheme.primary }
-                    FilterChip(
-                        selected = selectedTag == tag.name, onClick = { selectedTag = tag.name }, label = { Text(tag.name) },
-                        modifier = Modifier.combinedClickable(onClick = { selectedTag = tag.name }, onLongClick = { viewModel.deleteNoteTag(tag) }),
-                        colors = FilterChipDefaults.filterChipColors(selectedContainerColor = tagColor.copy(alpha = 0.2f), selectedLabelColor = tagColor)
-                    )
+    Column(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+        TopAppBar(
+            title = { Text("") },
+            navigationIcon = {
+                IconButton(onClick = {
+                    scope.launch {
+                        performSave()
+                        onNavigateBack()
+                    }
+                }) { Icon(Icons.Default.ArrowBack, "Back") }
+            },
+            actions = {
+                // Moved Image and Checklist functionality into the Top App Bar
+                IconButton(onClick = { photoPickerLauncher.launch(androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }) {
+                    Icon(Icons.Default.Image, "Add Image", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-            }
-            HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp, horizontal = 20.dp))
-
-            OutlinedTextField(
-                value = title, onValueChange = { title = it },
-                placeholder = { Text("Title", style = MaterialTheme.typography.titleLarge) },
-                textStyle = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
-                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Color.Transparent, unfocusedBorderColor = Color.Transparent)
-            )
-
-            // --- BLOCK EDITOR RENDERER ---
-            LazyColumn(modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp), contentPadding = PaddingValues(bottom = 80.dp)) {
-                itemsIndexed(blocks) { index, block ->
-                    when (block.type) {
-                        "text" -> {
-                            OutlinedTextField(
-                                value = block.content,
-                                onValueChange = { newContent -> blocks[index] = block.copy(content = newContent) },
-                                placeholder = { Text("Type something...") },
-                                modifier = Modifier.fillMaxWidth().onFocusChanged { if (it.isFocused) focusedBlockId = block.id },
-                                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Color.Transparent, unfocusedBorderColor = Color.Transparent)
-                            )
+                IconButton(onClick = {
+                    val currentIndex = blocks.indexOfFirst { it.id == focusedBlockId }
+                    if (currentIndex >= 0) {
+                        val currentBlock = blocks[currentIndex]
+                        if (currentBlock.type == "text") {
+                            blocks[currentIndex] = currentBlock.copy(type = "check")
+                        } else if (currentBlock.type == "check") {
+                            blocks[currentIndex] = currentBlock.copy(type = "text")
+                        } else {
+                            val newBlockId = UUID.randomUUID().toString()
+                            blocks.add(currentIndex + 1, NoteBlock(id = newBlockId, type = "check", content = ZWSP))
+                            focusedBlockId = newBlockId
                         }
-                        "check" -> {
-                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-                                IconButton(onClick = { blocks[index] = block.copy(isChecked = !block.isChecked) }, modifier = Modifier.size(32.dp)) {
-                                    Icon(if (block.isChecked) Icons.Outlined.CheckCircle else Icons.Default.RadioButtonUnchecked, null, tint = MaterialTheme.colorScheme.primary)
-                                }
-                                OutlinedTextField(
-                                    value = block.content,
-                                    onValueChange = { newContent -> blocks[index] = block.copy(content = newContent) },
-                                    modifier = Modifier.weight(1f).onFocusChanged { if (it.isFocused) focusedBlockId = block.id },
-                                    textStyle = MaterialTheme.typography.bodyLarge.copy(textDecoration = if (block.isChecked) TextDecoration.LineThrough else TextDecoration.None),
-                                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Color.Transparent, unfocusedBorderColor = Color.Transparent)
-                                )
-                                IconButton(onClick = { blocks.removeAt(index) }) { Icon(Icons.Default.Close, "Remove Check") }
+                    } else {
+                        val newBlockId = UUID.randomUUID().toString()
+                        blocks.add(NoteBlock(id = newBlockId, type = "check", content = ZWSP))
+                        focusedBlockId = newBlockId
+                    }
+                }) {
+                    Icon(Icons.Default.Checklist, "Add Checklist", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+
+                IconButton(onClick = { isPinned = !isPinned }) { Icon(if (isPinned) Icons.Default.PushPin else Icons.Outlined.PushPin, "Pin", tint = if (isPinned) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) }
+                IconButton(onClick = { isPrivate = !isPrivate }) { Icon(if (isPrivate) Icons.Default.Lock else Icons.Outlined.Lock, "Toggle Private", tint = if (isPrivate) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) }
+                IconButton(onClick = { isFavorite = !isFavorite }) { Icon(if (isFavorite) Icons.Default.Favorite else Icons.Outlined.FavoriteBorder, "Toggle Favorite", tint = if (isFavorite) Color.Red else MaterialTheme.colorScheme.onSurfaceVariant) }
+            },
+            colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
+        )
+
+        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .pointerInput(Unit) {
+                        detectTapGestures(onTap = {
+                            focusManager.clearFocus()
+                            val lastBlock = blocks.lastOrNull()
+                            if (lastBlock != null && lastBlock.type == "text") {
+                                focusedBlockId = lastBlock.id
+                            } else {
+                                val newBlockId = UUID.randomUUID().toString()
+                                blocks.add(NoteBlock(id = newBlockId, type = "text", content = ZWSP))
+                                focusedBlockId = newBlockId
                             }
+                        })
+                    }
+            ) {
+                LazyRow(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    item { AssistChip(onClick = { showTagDialog = true }, label = { Text("+ New Tag") }) }
+                    items(allTags) { tag ->
+                        val tagColor = try { Color(android.graphics.Color.parseColor(tag.colorHex)) } catch (e: Exception) { MaterialTheme.colorScheme.primary }
+
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (selectedTag == tag.name) tagColor.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surfaceVariant,
+                            modifier = Modifier.combinedClickable(
+                                onClick = { selectedTag = tag.name },
+                                onLongClick = { tagToDelete = tag }
+                            )
+                        ) {
+                            Text(tag.name, style = MaterialTheme.typography.labelMedium, color = if (selectedTag == tag.name) tagColor else MaterialTheme.colorScheme.onSurface, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
                         }
-                        "image" -> {
-                            val isSelected = focusedBlockId == block.id
-                            Box(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), contentAlignment = Alignment.Center) {
-                                Box(modifier = Modifier.width(block.width.dp).height(block.height.dp).pointerInput(Unit) { detectTapGestures(onTap = { focusedBlockId = block.id; focusManager.clearFocus() }) }) {
-                                    AsyncImage(
-                                        model = block.content, contentDescription = null, modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(8.dp)),
-                                        contentScale = if (block.isCropped) ContentScale.Crop else ContentScale.Fit
-                                    )
-                                    if (isSelected) {
-                                        val blue = Color(0xFF4285F4)
-                                        Box(modifier = Modifier.fillMaxSize().border(2.dp, blue, RoundedCornerShape(8.dp)))
-                                        @Composable fun Dot(modifier: Modifier) { Box(modifier = modifier.size(10.dp).background(Color.White, CircleShape).border(2.dp, blue, CircleShape)) }
+                    }
+                }
+                HorizontalDivider(modifier = Modifier.padding(bottom = 12.dp, start = 20.dp, end = 20.dp))
 
-                                        Dot(Modifier.align(Alignment.TopStart).offset((-5).dp, (-5).dp))
-                                        Dot(Modifier.align(Alignment.TopEnd).offset(5.dp, (-5).dp))
-                                        Dot(Modifier.align(Alignment.BottomStart).offset((-5).dp, 5.dp))
+                OutlinedTextField(
+                    value = title, onValueChange = { title = it },
+                    placeholder = { Text("Title", style = MaterialTheme.typography.titleLarge) },
+                    textStyle = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Color.Transparent, unfocusedBorderColor = Color.Transparent)
+                )
 
-                                        Box(modifier = Modifier.align(Alignment.BottomEnd).offset(5.dp, 5.dp).size(30.dp)
-                                            .pointerInput(Unit) {
-                                                detectDragGestures { change, dragAmount ->
-                                                    change.consume()
-                                                    val newW = (block.width + dragAmount.x / density.density).coerceIn(100f, 400f)
-                                                    val newH = (block.height + dragAmount.y / density.density).coerceIn(100f, 600f)
-                                                    blocks[index] = block.copy(width = newW, height = newH)
-                                                }
-                                            }
-                                        ) { Dot(Modifier.align(Alignment.Center)) }
-                                    }
+                Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
+                    blocks.forEach { block ->
+                        when (block.type) {
+                            "text" -> {
+                                val requester = focusRequesters.getOrPut(block.id) { FocusRequester() }
+                                var textState by remember { mutableStateOf(TextFieldValue(block.content, TextRange(block.content.length))) }
+
+                                if (textState.text != block.content) {
+                                    textState = textState.copy(text = block.content, selection = TextRange(block.content.length))
                                 }
-                                if (isSelected) {
-                                    Surface(shape = RoundedCornerShape(8.dp), color = Color(0xFF333333), modifier = Modifier.align(Alignment.TopCenter).offset(y = (-40).dp)) {
-                                        Row(modifier = Modifier.padding(horizontal = 4.dp)) {
-                                            TextButton(onClick = { blocks.removeAt(index); focusedBlockId = null }) { Text("Delete", color = Color.White) }
-                                            TextButton(onClick = { blocks[index] = block.copy(isCropped = !block.isCropped) }) { Text(if (block.isCropped) "Fit" else "Crop", color = Color.White) }
+
+                                BasicTextField(
+                                    value = textState,
+                                    onValueChange = { newTextState ->
+                                        val currentIndex = blocks.indexOfFirst { it.id == block.id }
+                                        if (currentIndex == -1) return@BasicTextField
+
+                                        val newText = newTextState.text
+
+                                        if (newText != blocks[currentIndex].content) {
+                                            if (!newText.startsWith(ZWSP) || newText.isEmpty()) {
+                                                val remainder = newText.replace(ZWSP, "")
+                                                if (currentIndex > 0) {
+                                                    val prevBlock = blocks[currentIndex - 1]
+                                                    if (prevBlock.type == "text" || prevBlock.type == "check") {
+                                                        blocks[currentIndex - 1] = prevBlock.copy(content = prevBlock.content + remainder)
+                                                        blocks.removeAt(currentIndex)
+                                                        focusedBlockId = prevBlock.id
+                                                    } else {
+                                                        textState = newTextState.copy(text = ZWSP + remainder)
+                                                        blocks[currentIndex] = blocks[currentIndex].copy(content = ZWSP + remainder)
+                                                    }
+                                                } else {
+                                                    textState = newTextState.copy(text = ZWSP + remainder)
+                                                    blocks[currentIndex] = blocks[currentIndex].copy(content = ZWSP + remainder)
+                                                }
+                                            } else if (newText.contains('\n')) {
+                                                val parts = newText.substring(1).split('\n', limit = 2)
+                                                blocks[currentIndex] = blocks[currentIndex].copy(content = ZWSP + parts[0])
+                                                val newBlockId = UUID.randomUUID().toString()
+                                                blocks.add(currentIndex + 1, NoteBlock(id = newBlockId, type = "text", content = ZWSP + parts.getOrElse(1) { "" }))
+                                                focusedBlockId = newBlockId
+                                            } else {
+                                                textState = newTextState
+                                                blocks[currentIndex] = blocks[currentIndex].copy(content = newText)
+                                            }
+                                        } else {
+                                            textState = newTextState
+                                        }
+                                    },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .focusRequester(requester)
+                                        .onFocusChanged { if (it.isFocused) focusedBlockId = block.id }
+                                        .padding(vertical = 2.dp),
+                                    textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
+                                    cursorBrush = SolidColor(MaterialTheme.colorScheme.primary)
+                                )
+                            }
+                            "check" -> {
+                                val requester = focusRequesters.getOrPut(block.id) { FocusRequester() }
+                                var textState by remember { mutableStateOf(TextFieldValue(block.content, TextRange(block.content.length))) }
+
+                                if (textState.text != block.content) {
+                                    textState = textState.copy(text = block.content, selection = TextRange(block.content.length))
+                                }
+
+                                Row(verticalAlignment = Alignment.Top, modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
+                                    Icon(
+                                        imageVector = if (block.isChecked) Icons.Outlined.CheckCircle else Icons.Default.RadioButtonUnchecked,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.padding(top = 1.dp).size(22.dp).clickable {
+                                            val currentIndex = blocks.indexOfFirst { it.id == block.id }
+                                            if (currentIndex >= 0) blocks[currentIndex] = block.copy(isChecked = !block.isChecked)
+                                        }
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    BasicTextField(
+                                        value = textState,
+                                        onValueChange = { newTextState ->
+                                            val currentIndex = blocks.indexOfFirst { it.id == block.id }
+                                            if (currentIndex == -1) return@BasicTextField
+
+                                            val newText = newTextState.text
+
+                                            if (newText != blocks[currentIndex].content) {
+                                                if (!newText.startsWith(ZWSP) || newText.isEmpty()) {
+                                                    val remainder = newText.replace(ZWSP, "")
+                                                    if (currentIndex > 0) {
+                                                        val prevBlock = blocks[currentIndex - 1]
+                                                        if (prevBlock.type == "text" || prevBlock.type == "check") {
+                                                            blocks[currentIndex - 1] = prevBlock.copy(content = prevBlock.content + remainder)
+                                                            blocks.removeAt(currentIndex)
+                                                            focusedBlockId = prevBlock.id
+                                                        } else {
+                                                            textState = newTextState.copy(text = ZWSP + remainder)
+                                                            blocks[currentIndex] = blocks[currentIndex].copy(type = "text", content = ZWSP + remainder)
+                                                        }
+                                                    } else {
+                                                        textState = newTextState.copy(text = ZWSP + remainder)
+                                                        blocks[currentIndex] = blocks[currentIndex].copy(type = "text", content = ZWSP + remainder)
+                                                    }
+                                                } else if (newText.contains('\n')) {
+                                                    val parts = newText.substring(1).split('\n', limit = 2)
+                                                    blocks[currentIndex] = blocks[currentIndex].copy(content = ZWSP + parts[0])
+                                                    val newBlockId = UUID.randomUUID().toString()
+                                                    blocks.add(currentIndex + 1, NoteBlock(id = newBlockId, type = "check", content = ZWSP + parts.getOrElse(1) { "" }))
+                                                    focusedBlockId = newBlockId
+                                                } else {
+                                                    textState = newTextState
+                                                    blocks[currentIndex] = blocks[currentIndex].copy(content = newText)
+                                                }
+                                            } else {
+                                                textState = newTextState
+                                            }
+                                        },
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .focusRequester(requester)
+                                            .onFocusChanged { if (it.isFocused) focusedBlockId = block.id }
+                                            .padding(top = 2.dp),
+                                        textStyle = MaterialTheme.typography.bodyLarge.copy(
+                                            color = if (block.isChecked) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
+                                            textDecoration = if (block.isChecked) TextDecoration.LineThrough else TextDecoration.None
+                                        ),
+                                        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary)
+                                    )
+                                }
+                            }
+                            "image" -> {
+                                val isSelected = focusedBlockId == block.id
+                                Box(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), contentAlignment = Alignment.Center) {
+                                    Box(modifier = Modifier.width(block.width.dp).height(block.height.dp).pointerInput(Unit) { detectTapGestures(onTap = { focusedBlockId = block.id; focusManager.clearFocus() }) }) {
+                                        AsyncImage(
+                                            model = block.content, contentDescription = null, modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(8.dp)),
+                                            contentScale = if (block.isCropped) ContentScale.Crop else ContentScale.Fit
+                                        )
+                                        if (isSelected) {
+                                            val blue = Color(0xFF4285F4)
+                                            Box(modifier = Modifier.fillMaxSize().border(2.dp, blue, RoundedCornerShape(8.dp)))
+                                            @Composable fun Dot(modifier: Modifier) { Box(modifier = modifier.size(10.dp).background(Color.White, CircleShape).border(2.dp, blue, CircleShape)) }
+
+                                            Dot(Modifier.align(Alignment.TopStart).offset((-5).dp, (-5).dp))
+                                            Dot(Modifier.align(Alignment.TopEnd).offset(5.dp, (-5).dp))
+                                            Dot(Modifier.align(Alignment.BottomStart).offset((-5).dp, 5.dp))
+
+                                            Box(modifier = Modifier.align(Alignment.BottomEnd).offset(5.dp, 5.dp).size(30.dp)
+                                                .pointerInput(Unit) {
+                                                    detectDragGestures { change, dragAmount ->
+                                                        change.consume()
+                                                        val currentIndex = blocks.indexOfFirst { it.id == block.id }
+                                                        if (currentIndex >= 0) {
+                                                            val newW = (block.width + dragAmount.x / density.density).coerceIn(100f, 400f)
+                                                            val newH = (block.height + dragAmount.y / density.density).coerceIn(100f, 600f)
+                                                            blocks[currentIndex] = block.copy(width = newW, height = newH)
+                                                        }
+                                                    }
+                                                }
+                                            ) { Dot(Modifier.align(Alignment.Center)) }
+                                        }
+                                    }
+                                    if (isSelected) {
+                                        Surface(shape = RoundedCornerShape(8.dp), color = Color(0xFF333333), modifier = Modifier.align(Alignment.TopCenter).offset(y = (-40).dp)) {
+                                            Row(modifier = Modifier.padding(horizontal = 4.dp)) {
+                                                TextButton(onClick = {
+                                                    val currentIndex = blocks.indexOfFirst { it.id == block.id }
+                                                    if (currentIndex >= 0) blocks.removeAt(currentIndex)
+                                                    focusedBlockId = null
+                                                }) { Text("Delete", color = Color.White) }
+                                                TextButton(onClick = {
+                                                    val currentIndex = blocks.indexOfFirst { it.id == block.id }
+                                                    if (currentIndex >= 0) blocks[currentIndex] = block.copy(isCropped = !block.isCropped)
+                                                }) { Text(if (block.isCropped) "Fit" else "Crop", color = Color.White) }
+                                            }
                                         }
                                     }
                                 }
@@ -506,6 +734,7 @@ fun NoteEditor(initialNote: DiaryNote?, allTags: List<NoteTag>, viewModel: HomeV
                         }
                     }
                 }
+                Spacer(modifier = Modifier.height(300.dp))
             }
         }
     }
