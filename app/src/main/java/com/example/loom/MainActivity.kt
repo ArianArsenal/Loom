@@ -25,7 +25,6 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // FIX: Forces the system bars to be fully transparent so our Top Bar colors flow to the absolute edge
         enableEdgeToEdge(
             statusBarStyle = SystemBarStyle.auto(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT),
             navigationBarStyle = SystemBarStyle.auto(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT)
@@ -60,6 +59,7 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
+                // Only instantiate the global HomeViewModel here
                 val viewModel: HomeViewModel = hiltViewModel()
                 LoomMainScreen(viewModel = viewModel)
             }
