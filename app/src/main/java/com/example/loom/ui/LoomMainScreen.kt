@@ -35,7 +35,7 @@ sealed class BottomNavItem(val route: String, val title: String, val icon: Image
     object Health : BottomNavItem("health", "Health", Icons.Default.Favorite)
     object Calendar : BottomNavItem("calendar", "Calendar", Icons.Default.DateRange)
     object Diary : BottomNavItem("diary", "Diary", Icons.Default.Book)
-    object Sandbox : BottomNavItem("sandbox", "Sandbox", Icons.Default.Dashboard)
+    object Spaces : BottomNavItem("spaces", "Spaces", Icons.Default.Dashboard) // <-- Updated Name and Route
 }
 
 @Composable
@@ -47,7 +47,7 @@ fun LoomMainScreen(viewModel: HomeViewModel) {
         BottomNavItem.Health,
         BottomNavItem.Calendar,
         BottomNavItem.Diary,
-        BottomNavItem.Sandbox
+        BottomNavItem.Spaces // <-- Updated
     )
 
     Scaffold(
@@ -113,8 +113,8 @@ fun LoomMainScreen(viewModel: HomeViewModel) {
                 DiaryScreen(viewModel = viewModel)
             }
 
-            // Sandbox Route
-            composable(BottomNavItem.Sandbox.route) {
+            // Spaces Route
+            composable(BottomNavItem.Spaces.route) { // <-- Updated
                 val context = LocalContext.current
                 val database = remember { AppDatabase.getDatabase(context) }
                 val sandboxViewModel: SandboxViewModel = viewModel(

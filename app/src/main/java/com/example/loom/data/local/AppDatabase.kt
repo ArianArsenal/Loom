@@ -20,7 +20,7 @@ import com.example.loom.data.local.entity.NoteTag
 import com.example.loom.data.local.entity.SkincareProduct
 import com.example.loom.data.local.entity.SkincareRoutine
 import com.example.loom.data.local.entity.FoodItem
-import com.example.loom.data.local.entity.NotionSpaceEntity // <-- Added new entity
+import com.example.loom.data.local.entity.NotionSpaceEntity
 
 @Database(
     entities = [
@@ -29,12 +29,12 @@ import com.example.loom.data.local.entity.NotionSpaceEntity // <-- Added new ent
         DiaryNote::class, NoteTag::class,
         SkincareProduct::class, SkincareRoutine::class,
         FoodItem::class,
-        NotionSpaceEntity::class // <-- Replaced the old schema/item entities
+        NotionSpaceEntity::class
     ],
-    version = 20, // <-- BUMPED TO 20
+    version = 22, // <-- BUMPED TO 22
     exportSchema = false
 )
-@TypeConverters(Converters::class) // <-- Removed SandboxConverters, no longer needed
+@TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract val trackerDao: TrackerDao
     abstract val sandboxDao: SandboxDao
@@ -86,7 +86,6 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
-        // NEW MIGRATION: Drops the old Sandbox tables and creates the Notion table
         private val MIGRATION_19_20 = object : Migration(19, 20) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("DROP TABLE IF EXISTS `space_schemas`")
@@ -101,6 +100,22 @@ abstract class AppDatabase : RoomDatabase() {
                         PRIMARY KEY(`id`)
                     )
                 """.trimIndent())
+            }
+        }
+
+        private val MIGRATION_20_21 = object : Migration(20, 21) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `notion_spaces` ADD COLUMN `bannerUrl` TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE `notion_spaces` ADD COLUMN `updatedAt` INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
+        // NEW MIGRATION: Adds Pinning and Tagging
+        private val MIGRATION_21_22 = object : Migration(21, 22) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // In SQLite, Booleans are stored as INTEGER (0 = false, 1 = true)
+                db.execSQL("ALTER TABLE `notion_spaces` ADD COLUMN `isPinned` INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE `notion_spaces` ADD COLUMN `tagsJson` TEXT NOT NULL DEFAULT '[]'")
             }
         }
 
@@ -141,7 +156,9 @@ abstract class AppDatabase : RoomDatabase() {
                         MIGRATION_16_17,
                         MIGRATION_17_18,
                         MIGRATION_18_19,
-                        MIGRATION_19_20 // <-- Added new migration here
+                        MIGRATION_19_20,
+                        MIGRATION_20_21,
+                        MIGRATION_21_22 // <-- Added new migration here
                     )
                     .fallbackToDestructiveMigration()
                     .build().also { INSTANCE = it }
