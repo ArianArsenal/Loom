@@ -24,7 +24,7 @@ data class CalendarEvent(
     var title: String = "",
     var type: String = "Task",
     var details: String = "",
-    var checklist: List<CalendarChecklistItem> = emptyList(),
+    var checklist: List<CalendarChecklistItem> = emptyList(), // <-- MUST BE CalendarChecklistItem
     var imageUrl: String = "",
     var frequency: String = "Once"
 )
@@ -35,7 +35,7 @@ data class KanbanCard(
     var text: String = "",
     var description: String = "",
     var priority: Int = 1,
-    var subtasks: List<CalendarChecklistItem> = emptyList(),
+    var subtasks: List<CalendarChecklistItem> = emptyList(), // <-- MUST BE CalendarChecklistItem
     var tags: List<String> = emptyList()
 )
 
