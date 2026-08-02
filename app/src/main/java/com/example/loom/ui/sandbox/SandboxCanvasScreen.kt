@@ -81,123 +81,109 @@ fun NotionCanvasScreen(
     var showBannerPicker by remember { mutableStateOf(false) }
     val imeBottomPadding = WindowInsets.ime.asPaddingValues().calculateBottomPadding()
 
-    LaunchedEffect(title, spaceIcon, bannerUrl, blocks.toList()) {
-        if (title != space.title || spaceIcon != space.icon || bannerUrl != space.bannerUrl || cleanBlocksForDB(blocks.toList()) != space.blocks) {
-            onSave(space.copy(title = title, icon = spaceIcon, bannerUrl = bannerUrl, updatedAt = System.currentTimeMillis(), blocks = cleanBlocksForDB(blocks.toList())))
+    // FIX: Optimized save trigger to prevent layout stutters
+    val currentBlocks = blocks.toList()
+    LaunchedEffect(title, spaceIcon, bannerUrl, currentBlocks) {
+        if (title != space.title || spaceIcon != space.icon || bannerUrl != space.bannerUrl || cleanBlocksForDB(currentBlocks) != space.blocks) {
+            onSave(space.copy(title = title, icon = spaceIcon, bannerUrl = bannerUrl, updatedAt = System.currentTimeMillis(), blocks = cleanBlocksForDB(currentBlocks)))
         }
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {},
-                navigationIcon = {
-                    IconButton(
-                        onClick = onBack,
-                        modifier = if (bannerUrl.isNotEmpty()) Modifier.padding(start = 8.dp).background(Color.Black.copy(alpha=0.3f), CircleShape).size(36.dp) else Modifier
-                    ) {
-                        Icon(Icons.Default.ArrowBack, "Back", tint = if (bannerUrl.isNotEmpty()) Color.White else MaterialTheme.colorScheme.onBackground)
+    // FIX: Removed Scaffold entirely to prevent invisible TopAppBar touch interception
+    Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+        Column(modifier = Modifier.fillMaxSize().verticalScroll(canvasScrollState)) {
+            Box(modifier = Modifier.fillMaxWidth()) {
+                if (bannerUrl.isNotEmpty()) {
+                    val bannerColor = try { Color(android.graphics.Color.parseColor(bannerUrl)) } catch(e:Exception){ Color.LightGray }
+                    Box(modifier = Modifier.fillMaxWidth().height(220.dp).background(bannerColor)) {
+                        IconButton(
+                            onClick = { showBannerPicker = true },
+                            modifier = Modifier.align(Alignment.TopEnd).padding(top = 16.dp, end = 16.dp).background(Color.Black.copy(alpha=0.3f), RoundedCornerShape(8.dp)).height(32.dp).width(100.dp)
+                        ) { Row(verticalAlignment = Alignment.CenterVertically){ Icon(Icons.Default.Palette, null, tint=Color.White, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(4.dp)); Text("Change", color=Color.White, fontSize=12.sp) } }
                     }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
-            )
-        }
-    ) { padding ->
-        Column(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-            Column(modifier = Modifier.fillMaxSize().verticalScroll(canvasScrollState)) {
+                }
 
-                Box(modifier = Modifier.fillMaxWidth()) {
-                    if (bannerUrl.isNotEmpty()) {
-                        val bannerColor = try { Color(android.graphics.Color.parseColor(bannerUrl)) } catch(e:Exception){ Color.LightGray }
-                        Box(modifier = Modifier.fillMaxWidth().height(220.dp).background(bannerColor)) {
-                            IconButton(
-                                onClick = { showBannerPicker = true },
-                                modifier = Modifier.align(Alignment.TopEnd).padding(top = padding.calculateTopPadding() + 8.dp, end = 16.dp).background(Color.Black.copy(alpha=0.3f), RoundedCornerShape(8.dp)).height(32.dp).width(100.dp)
-                            ) { Row(verticalAlignment = Alignment.CenterVertically){ Icon(Icons.Default.Palette, null, tint=Color.White, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(4.dp)); Text("Change", color=Color.White, fontSize=12.sp) } }
-                        }
-                    }
-
-                    Column(
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = if (bannerUrl.isNotEmpty()) 180.dp else 72.dp) // Pushed below floating back button safely
+                        .padding(horizontal = 24.dp)
+                ) {
+                    Box(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = if (bannerUrl.isNotEmpty()) 180.dp else padding.calculateTopPadding() + 16.dp)
-                            .padding(horizontal = 24.dp)
+                            .size(88.dp)
+                            .background(MaterialTheme.colorScheme.background, RoundedCornerShape(24.dp))
+                            .border(4.dp, MaterialTheme.colorScheme.background, RoundedCornerShape(24.dp))
+                            .shadow(if (bannerUrl.isNotEmpty()) 8.dp else 0.dp, RoundedCornerShape(24.dp), spotColor = Color.Black.copy(alpha = 0.1f)),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .size(88.dp)
-                                .background(MaterialTheme.colorScheme.background, RoundedCornerShape(24.dp))
-                                .border(4.dp, MaterialTheme.colorScheme.background, RoundedCornerShape(24.dp))
-                                .shadow(if (bannerUrl.isNotEmpty()) 8.dp else 0.dp, RoundedCornerShape(24.dp), spotColor = Color.Black.copy(alpha = 0.1f)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            BasicTextField(
-                                value = spaceIcon,
-                                onValueChange = { text ->
-                                    val clean = text.replace("\n", "").trim()
-                                    if (clean.isEmpty()) {
-                                        spaceIcon = ""
-                                    } else if (clean.length > spaceIcon.length) {
-                                        spaceIcon = clean.removePrefix(spaceIcon).trim().take(4)
-                                    } else {
-                                        spaceIcon = clean.take(4)
-                                    }
-                                },
-                                textStyle = TextStyle(fontSize = 48.sp, textAlign = TextAlign.Center),
-                                modifier = Modifier.fillMaxWidth(),
-                                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                                decorationBox = { inner ->
-                                    Box(contentAlignment = Alignment.Center) {
-                                        if (spaceIcon.isEmpty()) Text("📄", fontSize = 48.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
-                                        inner()
-                                    }
-                                }
-                            )
-                        }
-
-                        Spacer(Modifier.height(16.dp))
-
-                        if (bannerUrl.isEmpty()) {
-                            TextButton(
-                                onClick = { showBannerPicker = true },
-                                contentPadding = PaddingValues(0.dp),
-                                modifier = Modifier.height(32.dp).padding(bottom = 8.dp)
-                            ) {
-                                Icon(Icons.Default.Palette, null, tint = Color.Gray, modifier = Modifier.size(18.dp))
-                                Spacer(Modifier.width(4.dp))
-                                Text("Add Cover", color = Color.Gray, fontSize = 14.sp)
-                            }
-                        }
-
                         BasicTextField(
-                            value = title,
-                            onValueChange = { title = it },
-                            textStyle = MaterialTheme.typography.headlineLarge.copy(fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onBackground, fontSize = 42.sp, letterSpacing = (-1).sp),
-                            modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
-                            decorationBox = { innerTextField ->
-                                Box {
-                                    if (title.isEmpty()) Text("Untitled", style = MaterialTheme.typography.headlineLarge.copy(color = Color.LightGray, fontSize = 42.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = (-1).sp))
-                                    innerTextField()
+                            value = spaceIcon,
+                            onValueChange = { text ->
+                                val clean = text.replace("\n", "").trim()
+                                if (clean.isEmpty()) {
+                                    spaceIcon = ""
+                                } else if (clean.length > spaceIcon.length) {
+                                    spaceIcon = clean.removePrefix(spaceIcon).trim().take(4)
+                                } else {
+                                    spaceIcon = clean.take(4)
                                 }
                             },
-                            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary)
-                        )
-
-                        HorizontalDivider(
-                            modifier = Modifier.padding(bottom = 24.dp),
-                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-                        )
-
-                        blocks.forEachIndexed { index, block ->
-                            val currentNumberedIndex = if (block.type == BlockType.NUMBER) {
-                                var count = 1
-                                for (i in index - 1 downTo 0) {
-                                    if (blocks[i].type == BlockType.NUMBER) count++ else break
+                            textStyle = TextStyle(fontSize = 48.sp, textAlign = TextAlign.Center),
+                            modifier = Modifier.fillMaxWidth(),
+                            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                            decorationBox = { inner ->
+                                Box(contentAlignment = Alignment.Center) {
+                                    if (spaceIcon.isEmpty()) Text("📄", fontSize = 48.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
+                                    inner()
                                 }
-                                count
-                            } else 1
+                            }
+                        )
+                    }
 
-                            // NEW: Wrap in a Box to track the block's Y position for TOC scrolling
+                    Spacer(Modifier.height(16.dp))
+
+                    if (bannerUrl.isEmpty()) {
+                        TextButton(
+                            onClick = { showBannerPicker = true },
+                            contentPadding = PaddingValues(0.dp),
+                            modifier = Modifier.height(32.dp).padding(bottom = 8.dp)
+                        ) {
+                            Icon(Icons.Default.Palette, null, tint = Color.Gray, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("Add Cover", color = Color.Gray, fontSize = 14.sp)
+                        }
+                    }
+
+                    BasicTextField(
+                        value = title,
+                        onValueChange = { title = it },
+                        textStyle = MaterialTheme.typography.headlineLarge.copy(fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onBackground, fontSize = 42.sp, letterSpacing = (-1).sp),
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                        decorationBox = { innerTextField ->
+                            Box {
+                                if (title.isEmpty()) Text("Untitled", style = MaterialTheme.typography.headlineLarge.copy(color = Color.LightGray, fontSize = 42.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = (-1).sp))
+                                innerTextField()
+                            }
+                        },
+                        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary)
+                    )
+
+                    HorizontalDivider(
+                        modifier = Modifier.padding(bottom = 24.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                    )
+
+                    blocks.forEachIndexed { index, block ->
+                        val currentNumberedIndex = if (block.type == BlockType.NUMBER) {
+                            var count = 1
+                            for (i in index - 1 downTo 0) {
+                                if (blocks[i].type == BlockType.NUMBER) count++ else break
+                            }
+                            count
+                        } else 1
+
+                        key(block.id) {
                             Box(modifier = Modifier.onGloballyPositioned { coords ->
                                 blockPositions[block.id] = coords.positionInParent().y
                             }) {
@@ -209,20 +195,23 @@ fun NotionCanvasScreen(
                                     recentTableColors = recentTableColors,
                                     focusRequesters = focusRequesters,
                                     focusTargetId = focusedBlockId,
-                                    allBlocks = blocks, // NEW: Pass all blocks for TOC
-                                    onScrollToBlock = { targetId -> // NEW: Scroll logic for TOC
+                                    allBlocks = blocks,
+                                    onScrollToBlock = { targetId ->
                                         scope.launch {
                                             blockPositions[targetId]?.let { yPos ->
                                                 canvasScrollState.animateScrollTo(yPos.toInt())
                                             }
                                         }
                                     },
-                                    onMove = { offset -> // NEW: Drag & Drop swap logic
-                                        val newIndex = index + offset
-                                        if (newIndex in 0 until blocks.size) {
-                                            val temp = blocks[index]
-                                            blocks[index] = blocks[newIndex]
-                                            blocks[newIndex] = temp
+                                    onMove = { offset ->
+                                        val currentIndex = blocks.indexOfFirst { it.id == block.id }
+                                        if (currentIndex != -1) {
+                                            val newIndex = currentIndex + offset
+                                            if (newIndex in 0 until blocks.size) {
+                                                val temp = blocks[currentIndex]
+                                                blocks[currentIndex] = blocks[newIndex]
+                                                blocks[newIndex] = temp
+                                            }
                                         }
                                     },
                                     onFocusRequest = { focusedBlockId = it },
@@ -277,27 +266,35 @@ fun NotionCanvasScreen(
                                     }
                                 )
                             }
-                            Spacer(modifier = Modifier.height(4.dp))
                         }
+                        Spacer(modifier = Modifier.height(4.dp))
                     }
                 }
-
-                Spacer(
-                    modifier = Modifier.fillMaxWidth().height(300.dp + imeBottomPadding).pointerInput(Unit) {
-                        detectTapGestures(onTap = {
-                            focusManager.clearFocus()
-                            val lastBlock = blocks.lastOrNull()
-                            if (lastBlock != null && lastBlock.type == BlockType.TEXT && lastBlock.content == ZWSP) {
-                                focusedBlockId = lastBlock.id
-                            } else {
-                                val newBlockId = UUID.randomUUID().toString()
-                                blocks.add(SandboxBlock(id = newBlockId, type = BlockType.TEXT, content = ZWSP))
-                                focusedBlockId = newBlockId
-                            }
-                        })
-                    }
-                )
             }
+
+            Spacer(
+                modifier = Modifier.fillMaxWidth().height(300.dp + imeBottomPadding).pointerInput(Unit) {
+                    detectTapGestures(onTap = {
+                        focusManager.clearFocus()
+                        val lastBlock = blocks.lastOrNull()
+                        if (lastBlock != null && lastBlock.type == BlockType.TEXT && lastBlock.content == ZWSP) {
+                            focusedBlockId = lastBlock.id
+                        } else {
+                            val newBlockId = UUID.randomUUID().toString()
+                            blocks.add(SandboxBlock(id = newBlockId, type = BlockType.TEXT, content = ZWSP))
+                            focusedBlockId = newBlockId
+                        }
+                    })
+                }
+            )
+        }
+
+        // FIX: Floating back button avoids touch interception
+        IconButton(
+            onClick = onBack,
+            modifier = Modifier.padding(top = 16.dp, start = 16.dp).background(if (bannerUrl.isNotEmpty()) Color.Black.copy(alpha=0.3f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha=0.5f), CircleShape).size(40.dp)
+        ) {
+            Icon(Icons.Default.ArrowBack, "Back", tint = if (bannerUrl.isNotEmpty()) Color.White else MaterialTheme.colorScheme.onSurface)
         }
     }
 

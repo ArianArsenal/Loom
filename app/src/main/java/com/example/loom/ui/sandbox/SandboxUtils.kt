@@ -20,21 +20,12 @@ import com.example.loom.data.models.TextFormatSpan
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.net.HttpURLConnection
+import java.net.URL
+import android.util.Log
 const val ZWSP = "\u200B"
-
-//val BANNER_OPTIONS = listOf(
-//    "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=800&q=80",
-//    "https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&w=800&q=80",
-//    "https://images.unsplash.com/photo-1445905595283-214159428aa9?auto=format&fit=crop&w=800&q=80",
-//    "https://images.unsplash.com/photo-1534088568595-a066f410cbda?auto=format&fit=crop&w=800&q=80",
-//    "https://images.unsplash.com/photo-1503803548695-c2a7b4a5b875?auto=format&fit=crop&w=800&q=80",
-//    "https://images.unsplash.com/photo-1419242902214-272b3f66ee7a?auto=format&fit=crop&w=800&q=80",
-//    "https://images.unsplash.com/photo-1534447677768-be436bb09401?auto=format&fit=crop&w=800&q=80",
-//    "https://images.unsplash.com/photo-1436891620584-47fd0e565afb?auto=format&fit=crop&w=800&q=80",
-//    "https://images.unsplash.com/photo-1490730141103-6cac27aaab94?auto=format&fit=crop&w=800&q=80",
-//    "https://images.unsplash.com/photo-1483728642387-6c3bdd6c93e5?auto=format&fit=crop&w=800&q=80"
-//)
 
 @Serializable
 data class TableCellData(val text: String = "", val colorHex: String? = null, val isDeleted: Boolean = false)
@@ -135,5 +126,74 @@ fun prepareBlocksForUI(blocks: List<SandboxBlock>): List<SandboxBlock> {
 fun cleanBlocksForDB(blocks: List<SandboxBlock>): List<SandboxBlock> {
     return blocks.map {
         it.copy(content = it.content.replace(ZWSP, ""), children = cleanBlocksForDB(it.children))
+    }
+}
+
+data class LinkMetadata(val title: String, val description: String, val imageUrl: String)
+
+suspend fun fetchUrlMetadata(urlString: String): LinkMetadata? = withContext(Dispatchers.IO) {
+    try {
+        var url = URL(urlString)
+        var connection = url.openConnection() as HttpURLConnection
+
+        // 1. Pretend to be a real browser to bypass basic bot-blockers
+        connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+        connection.setRequestProperty("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8")
+        connection.connectTimeout = 5000
+        connection.readTimeout = 5000
+        connection.instanceFollowRedirects = true
+
+        var responseCode = connection.responseCode
+
+        // 2. Manually follow redirect if the server requires it
+        if (responseCode in 300..399) {
+            val redirectUrl = connection.getHeaderField("Location")
+            if (redirectUrl != null) {
+                url = URL(redirectUrl)
+                connection = url.openConnection() as HttpURLConnection
+                connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                responseCode = connection.responseCode
+            }
+        }
+
+        if (responseCode != HttpURLConnection.HTTP_OK) {
+            Log.e("LinkMetadata", "Failed to fetch: HTTP $responseCode")
+            return@withContext null
+        }
+
+        // 3. Read only the first 30,000 characters (Metadata is always in the top <head> section)
+        val html = connection.inputStream.bufferedReader().use {
+            val chars = CharArray(30000)
+            val read = it.read(chars)
+            if (read > 0) String(chars, 0, read) else ""
+        }
+
+        // 4. Robust Regex to catch multiple meta tag formats and Twitter tags
+        fun extractMetaTag(vararg names: String): String? {
+            for (name in names) {
+                val regex1 = """<meta[^>]+(?:property|name)=["']$name["'][^>]+content=["']([^"']+)["']""".toRegex(RegexOption.IGNORE_CASE)
+                val regex2 = """<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["']$name["']""".toRegex(RegexOption.IGNORE_CASE)
+                regex1.find(html)?.groupValues?.get(1)?.let { return it }
+                regex2.find(html)?.groupValues?.get(1)?.let { return it }
+            }
+            return null
+        }
+
+        val titleFallback = """<title>(.*?)</title>""".toRegex(RegexOption.IGNORE_CASE).find(html)?.groupValues?.get(1)
+
+        val rawTitle = extractMetaTag("og:title", "twitter:title") ?: titleFallback ?: ""
+        val rawDesc = extractMetaTag("og:description", "twitter:description", "description") ?: ""
+        val rawImg = extractMetaTag("og:image", "twitter:image") ?: ""
+
+        fun decodeHtml(text: String) = text
+            .replace("&amp;", "&")
+            .replace("&#39;", "'")
+            .replace("&quot;", "\"")
+            .replace("&#x27;", "'")
+
+        LinkMetadata(title = decodeHtml(rawTitle), description = decodeHtml(rawDesc), imageUrl = rawImg)
+    } catch (e: Exception) {
+        Log.e("LinkMetadata", "Error fetching metadata: ${e.message}")
+        null
     }
 }
