@@ -12,6 +12,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Search
@@ -20,12 +21,15 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.loom.data.models.SandboxBlock
 import com.example.loom.data.models.SandboxSpace
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -35,6 +39,8 @@ fun SandboxHubScreen(
     onNavigateToSpace: (String) -> Unit
 ) {
     var editingTagsForSpace by remember { mutableStateOf<SandboxSpace?>(null) }
+    var showCreateDialog by remember { mutableStateOf(false) } // NEW: Controls the Template Chooser
+    val context = LocalContext.current
 
     Scaffold(
         topBar = {
@@ -45,11 +51,7 @@ fun SandboxHubScreen(
         },
         floatingActionButton = {
             FloatingActionButton(
-                onClick = {
-                    val newSpace = SandboxSpace(title = "", blocks = listOf(SandboxBlock(content = ZWSP)))
-                    viewModel.saveSpace(newSpace)
-                    onNavigateToSpace(newSpace.id)
-                },
+                onClick = { showCreateDialog = true }, // TRIGGER TEMPLATE CHOOSER INSTEAD OF BLANK SPACE
                 containerColor = MaterialTheme.colorScheme.primary,
                 shape = RoundedCornerShape(16.dp)
             ) { Icon(Icons.Default.Add, "New", tint = MaterialTheme.colorScheme.onPrimary) }
@@ -157,7 +159,7 @@ fun SandboxHubScreen(
                                         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
                                         modifier = Modifier.size(56.dp)
                                     ) {
-                                        Box(contentAlignment = Alignment.Center) { Text(space.icon, fontSize = 28.sp) }
+                                        Box(contentAlignment = Alignment.Center) { Text(space.icon.ifEmpty { "📄" }, fontSize = 28.sp) }
                                     }
                                     Spacer(modifier = Modifier.width(16.dp))
 
@@ -165,6 +167,11 @@ fun SandboxHubScreen(
                                         Row(verticalAlignment = Alignment.CenterVertically) {
                                             if (space.isPinned) {
                                                 Icon(Icons.Default.PushPin, "Pinned", modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
+                                                Spacer(Modifier.width(4.dp))
+                                            }
+                                            // NEW: LOCK ICON INDICATOR
+                                            if (space.isPrivate) {
+                                                Icon(Icons.Default.Lock, "Private", modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.error)
                                                 Spacer(Modifier.width(4.dp))
                                             }
                                             Text(space.title.ifBlank { "Untitled Space" }, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -228,6 +235,70 @@ fun SandboxHubScreen(
                     viewModel.saveSpace(editingTagsForSpace!!.copy(tags = updatedTags, updatedAt = System.currentTimeMillis()))
                     editingTagsForSpace = null
                 }
+            )
+        }
+
+        // NEW: TEMPLATE CHOOSER DIALOG
+        if (showCreateDialog) {
+            val appTemplates = com.example.loom.utils.TemplateManager.appTemplates
+            val userTemplates = remember { com.example.loom.utils.TemplateManager.getCustomTemplates(context) }
+            val gson = remember { Gson() }
+
+            AlertDialog(
+                onDismissRequest = { showCreateDialog = false },
+                title = { Text("Choose a Template", fontWeight = FontWeight.Bold, fontSize = 22.sp) },
+                text = {
+                    LazyColumn(modifier = Modifier.fillMaxWidth()) {
+                        item { Text("App Layouts", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 8.dp, top = 8.dp)) }
+                        items(appTemplates) { template ->
+                            ListItem(
+                                headlineContent = { Text(template.name, fontWeight = FontWeight.SemiBold) },
+                                leadingContent = { Text(template.icon, fontSize = 24.sp) },
+                                modifier = Modifier.clickable {
+                                    val type = object : TypeToken<List<SandboxBlock>>() {}.type
+                                    val initialBlocks: List<SandboxBlock> = try {
+                                        gson.fromJson(template.blocksJson, type) ?: listOf(SandboxBlock(content = ZWSP))
+                                    } catch(e: Exception) { listOf(SandboxBlock(content = ZWSP)) }
+
+                                    val newSpace = SandboxSpace(
+                                        title = if (template.id == "empty") "" else template.name,
+                                        icon = if (template.id == "empty") "📄" else template.icon,
+                                        blocks = initialBlocks
+                                    )
+                                    viewModel.saveSpace(newSpace)
+                                    onNavigateToSpace(newSpace.id)
+                                    showCreateDialog = false
+                                }
+                            )
+                        }
+
+                        if (userTemplates.isNotEmpty()) {
+                            item { Text("Your Layouts", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 8.dp, top = 16.dp)) }
+                            items(userTemplates) { template ->
+                                ListItem(
+                                    headlineContent = { Text(template.name, fontWeight = FontWeight.SemiBold) },
+                                    leadingContent = { Text(template.icon, fontSize = 24.sp) },
+                                    modifier = Modifier.clickable {
+                                        val type = object : TypeToken<List<SandboxBlock>>() {}.type
+                                        val initialBlocks: List<SandboxBlock> = try {
+                                            gson.fromJson(template.blocksJson, type) ?: listOf(SandboxBlock(content = ZWSP))
+                                        } catch(e: Exception) { listOf(SandboxBlock(content = ZWSP)) }
+
+                                        val newSpace = SandboxSpace(
+                                            title = template.name,
+                                            icon = template.icon,
+                                            blocks = initialBlocks
+                                        )
+                                        viewModel.saveSpace(newSpace)
+                                        onNavigateToSpace(newSpace.id)
+                                        showCreateDialog = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                },
+                confirmButton = { TextButton(onClick = { showCreateDialog = false }) { Text("Cancel") } }
             )
         }
     }

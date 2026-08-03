@@ -8,7 +8,7 @@ enum class BlockType {
     TEXT, HEADING, HEADING_2, HEADING_3, HEADING_4, BULLET, NUMBER, TODO, TOGGLE, CALLOUT, QUOTE, TABLE, DIVIDER, CALENDAR,
     IMAGE, AUDIO, FILE, CODE, SPACE, LINK,
     SKETCH, KANBAN, VIDEO, PROGRESS, MATH,
-    TOC // NEW: Table of Contents Block
+    TOC, CHART, TIMER // NEW: Table of Contents Block
 }
 
 @Serializable
@@ -94,5 +94,6 @@ data class SandboxSpace(
     var isPinned: Boolean = false,
     var tags: List<String> = emptyList(),
     var updatedAt: Long = System.currentTimeMillis(),
-    var blocks: List<SandboxBlock> = listOf(SandboxBlock(content = "\u200B"))
+    var blocks: List<SandboxBlock> = listOf(SandboxBlock(content = "\u200B")),
+    var isPrivate: Boolean = false
 )

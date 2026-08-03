@@ -1,5 +1,13 @@
 package com.example.loom.ui.sandbox
 
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Fullscreen
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.ui.graphics.asImageBitmap
+import kotlinx.coroutines.withContext
+import androidx.compose.ui.graphics.nativeCanvas
 import android.content.Intent
 import android.media.MediaPlayer
 import android.net.Uri
@@ -139,20 +147,30 @@ fun BlockRenderer(
     }
 
     val mediaLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        uri?.let { onUpdate(currentBlock.copy(url = it.toString())) }
+        uri?.let {
+            // Copy it to internal storage, then save the new local URL!
+            val localUrl = copyMediaToLocal(context, it)
+            if (localUrl != null) onUpdate(currentBlock.copy(url = localUrl))
+        }
     }
 
     val videoLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        uri?.let { onUpdate(currentBlock.copy(url = it.toString())) }
+        uri?.let {
+            val localUrl = copyMediaToLocal(context, it)
+            if (localUrl != null) onUpdate(currentBlock.copy(url = localUrl))
+        }
     }
 
     var pendingCalendarDate by remember { mutableStateOf<String?>(null) }
     val calendarImageLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         uri?.let {
-            pendingCalendarDate?.let { dateStr ->
-                val eventsForDay = currentBlock.calendarEvents[dateStr] ?: emptyList()
-                val newEvents = eventsForDay.toMutableList().apply { add(CalendarEvent(type = "Image", imageUrl = it.toString())) }
-                onUpdate(currentBlock.copy(calendarEvents = currentBlock.calendarEvents + (dateStr to newEvents)))
+            val localUrl = copyMediaToLocal(context, it)
+            if (localUrl != null) {
+                pendingCalendarDate?.let { dateStr ->
+                    val eventsForDay = currentBlock.calendarEvents[dateStr] ?: emptyList()
+                    val newEvents = eventsForDay.toMutableList().apply { add(CalendarEvent(type = "Image", imageUrl = localUrl)) }
+                    onUpdate(currentBlock.copy(calendarEvents = currentBlock.calendarEvents + (dateStr to newEvents)))
+                }
             }
         }
     }
@@ -777,6 +795,199 @@ fun BlockRenderer(
                             }
                         }
                     }
+                    BlockType.CHART -> {
+                        var chartType by remember { mutableStateOf(block.secondaryContent.ifEmpty { "BAR" }) }
+
+                        val rawText = textState.text.replace(ZWSP, "")
+                        val chartData = rawText.lines().mapNotNull { line ->
+                            val parts = line.split(":", ",").map { it.trim() }
+                            if (parts.size >= 2) {
+                                val value = parts[1].toFloatOrNull()
+                                if (value != null) parts[0] to value else null
+                            } else null
+                        }
+
+                        Column(modifier = Modifier.fillMaxWidth().border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp)).padding(12.dp)) {
+                            // Header & Controls
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                Row(modifier = Modifier.background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp))) {
+                                    listOf("BAR" to "📊", "LINE" to "📈", "PIE" to "🥧").forEach { (type, icon) ->
+                                        val isSelected = chartType == type
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent)
+                                                .clickable {
+                                                    chartType = type
+                                                    onUpdate(currentBlock.copy(secondaryContent = type))
+                                                }
+                                                .padding(horizontal = 12.dp, vertical = 6.dp)
+                                        ) {
+                                            Text(icon, fontSize = 16.sp)
+                                        }
+                                    }
+                                }
+                                IconButton(onClick = { showBlockMenu = true }, modifier = Modifier.size(24.dp)) { Icon(Icons.Default.MoreVert, "Options", tint = Color.Gray) }
+                            }
+
+                            DropdownMenu(expanded = showBlockMenu, onDismissRequest = { showBlockMenu = false }) {
+                                DropdownMenuItem(text = { Text("Delete Chart", color = MaterialTheme.colorScheme.error) }, onClick = { onDeleteBlock("", true) })
+                            }
+
+                            Spacer(modifier = Modifier.height(16.dp))
+
+                            val primaryColor = MaterialTheme.colorScheme.primary
+                            // Multi-color palette for all charts
+                            val chartColors = listOf(primaryColor, Color(0xFF8BC34A), Color(0xFFFF9800), Color(0xFF03A9F4), Color(0xFFE91E63), Color(0xFF9C27B0))
+                            val textColor = MaterialTheme.colorScheme.onBackground.toArgb()
+
+                            // Chart Visualization Area
+                            Box(modifier = Modifier.fillMaxWidth().height(240.dp).background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha=0.2f), RoundedCornerShape(8.dp)), contentAlignment = Alignment.Center) {
+                                if (chartData.isEmpty()) {
+                                    Text("Add data below to see the chart", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
+                                } else {
+                                    Canvas(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+                                        val maxValue = chartData.maxOf { it.second }.coerceAtLeast(1f)
+
+                                        val labelPaint = android.graphics.Paint().apply {
+                                            textSize = 32f
+                                            textAlign = android.graphics.Paint.Align.CENTER
+                                            color = textColor
+                                        }
+
+                                        when (chartType) {
+                                            "BAR" -> {
+                                                val barWidth = (size.width / (chartData.size * 2f)).coerceAtMost(120f)
+                                                chartData.forEachIndexed { index, dataPoint ->
+                                                    val barHeight = (dataPoint.second / maxValue) * (size.height - 80f)
+                                                    val xOffset = (index * (size.width / chartData.size)) + ((size.width / chartData.size) / 2f)
+
+                                                    drawRoundRect(
+                                                        color = chartColors[index % chartColors.size],
+                                                        topLeft = Offset(xOffset - (barWidth / 2f), size.height - 40f - barHeight),
+                                                        size = androidx.compose.ui.geometry.Size(barWidth, barHeight),
+                                                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(4.dp.toPx())
+                                                    )
+
+                                                    // Item Label under the bar
+                                                    drawContext.canvas.nativeCanvas.drawText(
+                                                        dataPoint.first,
+                                                        xOffset,
+                                                        size.height - 10f,
+                                                        labelPaint
+                                                    )
+                                                    // Count Value on top of the bar
+                                                    drawContext.canvas.nativeCanvas.drawText(
+                                                        if (dataPoint.second % 1 == 0f) dataPoint.second.toInt().toString() else dataPoint.second.toString(),
+                                                        xOffset,
+                                                        size.height - 50f - barHeight,
+                                                        labelPaint
+                                                    )
+                                                }
+                                            }
+                                            "LINE" -> {
+                                                val xStep = size.width / (chartData.size - 1).coerceAtLeast(1)
+                                                val path = Path()
+                                                chartData.forEachIndexed { index, dataPoint ->
+                                                    val x = if (chartData.size == 1) size.width / 2f else index * xStep
+                                                    val y = size.height - 40f - ((dataPoint.second / maxValue) * (size.height - 80f))
+                                                    if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
+                                                    drawCircle(color = chartColors[index % chartColors.size], radius = 8.dp.toPx(), center = Offset(x, y))
+
+                                                    // Item Label
+                                                    drawContext.canvas.nativeCanvas.drawText(dataPoint.first, x, size.height - 10f, labelPaint)
+                                                    // Count Value
+                                                    drawContext.canvas.nativeCanvas.drawText(if (dataPoint.second % 1 == 0f) dataPoint.second.toInt().toString() else dataPoint.second.toString(), x, y - 20f, labelPaint)
+                                                }
+                                                if (chartData.size > 1) {
+                                                    drawPath(path, color = primaryColor, style = Stroke(width = 3.dp.toPx()))
+                                                }
+                                            }
+                                            "PIE" -> {
+                                                val total = chartData.sumOf { it.second.toDouble() }.toFloat()
+                                                var startAngle = -90f
+                                                chartData.forEachIndexed { index, dataPoint ->
+                                                    val sweepAngle = (dataPoint.second / total) * 360f
+                                                    drawArc(
+                                                        color = chartColors[index % chartColors.size],
+                                                        startAngle = startAngle,
+                                                        sweepAngle = sweepAngle,
+                                                        useCenter = true
+                                                    )
+                                                    startAngle += sweepAngle
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // NEW UI: Data Input Field List
+                            Column(modifier = Modifier.fillMaxWidth().padding(top = 16.dp)) {
+                                Text("Data Points", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                                Spacer(Modifier.height(8.dp))
+
+                                chartData.forEachIndexed { index, data ->
+                                    Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        // Visual color indicator linking the UI row to the chart
+                                        Box(modifier = Modifier.size(12.dp).background(chartColors[index % chartColors.size], CircleShape))
+                                        Spacer(Modifier.width(8.dp))
+
+                                        // Label Field
+                                        BasicTextField(
+                                            value = data.first,
+                                            onValueChange = { newName ->
+                                                val newLines = chartData.toMutableList()
+                                                newLines[index] = newName to data.second
+                                                val newText = newLines.joinToString("\n") { "${it.first}: ${if (it.second % 1 == 0f) it.second.toInt() else it.second}" }
+                                                textState = TextFieldValue(ZWSP + newText, TextRange((ZWSP + newText).length))
+                                                onUpdate(currentBlock.copy(content = ZWSP + newText))
+                                            },
+                                            textStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onBackground),
+                                            modifier = Modifier.weight(1f).background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha=0.3f), RoundedCornerShape(4.dp)).padding(8.dp)
+                                        )
+                                        Spacer(Modifier.width(8.dp))
+
+                                        // Number Value Field
+                                        BasicTextField(
+                                            value = if (data.second % 1 == 0f) data.second.toInt().toString() else data.second.toString(),
+                                            onValueChange = { newVal ->
+                                                val parsed = newVal.toFloatOrNull() ?: 0f
+                                                val newLines = chartData.toMutableList()
+                                                newLines[index] = data.first to parsed
+                                                val newText = newLines.joinToString("\n") { "${it.first}: ${if (it.second % 1 == 0f) it.second.toInt() else it.second}" }
+                                                textState = TextFieldValue(ZWSP + newText, TextRange((ZWSP + newText).length))
+                                                onUpdate(currentBlock.copy(content = ZWSP + newText))
+                                            },
+                                            textStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onBackground, textAlign = TextAlign.Center),
+                                            modifier = Modifier.width(60.dp).background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha=0.3f), RoundedCornerShape(4.dp)).padding(8.dp)
+                                        )
+
+                                        // Delete Row Button
+                                        IconButton(onClick = {
+                                            val newLines = chartData.toMutableList().apply { removeAt(index) }
+                                            val newText = newLines.joinToString("\n") { "${it.first}: ${if (it.second % 1 == 0f) it.second.toInt() else it.second}" }
+                                            textState = TextFieldValue(ZWSP + newText, TextRange((ZWSP + newText).length))
+                                            onUpdate(currentBlock.copy(content = ZWSP + newText))
+                                        }, modifier = Modifier.size(24.dp).padding(start = 8.dp)) {
+                                            Icon(Icons.Default.Close, "Remove", tint = Color.Gray, modifier = Modifier.size(16.dp))
+                                        }
+                                    }
+                                }
+
+                                // Add New Item Button
+                                TextButton(onClick = {
+                                    val currentLines = if (rawText.isBlank()) mutableListOf() else chartData.toMutableList()
+                                    currentLines.add("Item ${currentLines.size + 1}" to 10f)
+                                    val newText = currentLines.joinToString("\n") { "${it.first}: ${if (it.second % 1 == 0f) it.second.toInt() else it.second}" }
+                                    textState = TextFieldValue(ZWSP + newText, TextRange((ZWSP + newText).length))
+                                    onUpdate(currentBlock.copy(content = ZWSP + newText))
+                                }, modifier = Modifier.padding(top = 4.dp)) {
+                                    Text("+ Add Data Point", color = Color.Gray)
+                                }
+                            }
+                        }
+                    }
                     BlockType.MATH -> {
                         var showMathSymbols by remember { mutableStateOf(false) }
                         Surface(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha=0.3f), shape = RoundedCornerShape(8.dp), border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant), modifier = Modifier.fillMaxWidth()) {
@@ -1159,6 +1370,51 @@ fun BlockRenderer(
                             )
                         }
                     }
+                    BlockType.TIMER -> {
+                        var isWorkMode by remember { mutableStateOf(true) }
+                        val maxTime = if (isWorkMode) 25 * 60 else 5 * 60
+                        var timeLeft by remember { mutableIntStateOf(maxTime) }
+                        var isRunning by remember { mutableStateOf(false) }
+
+                        LaunchedEffect(isRunning, isWorkMode) {
+                            while (isRunning && timeLeft > 0) {
+                                kotlinx.coroutines.delay(1000)
+                                timeLeft--
+                            }
+                            if (timeLeft == 0) isRunning = false
+                        }
+
+                        Column(modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha=0.3f), RoundedCornerShape(12.dp)).border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(12.dp)).padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                Text("Pomodoro Timer", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                IconButton(onClick = { showBlockMenu = true }, modifier = Modifier.size(24.dp)) { Icon(Icons.Default.MoreVert, "Options", tint = Color.Gray) }
+                            }
+
+                            DropdownMenu(expanded = showBlockMenu, onDismissRequest = { showBlockMenu = false }) {
+                                DropdownMenuItem(text = { Text("Delete Timer", color = MaterialTheme.colorScheme.error) }, onClick = { onDeleteBlock("", true) })
+                            }
+
+                            Spacer(Modifier.height(12.dp))
+
+                            Row(modifier = Modifier.background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(50)).padding(4.dp)) {
+                                TextButton(onClick = { isWorkMode = true; timeLeft = 25 * 60; isRunning = false }, modifier = Modifier.background(if (isWorkMode) MaterialTheme.colorScheme.primary else Color.Transparent, RoundedCornerShape(50))) { Text("Work", color = if (isWorkMode) Color.White else Color.Gray) }
+                                TextButton(onClick = { isWorkMode = false; timeLeft = 5 * 60; isRunning = false }, modifier = Modifier.background(if (!isWorkMode) MaterialTheme.colorScheme.primary else Color.Transparent, RoundedCornerShape(50))) { Text("Break", color = if (!isWorkMode) Color.White else Color.Gray) }
+                            }
+
+                            Spacer(Modifier.height(16.dp))
+
+                            Box(contentAlignment = Alignment.Center, modifier = Modifier.size(120.dp)) {
+                                CircularProgressIndicator(progress = { timeLeft.toFloat() / maxTime.toFloat() }, modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.primary, strokeWidth = 6.dp, trackColor = MaterialTheme.colorScheme.outlineVariant)
+                                Text(String.format("%02d:%02d", timeLeft / 60, timeLeft % 60), fontSize = 32.sp, fontWeight = FontWeight.Bold)
+                            }
+
+                            Spacer(Modifier.height(16.dp))
+
+                            IconButton(onClick = { isRunning = !isRunning }, modifier = Modifier.size(48.dp).background(MaterialTheme.colorScheme.primary, CircleShape)) {
+                                Icon(if (isRunning) Icons.Default.Pause else Icons.Default.PlayArrow, "Play/Pause", tint = Color.White)
+                            }
+                        }
+                    }
                     BlockType.SPACE -> {
                         Column(modifier = Modifier.fillMaxWidth()) {
                             if (block.url.isEmpty()) {
@@ -1284,136 +1540,399 @@ fun BlockRenderer(
                             )
                         }
                     }
-                    BlockType.IMAGE, BlockType.AUDIO, BlockType.FILE -> {
-                        Column(modifier = Modifier.fillMaxWidth()) {
+                    BlockType.IMAGE -> {
+                        Column(modifier = Modifier.fillMaxWidth().border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp)).padding(12.dp)) {
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                Text("Image", fontWeight = FontWeight.Bold)
+                                IconButton(onClick = { showBlockMenu = true }, modifier = Modifier.size(24.dp)) { Icon(Icons.Default.MoreVert, "Options") }
+                            }
+
+                            DropdownMenu(expanded = showBlockMenu, onDismissRequest = { showBlockMenu = false }) {
+                                DropdownMenuItem(text = { Text("Delete", color = MaterialTheme.colorScheme.error) }, onClick = { onDeleteBlock("", true) })
+                            }
+
                             if (block.url.isEmpty()) {
-                                Surface(
-                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                                    shape = RoundedCornerShape(8.dp), modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                                        val iconStr = when (block.type) { BlockType.IMAGE -> "🖼️"; BlockType.AUDIO -> "🎵"; else -> "📁" }
-                                        Text(iconStr, fontSize = 24.sp, modifier = Modifier.padding(end = 16.dp))
-                                        TextButton(onClick = {
-                                            val mimeType = when (block.type) { BlockType.IMAGE -> "image/*"; BlockType.AUDIO -> "audio/*"; else -> "*/*" }
-                                            mediaLauncher.launch(mimeType)
-                                        }) { Text("Select ${block.type.name.lowercase(Locale.ROOT).replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.ROOT) else it.toString() }}") }
-                                        Spacer(Modifier.weight(1f))
-                                        IconButton(onClick = { onDeleteBlock("", true) }) { Icon(Icons.Default.Delete, "Delete", tint = MaterialTheme.colorScheme.error) }
+                                TextButton(onClick = { mediaLauncher.launch("image/*") }) { Text("Select Image") }
+                            } else {
+                                coil.compose.AsyncImage(
+                                    model = block.url,
+                                    contentDescription = null,
+                                    contentScale = ContentScale.FillWidth,
+                                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp).clip(RoundedCornerShape(8.dp))
+                                )
+                            }
+
+                            BasicTextField(
+                                value = textState, onValueChange = handleTextChange, textStyle = MaterialTheme.typography.bodySmall.copy(color = Color.Gray),
+                                modifier = commonModifier.padding(top = 8.dp), cursorBrush = SolidColor(MaterialTheme.colorScheme.primary), decorationBox = placeholderUI
+                            )
+                        }
+                    }
+
+                    BlockType.AUDIO -> {
+                        val fileName = remember(block.url) {
+                            var name = "Audio Recording"
+                            if (block.url.isNotEmpty()) {
+                                try {
+                                    val uri = android.net.Uri.parse(block.url)
+                                    if (block.url.startsWith("content://")) {
+                                        context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                                            val nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                                            if (cursor.moveToFirst() && nameIndex != -1) name = cursor.getString(nameIndex)
+                                        }
+                                    } else name = uri.lastPathSegment ?: "Audio Recording"
+                                } catch (e: Exception) {}
+                            }
+                            name
+                        }
+
+                        // NEW: Extract Album Art Cover Metadata
+                        var albumArt by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
+                        LaunchedEffect(block.url) {
+                            if (block.url.isNotEmpty()) {
+                                withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                    try {
+                                        val mmr = android.media.MediaMetadataRetriever()
+                                        mmr.setDataSource(context, android.net.Uri.parse(block.url))
+                                        val bytes = mmr.embeddedPicture
+                                        if (bytes != null) albumArt = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                                        mmr.release()
+                                    } catch (e: Exception) {}
+                                }
+                            }
+                        }
+
+                        Column(modifier = Modifier.fillMaxWidth().border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp)).padding(12.dp)) {
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                Text("Audio", fontWeight = FontWeight.Bold)
+                                IconButton(onClick = { showBlockMenu = true }, modifier = Modifier.size(24.dp)) { Icon(Icons.Default.MoreVert, "Options") }
+                            }
+
+                            DropdownMenu(expanded = showBlockMenu, onDismissRequest = { showBlockMenu = false }) {
+                                DropdownMenuItem(text = { Text("Delete", color = MaterialTheme.colorScheme.error) }, onClick = { onDeleteBlock("", true) })
+                            }
+
+                            if (block.url.isEmpty()) {
+                                var isRecording by remember { mutableStateOf(false) }
+                                var recorder by remember { mutableStateOf<android.media.MediaRecorder?>(null) }
+                                var recordingFile by remember { mutableStateOf<java.io.File?>(null) }
+
+                                val audioLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
+                                    if (isGranted) {
+                                        try {
+                                            val file = java.io.File(context.filesDir, "audio_${java.util.UUID.randomUUID()}.mp4")
+                                            recordingFile = file
+                                            val newRecorder = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) android.media.MediaRecorder(context) else @Suppress("DEPRECATION") android.media.MediaRecorder()
+                                            newRecorder.setAudioSource(android.media.MediaRecorder.AudioSource.MIC)
+                                            newRecorder.setOutputFormat(android.media.MediaRecorder.OutputFormat.MPEG_4)
+                                            newRecorder.setAudioEncoder(android.media.MediaRecorder.AudioEncoder.AAC)
+                                            newRecorder.setOutputFile(file.absolutePath)
+                                            newRecorder.prepare()
+                                            newRecorder.start()
+                                            recorder = newRecorder
+                                            isRecording = true
+                                        } catch (e: Exception) {}
+                                    }
+                                }
+
+                                Row(modifier = Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+                                    if (isRecording) {
+                                        Button(onClick = {
+                                            try { recorder?.stop(); recorder?.release() } catch(e: Exception){}
+                                            recorder = null
+                                            isRecording = false
+                                            recordingFile?.let { onUpdate(currentBlock.copy(url = android.net.Uri.fromFile(it).toString())) }
+                                        }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) { Text("Stop Recording") }
+                                    } else {
+                                        Button(onClick = { audioLauncher.launch(android.Manifest.permission.RECORD_AUDIO) }) { Text("🎤 Record") }
+                                        Button(onClick = { mediaLauncher.launch("audio/*") }) { Text("Upload") }
                                     }
                                 }
                             } else {
-                                Box(modifier = Modifier.fillMaxWidth().border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp))) {
-                                    if (block.type == BlockType.IMAGE) {
-                                        AsyncImage(
-                                            model = block.url, contentDescription = null,
-                                            modifier = Modifier.fillMaxWidth().heightIn(max = 400.dp).clip(RoundedCornerShape(8.dp)),
+                                var isPlaying by remember { mutableStateOf(false) }
+                                var progress by remember { mutableFloatStateOf(0f) }
+                                var currentPosition by remember { mutableIntStateOf(0) }
+                                var duration by remember { mutableIntStateOf(0) }
+                                var playbackSpeed by remember { mutableFloatStateOf(1f) }
+                                val mediaPlayer = remember { android.media.MediaPlayer() }
+
+                                DisposableEffect(block.url) {
+                                    try {
+                                        mediaPlayer.setDataSource(context, android.net.Uri.parse(block.url))
+                                        mediaPlayer.prepare()
+                                        duration = mediaPlayer.duration
+                                    } catch (e: Exception) {}
+                                    onDispose {
+                                        try {
+                                            if (mediaPlayer.isPlaying) mediaPlayer.stop()
+                                            mediaPlayer.release()
+                                        } catch (e: Exception) {}
+                                    }
+                                }
+
+                                LaunchedEffect(isPlaying) {
+                                    while (isPlaying) {
+                                        try {
+                                            currentPosition = mediaPlayer.currentPosition
+                                            if (duration > 0) progress = currentPosition.toFloat() / duration.toFloat()
+                                        } catch (e: Exception) {}
+                                        kotlinx.coroutines.delay(100)
+                                    }
+                                }
+
+                                Row(modifier = Modifier.fillMaxWidth().padding(top = 12.dp).background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(12.dp)).padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    // Show Album Art if available
+                                    if (albumArt != null) {
+                                        androidx.compose.foundation.Image(
+                                            bitmap = albumArt!!.asImageBitmap(),
+                                            contentDescription = "Cover",
+                                            modifier = Modifier.size(56.dp).clip(RoundedCornerShape(8.dp)),
                                             contentScale = ContentScale.Crop
                                         )
-                                        IconButton(onClick = { onUpdate(currentBlock.copy(url = "")) }, modifier = Modifier.align(Alignment.TopEnd).padding(8.dp).background(Color.Black.copy(alpha=0.5f), CircleShape)) {
-                                            Icon(Icons.Default.Close, "Clear", tint = Color.White)
-                                        }
-                                    } else if (block.type == BlockType.AUDIO) {
-                                        var mediaPlayer by remember { mutableStateOf<MediaPlayer?>(null) }
-                                        var isPlaying by remember { mutableStateOf(false) }
-                                        var progress by remember { mutableFloatStateOf(0f) }
-                                        var duration by remember { mutableIntStateOf(1) }
-                                        var speedMode by remember { mutableIntStateOf(0) }
+                                        Spacer(Modifier.width(12.dp))
+                                    }
 
-                                        DisposableEffect(block.url) {
-                                            val mp = MediaPlayer().apply {
-                                                try {
-                                                    setDataSource(context, Uri.parse(block.url))
-                                                    prepare()
-                                                    duration = this.duration.coerceAtLeast(1)
-                                                    setOnCompletionListener {
-                                                        isPlaying = false
-                                                        seekTo(0)
-                                                        progress = 0f
-                                                    }
-                                                } catch (e: Exception) {}
-                                            }
-                                            mediaPlayer = mp
-                                            onDispose { mp.release() }
-                                        }
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(fileName, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 8.dp))
 
-                                        LaunchedEffect(isPlaying) {
-                                            while (isPlaying) {
-                                                mediaPlayer?.let { progress = it.currentPosition.toFloat() }
-                                                delay(100)
-                                            }
-                                        }
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            IconButton(
+                                                onClick = {
+                                                    try {
+                                                        if (isPlaying) {
+                                                            mediaPlayer.pause()
+                                                            isPlaying = false
+                                                        } else {
+                                                            if (progress >= 1f) mediaPlayer.seekTo(0)
+                                                            mediaPlayer.start()
+                                                            isPlaying = true
+                                                            mediaPlayer.setOnCompletionListener {
+                                                                isPlaying = false
+                                                                progress = 1f
+                                                            }
+                                                        }
+                                                    } catch (e: Exception) { isPlaying = false }
+                                                },
+                                                modifier = Modifier.size(36.dp).background(MaterialTheme.colorScheme.primary, CircleShape)
+                                            ) { Icon(if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, "Play", tint = Color.White, modifier = Modifier.size(20.dp)) }
 
-                                        fun formatTime(ms: Int): String {
-                                            val totalSec = ms / 1000
-                                            return String.format(Locale.ROOT, "%02d:%02d", totalSec / 60, totalSec % 60)
-                                        }
+                                            Spacer(modifier = Modifier.width(8.dp))
 
-                                        Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                            IconButton(onClick = {
-                                                if (isPlaying) mediaPlayer?.pause() else mediaPlayer?.start()
-                                                isPlaying = !isPlaying
-                                            }) {
-                                                Icon(if (isPlaying) Icons.Default.PauseCircle else Icons.Default.PlayCircle, "Play/Pause", modifier = Modifier.size(40.dp), tint = MaterialTheme.colorScheme.primary)
-                                            }
-                                            Text(formatTime(progress.toInt()), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 8.dp))
+                                            Text(String.format("%02d:%02d", currentPosition / 1000 / 60, currentPosition / 1000 % 60), style = MaterialTheme.typography.labelSmall)
+
                                             Slider(
-                                                value = progress, valueRange = 0f..duration.toFloat(),
-                                                onValueChange = { progress = it; mediaPlayer?.seekTo(it.toInt()) },
-                                                modifier = Modifier.weight(1f)
+                                                value = if (progress.isNaN()) 0f else progress,
+                                                onValueChange = {
+                                                    progress = it
+                                                    val seekTo = (it * duration).toInt()
+                                                    mediaPlayer.seekTo(seekTo)
+                                                    currentPosition = seekTo
+                                                },
+                                                modifier = Modifier.weight(1f).padding(horizontal = 4.dp)
                                             )
 
-                                            val speeds = listOf(1f, 1.5f, 2f)
+                                            Text(String.format("%02d:%02d", duration / 1000 / 60, duration / 1000 % 60), style = MaterialTheme.typography.labelSmall)
+
                                             TextButton(onClick = {
-                                                speedMode = (speedMode + 1) % 3
-                                                try { mediaPlayer?.playbackParams = mediaPlayer?.playbackParams?.setSpeed(speeds[speedMode])!! } catch (e: Exception) {}
-                                            }) { Text("${speeds[speedMode]}x", style = MaterialTheme.typography.labelSmall) }
-
-                                            IconButton(onClick = { onUpdate(currentBlock.copy(url = "")) }) { Icon(Icons.Default.Close, "Clear") }
-                                        }
-                                    } else {
-                                        var fileName by remember { mutableStateOf("Document Attached") }
-                                        LaunchedEffect(block.url) {
-                                            try {
-                                                context.contentResolver.query(Uri.parse(block.url), null, null, null, null)?.use { cursor ->
-                                                    if (cursor.moveToFirst()) {
-                                                        val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-                                                        if (nameIndex != -1) fileName = cursor.getString(nameIndex)
-                                                    }
+                                                playbackSpeed = when (playbackSpeed) { 1f -> 1.5f; 1.5f -> 2f; else -> 1f }
+                                                if (android.os.Build.VERSION.SDK_INT >= 23) {
+                                                    try { mediaPlayer.playbackParams = mediaPlayer.playbackParams.setSpeed(playbackSpeed) } catch (e: Exception){}
                                                 }
-                                            } catch (e: Exception) {}
+                                            }, contentPadding = PaddingValues(0.dp), modifier = Modifier.width(40.dp)) { Text("${playbackSpeed}x", style = MaterialTheme.typography.labelSmall) }
                                         }
+                                    }
+                                }
+                            }
 
-                                        Surface(
-                                            modifier = Modifier.fillMaxWidth().clickable {
-                                                try {
-                                                    val intent = Intent(Intent.ACTION_VIEW).apply {
-                                                        setDataAndType(Uri.parse(block.url), "*/*")
-                                                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                                    }
-                                                    context.startActivity(intent)
-                                                } catch (e: Exception) {}
+                            BasicTextField(
+                                value = textState, onValueChange = handleTextChange, textStyle = MaterialTheme.typography.bodySmall.copy(color = Color.Gray),
+                                modifier = commonModifier.padding(top = 8.dp), cursorBrush = SolidColor(MaterialTheme.colorScheme.primary), decorationBox = placeholderUI
+                            )
+                        }
+                    }
+
+                    // 3. THE FILE BLOCK (Full Screen PDF Dialog + Exact MIME Types)
+                    BlockType.FILE -> {
+                        var pdfBitmap by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
+                        var isPdf by remember { mutableStateOf(false) }
+                        var showPdfDialog by remember { mutableStateOf(false) }
+
+                        val fileName = remember(block.url) {
+                            var name = "Attached File"
+                            if (block.url.isNotEmpty()) {
+                                try {
+                                    val uri = android.net.Uri.parse(block.url)
+                                    if (block.url.startsWith("content://")) {
+                                        context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                                            val nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                                            if (cursor.moveToFirst() && nameIndex != -1) name = cursor.getString(nameIndex)
+                                        }
+                                    } else name = uri.lastPathSegment ?: "Attached File"
+                                } catch (e: Exception) {}
+                            }
+                            name
+                        }
+
+                        LaunchedEffect(block.url) {
+                            if (block.url.isNotEmpty()) {
+                                withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                    try {
+                                        val uri = android.net.Uri.parse(block.url)
+                                        val pfd = context.contentResolver.openFileDescriptor(uri, "r")
+                                        if (pfd != null) {
+                                            val renderer = android.graphics.pdf.PdfRenderer(pfd)
+                                            if (renderer.pageCount > 0) {
+                                                isPdf = true
+                                                val page = renderer.openPage(0)
+                                                val bitmap = android.graphics.Bitmap.createBitmap(page.width * 2, page.height * 2, android.graphics.Bitmap.Config.ARGB_8888)
+                                                page.render(bitmap, null, null, android.graphics.pdf.PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                                                page.close()
+                                                pdfBitmap = bitmap
                                             }
-                                        ) {
-                                            Row(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                                                Icon(Icons.Default.InsertDriveFile, "File", modifier = Modifier.size(40.dp), tint = MaterialTheme.colorScheme.primary)
-                                                Spacer(Modifier.width(16.dp))
-                                                Text(fileName, modifier = Modifier.weight(1f), maxLines = 1, style = MaterialTheme.typography.bodyMedium)
-                                                IconButton(onClick = { onUpdate(currentBlock.copy(url = "")) }) { Icon(Icons.Default.Close, "Clear") }
+                                            renderer.close()
+                                            pfd.close()
+                                        }
+                                    } catch (e: Exception) { isPdf = false }
+                                }
+                            }
+                        }
+
+                        Column(modifier = Modifier.fillMaxWidth().border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp)).padding(12.dp)) {
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                Text("File Attachment", fontWeight = FontWeight.Bold)
+                                IconButton(onClick = { showBlockMenu = true }, modifier = Modifier.size(24.dp)) { Icon(Icons.Default.MoreVert, "Options", tint = Color.Gray) }
+                            }
+
+                            DropdownMenu(expanded = showBlockMenu, onDismissRequest = { showBlockMenu = false }) {
+                                DropdownMenuItem(
+                                    text = { Text("Open External") },
+                                    onClick = {
+                                        try {
+                                            val uri = android.net.Uri.parse(block.url)
+                                            val finalUri = if (block.url.startsWith("file://")) {
+                                                androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.provider", java.io.File(java.net.URI(block.url)))
+                                            } else { uri }
+
+                                            // FIX: Get the exact MIME type so only appropriate apps are shown!
+                                            val resolvedMimeType = context.contentResolver.getType(finalUri) ?: "*/*"
+
+                                            val intent = Intent(Intent.ACTION_VIEW).apply {
+                                                setDataAndType(finalUri, resolvedMimeType)
+                                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                             }
+                                            context.startActivity(Intent.createChooser(intent, "Open File"))
+                                        } catch (e: Exception) {}
+                                        showBlockMenu = false
+                                    }
+                                )
+                                DropdownMenuItem(text = { Text("Delete", color = MaterialTheme.colorScheme.error) }, onClick = { onDeleteBlock("", true) })
+                            }
+
+                            if (block.url.isEmpty()) {
+                                TextButton(onClick = { mediaLauncher.launch("*/*") }) { Text("Select File") }
+                            } else {
+                                if (isPdf && pdfBitmap != null) {
+                                    // PDF Thumbnail that you tap to open full screen
+                                    Box(
+                                        modifier = Modifier.fillMaxWidth().heightIn(max = 200.dp).padding(top = 8.dp).clip(RoundedCornerShape(8.dp)).border(1.dp, Color.LightGray, RoundedCornerShape(8.dp)).clickable { showPdfDialog = true },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        androidx.compose.foundation.Image(bitmap = pdfBitmap!!.asImageBitmap(), contentDescription = "PDF Preview", modifier = Modifier.fillMaxWidth(), contentScale = ContentScale.FillWidth)
+                                        Box(modifier = Modifier.background(Color.Black.copy(alpha=0.6f), CircleShape).padding(8.dp)) {
+                                            Icon(Icons.Default.Fullscreen, contentDescription = "Expand", tint = Color.White, modifier = Modifier.size(32.dp))
                                         }
                                     }
                                 }
 
-                                BasicTextField(
-                                    value = textState, onValueChange = handleTextChange,
-                                    textStyle = MaterialTheme.typography.bodySmall.copy(color = Color.Gray),
-                                    modifier = commonModifier.padding(top = 4.dp, start = 4.dp), cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                                    decorationBox = placeholderUI
-                                )
+                                Row(modifier = Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(androidx.compose.material.icons.Icons.Default.InsertDriveFile, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(fileName, style = MaterialTheme.typography.bodySmall, color = Color.Gray, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                }
+                            }
+
+                            BasicTextField(
+                                value = textState, onValueChange = handleTextChange, textStyle = MaterialTheme.typography.bodySmall.copy(color = Color.Gray),
+                                modifier = commonModifier.padding(top = 8.dp), cursorBrush = SolidColor(MaterialTheme.colorScheme.primary), decorationBox = placeholderUI
+                            )
+                        }
+
+                        // NEW: Full Screen Interactive PDF Reader
+                        if (showPdfDialog) {
+                            Dialog(
+                                onDismissRequest = { showPdfDialog = false },
+                                properties = DialogProperties(usePlatformDefaultWidth = false)
+                            ) {
+                                Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                                    Column(modifier = Modifier.fillMaxSize()) {
+                                        // Toolbar
+                                        Row(modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant).padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                                            IconButton(onClick = { showPdfDialog = false }) { Icon(Icons.Default.Close, "Close") }
+                                            Spacer(Modifier.width(16.dp))
+                                            Text(fileName, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        }
+
+                                        // Lazy Loading the pages dynamically
+                                        var pageCount by remember { mutableIntStateOf(0) }
+                                        var pdfRenderer by remember { mutableStateOf<android.graphics.pdf.PdfRenderer?>(null) }
+                                        var pfd by remember { mutableStateOf<android.os.ParcelFileDescriptor?>(null) }
+
+                                        DisposableEffect(block.url) {
+                                            try {
+                                                val uri = android.net.Uri.parse(block.url)
+                                                val fd = context.contentResolver.openFileDescriptor(uri, "r")
+                                                if (fd != null) {
+                                                    pfd = fd
+                                                    val renderer = android.graphics.pdf.PdfRenderer(fd)
+                                                    pdfRenderer = renderer
+                                                    pageCount = renderer.pageCount
+                                                }
+                                            } catch (e: Exception) {}
+                                            onDispose {
+                                                pdfRenderer?.close()
+                                                pfd?.close()
+                                            }
+                                        }
+
+                                        if (pageCount > 0 && pdfRenderer != null) {
+                                            LazyColumn(modifier = Modifier.fillMaxSize()) {
+                                                items(pageCount) { index ->
+                                                    var pageBitmap by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
+
+                                                    LaunchedEffect(index) {
+                                                        withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                                            try {
+                                                                val page = pdfRenderer!!.openPage(index)
+                                                                // Rendering at 2x resolution for crisp zoomable text
+                                                                val bitmap = android.graphics.Bitmap.createBitmap(page.width * 2, page.height * 2, android.graphics.Bitmap.Config.ARGB_8888)
+                                                                page.render(bitmap, null, null, android.graphics.pdf.PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                                                                page.close()
+                                                                pageBitmap = bitmap
+                                                            } catch (e: Exception) {}
+                                                        }
+                                                    }
+
+                                                    if (pageBitmap != null) {
+                                                        androidx.compose.foundation.Image(
+                                                            bitmap = pageBitmap!!.asImageBitmap(),
+                                                            contentDescription = "Page ${index + 1}",
+                                                            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp).clip(RoundedCornerShape(4.dp)).border(1.dp, Color.LightGray, RoundedCornerShape(4.dp)),
+                                                            contentScale = ContentScale.FillWidth
+                                                        )
+                                                    } else {
+                                                        Box(modifier = Modifier.fillMaxWidth().height(400.dp), contentAlignment = Alignment.Center) {
+                                                            CircularProgressIndicator()
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
+
                     BlockType.DIVIDER -> {
                         Box(modifier = Modifier.fillMaxWidth().height(32.dp), contentAlignment = Alignment.Center) {
                             HorizontalDivider(modifier = Modifier.padding(end = 40.dp), color = Color.LightGray)
@@ -1917,6 +2436,7 @@ fun BlockRenderer(
 
                     "Advanced Blocks" to null,
                     BlockType.TOC to ("Table of Contents" to "📑"),
+                    BlockType.CHART to ("Chart" to "📈"),
                     BlockType.CALLOUT to ("Callout" to "💡"),
                     BlockType.TABLE to ("Table" to "⊞"),
                     BlockType.CALENDAR to ("Calendar" to "📅"),
@@ -1925,6 +2445,7 @@ fun BlockRenderer(
                     BlockType.MATH to ("Math Equation" to "🧮"),
                     BlockType.PROGRESS to ("Progress Tracker" to "⏳"),
                     BlockType.CODE to ("Code Snippet" to "⌨️"),
+                    BlockType.TIMER to ("Pomodoro Timer" to "⏱️"),
 
                     "Media & Links" to null,
                     BlockType.IMAGE to ("Image" to "🖼️"),

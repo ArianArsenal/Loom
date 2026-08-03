@@ -1,9 +1,11 @@
 package com.example.loom.ui.notes
 
+import android.content.Context
 import android.content.Intent
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.biometric.BiometricPrompt
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -13,14 +15,12 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -46,11 +46,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onKeyEvent
-import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -66,6 +61,8 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
+import androidx.fragment.app.FragmentActivity
 import coil.compose.AsyncImage
 import com.example.loom.data.local.entity.DiaryNote
 import com.example.loom.data.local.entity.NoteTag
@@ -127,9 +124,13 @@ fun NoteListScreen(
 ) {
     var searchQuery by remember { mutableStateOf("") }
     var noteToUnlock by remember { mutableStateOf<DiaryNote?>(null) }
+    var showPinFallback by remember { mutableStateOf(false) }
+
     var passwordInput by remember { mutableStateOf("") }
     var passwordError by remember { mutableStateOf(false) }
     var tagToDelete by remember { mutableStateOf<NoteTag?>(null) }
+
+    val context = LocalContext.current
 
     val filteredNotes = notes.filter {
         it.title.contains(searchQuery, true) || it.content.contains(searchQuery, true) || it.tag.contains(searchQuery, true)
@@ -138,29 +139,43 @@ fun NoteListScreen(
     val pinnedNotes = filteredNotes.filter { it.isPinned }
     val unpinnedNotes = filteredNotes.filter { !it.isPinned }
 
-    if (noteToUnlock != null) {
+    // Fallback PIN Dialog (shows if biometric fails, is canceled, or isn't available)
+    if (showPinFallback && noteToUnlock != null) {
+        val savedPin = com.example.loom.utils.SecurityManager.getPin(context)
+
         AlertDialog(
-            onDismissRequest = { noteToUnlock = null; passwordInput = ""; passwordError = false },
+            onDismissRequest = { noteToUnlock = null; passwordInput = ""; passwordError = false; showPinFallback = false },
             title = { Text("Private Note") },
             text = {
                 Column {
-                    Text("Enter PIN to unlock (Default: 0000)", style = MaterialTheme.typography.bodyMedium)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    OutlinedTextField(
-                        value = passwordInput, onValueChange = { passwordInput = it; passwordError = false },
-                        isError = passwordError, visualTransformation = PasswordVisualTransformation(),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword), singleLine = true, modifier = Modifier.fillMaxWidth()
-                    )
-                    if (passwordError) Text("Incorrect PIN", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    if (savedPin == null) {
+                        Text("No PIN has been configured. Please go to Settings to set up an App PIN.", color = MaterialTheme.colorScheme.error)
+                    } else {
+                        Text("Enter your custom PIN to unlock:", style = MaterialTheme.typography.bodyMedium)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = passwordInput, onValueChange = { passwordInput = it; passwordError = false },
+                            isError = passwordError, visualTransformation = PasswordVisualTransformation(),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword), singleLine = true, modifier = Modifier.fillMaxWidth()
+                        )
+                        if (passwordError) Text("Incorrect PIN", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    }
                 }
             },
             confirmButton = {
-                Button(onClick = {
-                    if (passwordInput == "0000") { onNoteClick(noteToUnlock!!); noteToUnlock = null; passwordInput = ""; passwordError = false }
-                    else passwordError = true
-                }) { Text("Unlock") }
+                if (savedPin != null) {
+                    Button(onClick = {
+                        if (passwordInput == savedPin) {
+                            onNoteClick(noteToUnlock!!)
+                            noteToUnlock = null
+                            passwordInput = ""
+                            passwordError = false
+                            showPinFallback = false
+                        } else passwordError = true
+                    }) { Text("Unlock") }
+                }
             },
-            dismissButton = { TextButton(onClick = { noteToUnlock = null; passwordInput = ""; passwordError = false }) { Text("Cancel") } }
+            dismissButton = { TextButton(onClick = { noteToUnlock = null; passwordInput = ""; passwordError = false; showPinFallback = false }) { Text("Cancel") } }
         )
     }
 
@@ -173,7 +188,6 @@ fun NoteListScreen(
                 Button(onClick = {
                     val associatedNotes = notes.filter { it.tag == tagToDelete!!.name }
                     associatedNotes.forEach { viewModel.deleteDiaryNote(it) }
-
                     viewModel.deleteNoteTag(tagToDelete!!)
                     if (searchQuery == tagToDelete?.name) searchQuery = ""
                     tagToDelete = null
@@ -234,6 +248,24 @@ fun NoteListScreen(
                 val gridColumns = when (viewMode) { 0 -> 1; 1 -> 2; else -> 3 }
                 val cardHeight = when (viewMode) { 0 -> 140.dp; 1 -> 180.dp; else -> 160.dp }
 
+                // Triggers Biometric Prompt
+                val handleUnlockRequest: (DiaryNote) -> Unit = { note ->
+                    noteToUnlock = note
+                    // Using our new shared SecurityManager!
+                    com.example.loom.utils.SecurityManager.authenticate(
+                        context = context,
+                        title = "Unlock Private Note",
+                        onSuccess = {
+                            onNoteClick(note)
+                            noteToUnlock = null
+                            showPinFallback = false
+                        },
+                        onFallback = {
+                            showPinFallback = true
+                        }
+                    )
+                }
+
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(gridColumns),
                     modifier = Modifier.fillMaxSize(),
@@ -246,7 +278,7 @@ fun NoteListScreen(
                             Text("Pinned", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 8.dp, bottom = 4.dp))
                         }
                         items(pinnedNotes, key = { it.id }) { note ->
-                            NoteCard(note, allTags, cardHeight, onNoteClick, onDeleteNote, { noteToUnlock = it })
+                            NoteCard(note, allTags, cardHeight, onNoteClick, onDeleteNote, handleUnlockRequest)
                         }
                     }
 
@@ -255,7 +287,7 @@ fun NoteListScreen(
                             Text("Notes", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 16.dp, bottom = 4.dp))
                         }
                         items(unpinnedNotes, key = { it.id }) { note ->
-                            NoteCard(note, allTags, cardHeight, onNoteClick, onDeleteNote, { noteToUnlock = it })
+                            NoteCard(note, allTags, cardHeight, onNoteClick, onDeleteNote, handleUnlockRequest)
                         }
                     }
                 }
@@ -326,6 +358,7 @@ fun NoteCard(note: DiaryNote, allTags: List<NoteTag>, height: androidx.compose.u
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun NoteEditor(initialNote: DiaryNote?, allTags: List<NoteTag>, viewModel: HomeViewModel, onNavigateBack: () -> Unit) {
+    // ... [The entire NoteEditor composable remains completely unchanged] ...
     var currentId by remember { mutableIntStateOf(initialNote?.id ?: 0) }
     var title by remember { mutableStateOf(initialNote?.title ?: "") }
     var selectedTag by remember { mutableStateOf(initialNote?.tag ?: "Personal") }
@@ -469,7 +502,6 @@ fun NoteEditor(initialNote: DiaryNote?, allTags: List<NoteTag>, viewModel: HomeV
                 }) { Icon(Icons.Default.ArrowBack, "Back") }
             },
             actions = {
-                // Moved Image and Checklist functionality into the Top App Bar
                 IconButton(onClick = { photoPickerLauncher.launch(androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }) {
                     Icon(Icons.Default.Image, "Add Image", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }

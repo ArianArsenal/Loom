@@ -31,7 +31,7 @@ import com.example.loom.data.local.entity.NotionSpaceEntity
         FoodItem::class,
         NotionSpaceEntity::class
     ],
-    version = 22, // <-- BUMPED TO 22
+    version = 23, // <-- BUMPED TO 23
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -110,12 +110,18 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
-        // NEW MIGRATION: Adds Pinning and Tagging
         private val MIGRATION_21_22 = object : Migration(21, 22) {
             override fun migrate(db: SupportSQLiteDatabase) {
-                // In SQLite, Booleans are stored as INTEGER (0 = false, 1 = true)
                 db.execSQL("ALTER TABLE `notion_spaces` ADD COLUMN `isPinned` INTEGER NOT NULL DEFAULT 0")
                 db.execSQL("ALTER TABLE `notion_spaces` ADD COLUMN `tagsJson` TEXT NOT NULL DEFAULT '[]'")
+            }
+        }
+
+        // NEW MIGRATION: Adds Privacy Lock
+        private val MIGRATION_22_23 = object : Migration(22, 23) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // In SQLite, Booleans are stored as INTEGER (0 = false, 1 = true)
+                db.execSQL("ALTER TABLE `notion_spaces` ADD COLUMN `isPrivate` INTEGER NOT NULL DEFAULT 0")
             }
         }
 
@@ -158,7 +164,8 @@ abstract class AppDatabase : RoomDatabase() {
                         MIGRATION_18_19,
                         MIGRATION_19_20,
                         MIGRATION_20_21,
-                        MIGRATION_21_22 // <-- Added new migration here
+                        MIGRATION_21_22,
+                        MIGRATION_22_23 // <-- Added new migration here
                     )
                     .fallbackToDestructiveMigration()
                     .build().also { INSTANCE = it }

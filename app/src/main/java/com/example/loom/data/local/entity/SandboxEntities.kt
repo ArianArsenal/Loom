@@ -5,6 +5,7 @@ import androidx.room.PrimaryKey
 import com.example.loom.data.models.SandboxSpace
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import java.lang.reflect.Modifier.isPrivate
 
 @Entity(tableName = "notion_spaces") // Keep whatever table name you currently have
 data class NotionSpaceEntity(
@@ -17,7 +18,8 @@ data class NotionSpaceEntity(
 
     // 1. ADD THESE TWO NEW FIELDS TO THE DATABASE TABLE
     val isPinned: Boolean = false,
-    val tagsJson: String = "[]"
+    val tagsJson: String = "[]",
+    val isPrivate: Boolean = false
 ) {
     fun toDomainModel(): SandboxSpace {
         return SandboxSpace(
@@ -27,11 +29,13 @@ data class NotionSpaceEntity(
             bannerUrl = bannerUrl,
             updatedAt = updatedAt,
 
+
             // 2. READ THE DATA FROM THE DATABASE
             isPinned = isPinned,
             tags = try { Json.decodeFromString(tagsJson) } catch (e: Exception) { emptyList() },
 
-            blocks = try { Json.decodeFromString(blocksJson) } catch (e: Exception) { emptyList() }
+            blocks = try { Json.decodeFromString(blocksJson) } catch (e: Exception) { emptyList() },
+            isPrivate = isPrivate
         )
     }
 
@@ -48,7 +52,8 @@ data class NotionSpaceEntity(
                 isPinned = space.isPinned,
                 tagsJson = Json.encodeToString(space.tags),
 
-                blocksJson = Json.encodeToString(space.blocks)
+                blocksJson = Json.encodeToString(space.blocks),
+                isPrivate = space.isPrivate
             )
         }
     }

@@ -25,6 +25,11 @@ import kotlinx.coroutines.withContext
 import java.net.HttpURLConnection
 import java.net.URL
 import android.util.Log
+import android.content.Context
+import android.net.Uri
+import java.io.File
+import java.io.FileOutputStream
+import java.util.UUID
 const val ZWSP = "\u200B"
 
 @Serializable
@@ -194,6 +199,26 @@ suspend fun fetchUrlMetadata(urlString: String): LinkMetadata? = withContext(Dis
         LinkMetadata(title = decodeHtml(rawTitle), description = decodeHtml(rawDesc), imageUrl = rawImg)
     } catch (e: Exception) {
         Log.e("LinkMetadata", "Error fetching metadata: ${e.message}")
+        null
+    }
+}
+
+fun copyMediaToLocal(context: Context, uri: Uri): String? {
+    return try {
+        val inputStream = context.contentResolver.openInputStream(uri) ?: return null
+        // Create a unique file name in the app's private storage
+        val fileName = "media_${UUID.randomUUID()}"
+        val file = File(context.filesDir, fileName)
+        val outputStream = FileOutputStream(file)
+
+        inputStream.copyTo(outputStream)
+
+        inputStream.close()
+        outputStream.close()
+
+        // Return a local file:// URI that your app owns forever
+        Uri.fromFile(file).toString()
+    } catch (e: Exception) {
         null
     }
 }

@@ -1,5 +1,11 @@
 package com.example.loom.ui.sandbox
 
+
+import android.content.Intent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
+import java.io.InputStreamReader
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInParent
 import androidx.compose.foundation.Canvas
@@ -15,7 +21,11 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.LockOpen
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -55,6 +65,7 @@ fun NotionCanvasScreen(
     var title by remember { mutableStateOf(space.title) }
     var spaceIcon by remember { mutableStateOf(space.icon) }
     var bannerUrl by remember { mutableStateOf(space.bannerUrl) }
+    var isPrivate by remember { mutableStateOf(space.isPrivate) }
 
     var currentSpaceId by remember { mutableStateOf(space.id) }
     val blocks = remember { mutableStateListOf<SandboxBlock>() }
@@ -64,6 +75,7 @@ fun NotionCanvasScreen(
         title = space.title
         spaceIcon = space.icon
         bannerUrl = space.bannerUrl
+        isPrivate = space.isPrivate
         blocks.clear()
         blocks.addAll(prepareBlocksForUI(space.blocks))
     } else if (blocks.isEmpty()) {
@@ -80,33 +92,32 @@ fun NotionCanvasScreen(
     val scope = rememberCoroutineScope()
     var showBannerPicker by remember { mutableStateOf(false) }
     val imeBottomPadding = WindowInsets.ime.asPaddingValues().calculateBottomPadding()
+    val context = LocalContext.current
 
-    // FIX: Optimized save trigger to prevent layout stutters
+    var showSaveTemplateDialog by remember { mutableStateOf(false) }
+    var templateNameInput by remember { mutableStateOf("") }
+
+    // Optimized save trigger to prevent layout stutters
     val currentBlocks = blocks.toList()
-    LaunchedEffect(title, spaceIcon, bannerUrl, currentBlocks) {
-        if (title != space.title || spaceIcon != space.icon || bannerUrl != space.bannerUrl || cleanBlocksForDB(currentBlocks) != space.blocks) {
-            onSave(space.copy(title = title, icon = spaceIcon, bannerUrl = bannerUrl, updatedAt = System.currentTimeMillis(), blocks = cleanBlocksForDB(currentBlocks)))
+    LaunchedEffect(title, spaceIcon, bannerUrl, isPrivate, currentBlocks) {
+        if (title != space.title || spaceIcon != space.icon || bannerUrl != space.bannerUrl || isPrivate != space.isPrivate || cleanBlocksForDB(currentBlocks) != space.blocks) {
+            onSave(space.copy(title = title, icon = spaceIcon, bannerUrl = bannerUrl, isPrivate = isPrivate, updatedAt = System.currentTimeMillis(), blocks = cleanBlocksForDB(currentBlocks)))
         }
     }
 
-    // FIX: Removed Scaffold entirely to prevent invisible TopAppBar touch interception
     Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         Column(modifier = Modifier.fillMaxSize().verticalScroll(canvasScrollState)) {
             Box(modifier = Modifier.fillMaxWidth()) {
                 if (bannerUrl.isNotEmpty()) {
                     val bannerColor = try { Color(android.graphics.Color.parseColor(bannerUrl)) } catch(e:Exception){ Color.LightGray }
-                    Box(modifier = Modifier.fillMaxWidth().height(220.dp).background(bannerColor)) {
-                        IconButton(
-                            onClick = { showBannerPicker = true },
-                            modifier = Modifier.align(Alignment.TopEnd).padding(top = 16.dp, end = 16.dp).background(Color.Black.copy(alpha=0.3f), RoundedCornerShape(8.dp)).height(32.dp).width(100.dp)
-                        ) { Row(verticalAlignment = Alignment.CenterVertically){ Icon(Icons.Default.Palette, null, tint=Color.White, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(4.dp)); Text("Change", color=Color.White, fontSize=12.sp) } }
-                    }
+                    // Removed the overlapping button from here and moved it to the floating overlay below!
+                    Box(modifier = Modifier.fillMaxWidth().height(220.dp).background(bannerColor))
                 }
 
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = if (bannerUrl.isNotEmpty()) 180.dp else 72.dp) // Pushed below floating back button safely
+                        .padding(top = if (bannerUrl.isNotEmpty()) 180.dp else 72.dp)
                         .padding(horizontal = 24.dp)
                 ) {
                     Box(
@@ -289,14 +300,170 @@ fun NotionCanvasScreen(
             )
         }
 
-        // FIX: Floating back button avoids touch interception
+        // Floating Back Button (Top Left)
         IconButton(
             onClick = onBack,
-            modifier = Modifier.padding(top = 16.dp, start = 16.dp).background(if (bannerUrl.isNotEmpty()) Color.Black.copy(alpha=0.3f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha=0.5f), CircleShape).size(40.dp)
+            modifier = Modifier.align(Alignment.TopStart).padding(top = 16.dp, start = 16.dp).background(if (bannerUrl.isNotEmpty()) Color.Black.copy(alpha=0.3f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha=0.5f), CircleShape).size(40.dp)
         ) {
             Icon(Icons.Default.ArrowBack, "Back", tint = if (bannerUrl.isNotEmpty()) Color.White else MaterialTheme.colorScheme.onSurface)
         }
+
+        // Floating Options Menu & Cover Button (Top Right)
+        val context = LocalContext.current
+        var showSpaceMenu by remember { mutableStateOf(false) }
+        var showPasteMarkdownDialog by remember { mutableStateOf(false) }
+        var pastedMarkdownText by remember { mutableStateOf("") }
+
+        val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+            uri?.let {
+                try {
+                    val stream = context.contentResolver.openInputStream(it)
+                    val text = InputStreamReader(stream!!).readText()
+                    val importedBlocks = parseMarkdownToBlocks(text)
+                    blocks.clear()
+                    blocks.addAll(importedBlocks)
+                } catch(e: Exception){}
+            }
+        }
+
+        // We place the buttons together in a Row so they never overlap!
+        Row(
+            modifier = Modifier.align(Alignment.TopEnd).padding(top = 16.dp, end = 16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // "Change Cover" only shows if a banner actually exists
+            if (bannerUrl.isNotEmpty()) {
+                IconButton(
+                    onClick = { showBannerPicker = true },
+                    modifier = Modifier.background(Color.Black.copy(alpha=0.3f), RoundedCornerShape(8.dp)).height(32.dp).width(100.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Palette, null, tint = Color.White, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Change", color = Color.White, fontSize = 12.sp)
+                    }
+                }
+                Spacer(Modifier.width(12.dp))
+            }
+
+            Box {
+                IconButton(
+                    onClick = { showSpaceMenu = true },
+                    modifier = Modifier.background(if (bannerUrl.isNotEmpty()) Color.Black.copy(alpha=0.3f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha=0.5f), CircleShape).size(40.dp)
+                ) {
+                    Icon(Icons.Default.MoreVert, "Options", tint = if (bannerUrl.isNotEmpty()) Color.White else MaterialTheme.colorScheme.onSurface)
+                }
+
+                DropdownMenu(expanded = showSpaceMenu, onDismissRequest = { showSpaceMenu = false }) {
+
+                    DropdownMenuItem(
+                        text = { Text(if (isPrivate) "Unlock Space" else "Lock Space") },
+                        leadingIcon = { Icon(if (isPrivate) Icons.Default.LockOpen else Icons.Default.Lock, null) },
+                        onClick = {
+                            isPrivate = !isPrivate // Let the auto-save loop handle the saving!
+                            showSpaceMenu = false
+                        }
+                    )
+
+                    DropdownMenuItem(text = { Text("Export to Markdown") }, onClick = {
+                        val mdStr = exportSpaceToMarkdown(title, blocks.toList())
+                        val sendIntent = Intent().apply {
+                            action = Intent.ACTION_SEND
+                            putExtra(Intent.EXTRA_TEXT, mdStr)
+                            type = "text/plain"
+                        }
+                        context.startActivity(Intent.createChooser(sendIntent, "Export Space"))
+                        showSpaceMenu = false
+                    })
+                    DropdownMenuItem(text = { Text("Import .md File") }, onClick = {
+                        importLauncher.launch("*/*")
+                        showSpaceMenu = false
+                    })
+                    DropdownMenuItem(text = { Text("Paste Markdown") }, onClick = {
+                        showPasteMarkdownDialog = true
+                        showSpaceMenu = false
+                    })
+
+                    DropdownMenuItem(
+                        text = { Text("Save Space Layout") },
+                        leadingIcon = { Icon(androidx.compose.material.icons.Icons.Default.Save, null) },
+                        onClick = {
+                            showSaveTemplateDialog = true
+                            showSpaceMenu = false
+                        }
+                    )
+                }
+            }
+        }
+
+        // Dialog for pasting Markdown directly
+        if (showPasteMarkdownDialog) {
+            AlertDialog(
+                onDismissRequest = { showPasteMarkdownDialog = false },
+                title = { Text("Paste Markdown") },
+                text = {
+                    OutlinedTextField(
+                        value = pastedMarkdownText,
+                        onValueChange = { pastedMarkdownText = it },
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 150.dp, max = 300.dp),
+                        placeholder = { Text("Paste your markdown here...") }
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        if (pastedMarkdownText.isNotBlank()) {
+                            val importedBlocks = parseMarkdownToBlocks(pastedMarkdownText)
+                            blocks.clear()
+                            blocks.addAll(importedBlocks)
+                        }
+                        pastedMarkdownText = ""
+                        showPasteMarkdownDialog = false
+                    }) {
+                        Text("Import")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = {
+                        pastedMarkdownText = ""
+                        showPasteMarkdownDialog = false
+                    }) {
+                        Text("Cancel")
+                    }
+                }
+            )
+        }
     }
+
+    if (showSaveTemplateDialog) {
+        AlertDialog(
+            onDismissRequest = { showSaveTemplateDialog = false; templateNameInput = "" },
+            title = { Text("Save Space Layout") },
+            text = {
+                Column {
+                    Text("Save this space's current layout to use as a template later.", style = MaterialTheme.typography.bodyMedium)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = templateNameInput,
+                        onValueChange = { templateNameInput = it },
+                        placeholder = { Text("e.g., Weekly Workout Plan") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    if (templateNameInput.isNotBlank()) {
+                        com.example.loom.utils.TemplateManager.saveCustomTemplate(context, templateNameInput, spaceIcon, blocks)
+                        showSaveTemplateDialog = false
+                        templateNameInput = ""
+                    }
+                }) { Text("Save Template") }
+            },
+            dismissButton = { TextButton(onClick = { showSaveTemplateDialog = false; templateNameInput = "" }) { Text("Cancel") } }
+        )
+    }
+
 
     if (showBannerPicker) {
         var hue by remember { mutableFloatStateOf(210f) }
