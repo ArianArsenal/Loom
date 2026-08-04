@@ -19,15 +19,21 @@ import com.example.loom.ui.home.HomeViewModel
 import com.example.loom.ui.theme.LoomTheme
 import com.example.loom.worker.NotificationScheduler
 import dagger.hilt.android.AndroidEntryPoint
-
+import androidx.core.graphics.toColorInt
 @AndroidEntryPoint
 class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         enableEdgeToEdge(
-            statusBarStyle = SystemBarStyle.auto(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT),
-            navigationBarStyle = SystemBarStyle.auto(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT)
+            statusBarStyle = SystemBarStyle.light(
+                "#E4F3E4".toColorInt(),
+                "#E4F3E4".toColorInt()
+            ),
+            navigationBarStyle = SystemBarStyle.light(
+                android.graphics.Color.TRANSPARENT,
+                android.graphics.Color.TRANSPARENT
+            )
         )
 
         setContent {

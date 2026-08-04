@@ -28,14 +28,13 @@ fun LoomTheme(content: @Composable () -> Unit) {
     if (!view.isInEditMode) {
         SideEffect {
             val window = (view.context as Activity).window
-            window.statusBarColor = LightColorScheme.background.toArgb()
+            // We removed the deprecated statusBarColor here!
             WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = true
         }
     }
 
     MaterialTheme(
         colorScheme = LightColorScheme,
-        // You can add custom typography here later for a sleeker font like Google Sans or Poppins
         content = content
     )
 }

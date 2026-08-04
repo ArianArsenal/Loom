@@ -8,7 +8,22 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -17,13 +32,60 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CalendarToday
+import androidx.compose.material.icons.filled.ChevronLeft
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.RadioButtonUnchecked
+import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.ViewKanban
+import androidx.compose.material.icons.filled.ViewList
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Circle
-import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.WaterDrop
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ElevatedCard
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalTextStyle
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SelectableDates
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberDatePickerState
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -47,7 +109,11 @@ import com.example.loom.data.local.entity.TaskSection
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.text.SimpleDateFormat
-import java.util.*
+import java.util.Calendar
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
+import java.util.UUID
 
 @Composable
 fun GaplessProgressBar(
@@ -266,18 +332,19 @@ fun HomeScreen(
                 actions = { IconButton(onClick = onNavigateToSettings) { Icon(Icons.Default.Settings, "Settings") } },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = Color(0xFFE4F3E4),
+                    scrolledContainerColor = Color(0xFFE4F3E4),
                     titleContentColor = Color(0xFF1B5E20),
                     actionIconContentColor = Color(0xFF1B5E20)
                 )
             )
         },
-        floatingActionButton = {
-            FloatingActionButton(
-                onClick = { taskToEdit = null; showTaskDialog = true },
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary
-            ) { Icon(Icons.Default.Add, "Add Task") }
-        }
+//        floatingActionButton = {
+//            FloatingActionButton(
+//                onClick = { taskToEdit = null; showTaskDialog = true },
+//                containerColor = MaterialTheme.colorScheme.primary,
+//                contentColor = MaterialTheme.colorScheme.onPrimary
+//            ) { Icon(Icons.Default.Add, "Add Task") }
+//        }
     ) { paddingValues ->
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(paddingValues).padding(horizontal = 20.dp),
@@ -426,69 +493,132 @@ fun HomeScreen(
             }
 
             item {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Text("Tasks & Projects", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                    IconButton(onClick = { isKanbanView = !isKanbanView }) {
-                        Icon(if (isKanbanView) Icons.Default.ViewKanban else Icons.Default.ViewList, "Toggle View")
-                    }
-                }
-            }
-
-            items(sections) { section ->
-                val sectionTasks = allTasks.filter { it.sectionId == section.id }
-                if (sectionTasks.isNotEmpty() || !isKanbanView) {
-                    ElevatedCard(
-                        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
-                        shape = RoundedCornerShape(16.dp),
-                        colors = CardDefaults.elevatedCardColors(containerColor = Color(0xFFF7F7F7))
-                    ) {
-                        Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(bottom = 12.dp)
-                                    .combinedClickable(
-                                        onClick = {},
-                                        onLongClick = { sectionToDelete = section }
+                ElevatedCard(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(24.dp),
+                    colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)
+                ) {
+                    Column(modifier = Modifier.padding(20.dp).fillMaxWidth()) {
+                        // --- HEADER ---
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // Title & Kanban Toggle (Grouped on the Left)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    "Tasks & Deadlines",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                IconButton(onClick = { isKanbanView = !isKanbanView }, modifier = Modifier.size(32.dp)) {
+                                    Icon(
+                                        imageVector = if (isKanbanView) Icons.Default.ViewKanban else Icons.Default.ViewList,
+                                        contentDescription = "Toggle View",
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(20.dp)
                                     )
-                            ) {
-                                Text(text = section.name, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                                }
                             }
 
-                            if (isKanbanView) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .horizontalScroll(rememberScrollState())
-                                        .height(IntrinsicSize.Max),
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                                ) {
-                                    val statuses = listOf("TO DO", "IN PROGRESS", "DONE")
-                                    statuses.forEach { status ->
-                                        val colTasks = sectionTasks.filter { it.status == status }
+                            // Add Task Button (Aligned to the Right)
+                            Button(
+                                onClick = { taskToEdit = null; showTaskDialog = true },
+                                shape = RoundedCornerShape(12.dp),
+                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp)
+                            ) {
+                                Text("+ Add Task", fontWeight = FontWeight.Bold)
+                            }
+                        }
 
-                                        Column(
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        // --- CONTENT ---
+                        val activeSections = sections.filter { sec -> allTasks.any { it.sectionId == sec.id } }
+
+                        if (activeSections.isEmpty()) {
+                            // Shows if there are zero tasks across all sections
+                            Text("No tasks here yet.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        } else {
+                            activeSections.forEach { section ->
+                                val sectionTasks = allTasks.filter { it.sectionId == section.id }
+
+                                // We now ONLY draw the section if it has tasks
+                                if (sectionTasks.isNotEmpty()) {
+                                    Column(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
+                                        // Section Header
+                                        Row(
                                             modifier = Modifier
-                                                .width(280.dp)
-                                                .fillMaxHeight()
-                                                .defaultMinSize(minHeight = 150.dp)
-                                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f), RoundedCornerShape(12.dp))
-                                                .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f), RoundedCornerShape(12.dp))
-                                                .padding(12.dp)
+                                                .fillMaxWidth()
+                                                .padding(bottom = 8.dp)
+                                                .combinedClickable(
+                                                    onClick = {},
+                                                    onLongClick = { sectionToDelete = section }
+                                                ),
+                                            verticalAlignment = Alignment.CenterVertically // Aligns the line perfectly with the text
                                         ) {
-                                            Text(status, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 8.dp))
-                                            colTasks.forEach { task ->
-                                                TaskCard(task, tags, viewModel, isKanbanView = true, onEdit = { taskToEdit = it; showTaskDialog = true })
+                                            Text(
+                                                text = section.name,
+                                                style = MaterialTheme.typography.labelLarge,
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+
+                                            Spacer(modifier = Modifier.width(8.dp))
+
+                                            // This draws the line all the way to the right edge
+                                            HorizontalDivider(
+                                                modifier = Modifier.weight(1f),
+                                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                                            )
+                                        }
+
+                                        if (isKanbanView) {
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .horizontalScroll(rememberScrollState())
+                                                    .height(IntrinsicSize.Max),
+                                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                            ) {
+                                                val statuses = listOf("TO DO", "IN PROGRESS", "DONE")
+                                                statuses.forEach { status ->
+                                                    val colTasks = sectionTasks.filter { it.status == status }
+
+                                                    Column(
+                                                        modifier = Modifier
+                                                            .width(280.dp)
+                                                            .fillMaxHeight()
+                                                            .defaultMinSize(minHeight = 150.dp)
+                                                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f), RoundedCornerShape(12.dp))
+                                                            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f), RoundedCornerShape(12.dp))
+                                                            .padding(12.dp)
+                                                    ) {
+                                                        Text(status, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 8.dp))
+
+                                                        // Kanban Empty State
+                                                        if (colTasks.isEmpty()) {
+                                                            Text(
+                                                                text = "Empty",
+                                                                style = MaterialTheme.typography.bodySmall,
+                                                                color = Color.Gray,
+                                                                modifier = Modifier.padding(vertical = 8.dp)
+                                                            )
+                                                        } else {
+                                                            colTasks.forEach { task ->
+                                                                TaskCard(task, tags, viewModel, isKanbanView = true, onEdit = { taskToEdit = it; showTaskDialog = true })
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        } else {
+                                            // Standard List View (Empty sections are already filtered out above)
+                                            sectionTasks.forEach { task ->
+                                                TaskCard(task, tags, viewModel, isKanbanView = false, onEdit = { taskToEdit = it; showTaskDialog = true })
                                             }
                                         }
-                                    }
-                                }
-                            } else {
-                                if (sectionTasks.isEmpty()) {
-                                    Text("No tasks here yet.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(8.dp))
-                                } else {
-                                    sectionTasks.forEach { task ->
-                                        TaskCard(task, tags, viewModel, isKanbanView = false, onEdit = { taskToEdit = it; showTaskDialog = true })
                                     }
                                 }
                             }
@@ -496,6 +626,7 @@ fun HomeScreen(
                     }
                 }
             }
+
         }
     }
 }

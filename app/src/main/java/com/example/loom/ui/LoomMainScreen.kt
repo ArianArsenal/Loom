@@ -86,7 +86,7 @@ fun LoomMainScreen(viewModel: HomeViewModel) {
         NavHost(
             navController = navController,
             startDestination = BottomNavItem.Home.route,
-            modifier = Modifier.padding(innerPadding)
+            modifier = Modifier.padding(bottom = innerPadding.calculateBottomPadding())
         ) {
             // Home Route
             composable(BottomNavItem.Home.route) {
