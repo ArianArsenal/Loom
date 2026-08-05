@@ -78,14 +78,13 @@ fun HomeScreen(
     var isKanbanView by remember { mutableStateOf(false) }
     var sectionToDelete by remember { mutableStateOf<TaskSection?>(null) }
 
-    // Dynamic Greeting Logic
     val currentHour = remember { Calendar.getInstance().get(Calendar.HOUR_OF_DAY) }
     val greeting = remember(currentHour) {
         when (currentHour) {
             in 5..11 -> "Good Morning, Arian"
             in 12..17 -> "Good Afternoon, Arian"
             in 18..23 -> "Good Evening, Arian"
-            else -> "Good Night, Arian" // Handles 0..4 (Midnight to 4:59 AM)
+            else -> "Good Night, Arian"
         }
     }
 
@@ -163,6 +162,42 @@ fun HomeScreen(
                                                 Column(modifier = Modifier.fillMaxWidth()) {
                                                     Text(text = food.name, fontWeight = FontWeight.Bold)
                                                     Text(text = "P: ${food.protein}g • C: ${food.carbs}g • F: ${food.fats}g", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                                                    Spacer(modifier = Modifier.height(4.dp))
+
+                                                    // --- RTL Format Fix ---
+                                                    val uText = food.servingUnit.trim()
+                                                    val mResult = "\\d+(\\.\\d+)?".toRegex().find(uText)
+                                                    val numStr = mResult?.value ?: ""
+                                                    val textStr = if (mResult != null) uText.replaceFirst(numStr, "").trim() else uText
+
+                                                    Row(
+                                                        modifier = Modifier.fillMaxWidth(),
+                                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        // Left side: Calories (Plain Text)
+                                                        Text(
+                                                            text = "${food.calories} kcal",
+                                                            style = MaterialTheme.typography.bodySmall,
+                                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                        )
+
+                                                        // Right side: Serving Unit (Colored Badge with RTL Row)
+                                                        Surface(shape = RoundedCornerShape(6.dp), color = MaterialTheme.colorScheme.secondaryContainer) {
+                                                            Row(
+                                                                verticalAlignment = Alignment.CenterVertically,
+                                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                            ) {
+                                                                if (textStr.isNotBlank()) {
+                                                                    Text(text = textStr, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSecondaryContainer, fontWeight = FontWeight.Bold)
+                                                                    Spacer(modifier = Modifier.width(4.dp))
+                                                                }
+                                                                if (numStr.isNotBlank()) {
+                                                                    Text(text = numStr, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSecondaryContainer, fontWeight = FontWeight.Bold)
+                                                                }
+                                                            }
+                                                        }
+                                                    }
                                                 }
                                             },
                                             onClick = { selectedFood = food; foodDropdownExpanded = false; viewModel.updateFoodSearchQuery("") }
@@ -174,6 +209,52 @@ fun HomeScreen(
                         }
 
                         if (selectedFood != null) {
+                            Spacer(modifier = Modifier.height(16.dp))
+
+                            val currentMultiplier = servingsStr.toFloatOrNull() ?: 1f
+                            val dynamicCals = selectedFood!!.calories * currentMultiplier
+                            val unitText = selectedFood!!.servingUnit.trim()
+                            val numberRegex = "\\d+(\\.\\d+)?".toRegex()
+                            val matchResult = numberRegex.find(unitText)
+                            val textPart: String
+                            val formattedNum: String
+
+                            if (matchResult != null) {
+                                val baseNum = matchResult.value.toFloat()
+                                val calculatedNum = baseNum * currentMultiplier
+                                formattedNum = if (calculatedNum % 1f == 0f) calculatedNum.toInt().toString() else String.format(Locale.US, "%.1f", calculatedNum)
+                                textPart = unitText.replaceFirst(matchResult.value, "").trim()
+                            } else {
+                                formattedNum = if (currentMultiplier % 1f == 0f) currentMultiplier.toInt().toString() else String.format(Locale.US, "%.1f", currentMultiplier)
+                                textPart = unitText
+                            }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                if (textPart.isNotBlank()) {
+                                    Text(text = textPart, style = MaterialTheme.typography.bodyLarge)
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                }
+                                Text(text = formattedNum, style = MaterialTheme.typography.bodyLarge)
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Text(text = "=", style = MaterialTheme.typography.bodyLarge)
+                                Spacer(modifier = Modifier.width(12.dp))
+
+                                val calsStr = if (dynamicCals % 1f == 0f) dynamicCals.toInt().toString() else String.format(Locale.US, "%.1f", dynamicCals)
+                                Surface(shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.secondaryContainer) {
+                                    Text(
+                                        text = "$calsStr kcal",
+                                        style = MaterialTheme.typography.labelLarge,
+                                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                                    )
+                                }
+                            }
+
                             Spacer(modifier = Modifier.height(16.dp))
                             OutlinedTextField(value = servingsStr, onValueChange = { servingsStr = it }, label = { Text("Multiplier (e.g., 2 or 0.5)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
                             Spacer(modifier = Modifier.height(16.dp))

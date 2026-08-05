@@ -1,25 +1,41 @@
 package com.example.loom.ui.home.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.loom.data.local.entity.ConsumedFoodLog
 import com.example.loom.data.local.entity.DailyRecord
 import com.example.loom.ui.home.HomeViewModel
+import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Locale
 
-@OptIn(ExperimentalMaterial3Api::class)
+private val timelineDateFormatter = SimpleDateFormat("h:mm a", Locale.getDefault())
+
+private fun Float.formatWeight(): String {
+    return if (this % 1f == 0f) this.toInt().toString() else this.toString()
+}
+
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun NutritionLogCard(
     todayRecord: DailyRecord?,
@@ -31,14 +47,111 @@ fun NutritionLogCard(
     viewModel: HomeViewModel,
     onLogMealClick: () -> Unit
 ) {
+    var logDetailsToShow by remember { mutableStateOf<ConsumedFoodLog?>(null) }
+
+    if (logDetailsToShow != null) {
+        val log = logDetailsToShow!!
+        val timeStr = timelineDateFormatter.format(Date(log.timestamp))
+        AlertDialog(
+            onDismissRequest = { logDetailsToShow = null },
+            title = { Text("Meal Details") },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Surface(
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        modifier = Modifier.size(80.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) { Text(log.emoji, fontSize = 40.sp) }
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Text(log.foodName, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+
+                    val unitDisplay = log.servingUnit.ifBlank { "serving" }
+                    val uText = unitDisplay.trim()
+                    val mResult = "\\d+(\\.\\d+)?".toRegex().find(uText)
+
+                    val calculatedNumStr: String
+                    val finalUnitText: String
+                    val showMultiplier: Boolean
+
+                    if (mResult != null) {
+                        val baseNum = mResult.value.toFloat()
+                        val totalNum = baseNum * log.servings
+                        calculatedNumStr = totalNum.formatWeight()
+                        finalUnitText = uText.replaceFirst(mResult.value, "").trim()
+                        showMultiplier = false
+                    } else {
+                        calculatedNumStr = ""
+                        finalUnitText = uText
+                        showMultiplier = true
+                    }
+
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                        if (finalUnitText.isNotBlank()) {
+                            Text(finalUnitText, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Spacer(modifier = Modifier.width(4.dp))
+                        }
+                        if (showMultiplier) {
+                            Text("${log.servings.formatWeight()}x", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        } else {
+                            Text(calculatedNumStr, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("•  $timeStr", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+
+                    Spacer(modifier = Modifier.height(24.dp))
+
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("${log.calories}", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.titleMedium)
+                            Text("kcal", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("${log.protein}g", fontWeight = FontWeight.Bold, color = Color(0xFF4CAF50), style = MaterialTheme.typography.titleMedium)
+                            Text("Pro", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("${log.carbs}g", fontWeight = FontWeight.Bold, color = Color(0xFFFFA726), style = MaterialTheme.typography.titleMedium)
+                            Text("Carbs", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("${log.fats}g", fontWeight = FontWeight.Bold, color = Color(0xFFE53935), style = MaterialTheme.typography.titleMedium)
+                            Text("Fats", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(onClick = { logDetailsToShow = null }) { Text("Close") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    viewModel.removeConsumedFoodLog(log)
+                    logDetailsToShow = null
+                }, colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) {
+                    Text("Delete Log")
+                }
+            }
+        )
+    }
+
     ElevatedCard(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp), colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)) {
         Column(modifier = Modifier.padding(20.dp)) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text("Nutrition Log", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Button(onClick = onLogMealClick, shape = RoundedCornerShape(12.dp), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp)) { Text("+ Log Meal") }
+                Button(onClick = onLogMealClick, shape = RoundedCornerShape(12.dp), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp)) {
+                    Text("+ Log Meal")
+                }
             }
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
+            // --- RESTORED LINEAR PROGRESS BARS ---
             val currentCals = todayRecord?.calories ?: 0
             val calProg = if (targetCaloriesInt > 0) (currentCals.toFloat() / targetCaloriesInt).coerceIn(0f, 1f) else 0f
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -95,6 +208,7 @@ fun NutritionLogCard(
                                 } else false
                             }
                         )
+
                         SwipeToDismissBox(
                             state = dismissState,
                             enableDismissFromStartToEnd = false,
@@ -105,13 +219,88 @@ fun NutritionLogCard(
                                 }
                             }
                         ) {
-                            val timeStr = java.text.SimpleDateFormat("h:mm a", Locale.getDefault()).format(java.util.Date(log.timestamp))
-                            Row(modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Text(log.emoji, fontSize = 24.sp)
-                                Spacer(modifier = Modifier.width(12.dp))
+                            val timeStr = timelineDateFormatter.format(Date(log.timestamp))
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(MaterialTheme.colorScheme.surface)
+                                    .combinedClickable(
+                                        onClick = { logDetailsToShow = log },
+                                        onLongClick = { logDetailsToShow = log }
+                                    )
+                                    .padding(vertical = 8.dp, horizontal = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Surface(
+                                    shape = CircleShape,
+                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                                    modifier = Modifier.size(48.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Text(log.emoji, fontSize = 24.sp)
+                                    }
+                                }
+                                Spacer(modifier = Modifier.width(16.dp))
                                 Column(modifier = Modifier.weight(1f)) {
-                                    val servingsDisplay = if (log.servings % 1f == 0f) log.servings.toInt().toString() else log.servings.toString()
-                                    Text("${log.foodName} ($servingsDisplay)", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                                    val servingDisplay = log.servings.formatWeight()
+                                    val unitDisplay = log.servingUnit.ifBlank { "serving" }
+
+                                    // --- Dynamic Math Fix ---
+                                    val uText = unitDisplay.trim()
+                                    val mResult = "\\d+(\\.\\d+)?".toRegex().find(uText)
+
+                                    val calculatedNumStr: String
+                                    val finalUnitText: String
+                                    val showMultiplier: Boolean
+
+                                    if (mResult != null) {
+                                        val baseNum = mResult.value.toFloat()
+                                        val totalNum = baseNum * log.servings
+                                        calculatedNumStr = totalNum.formatWeight()
+                                        finalUnitText = uText.replaceFirst(mResult.value, "").trim()
+                                        showMultiplier = false
+                                    } else {
+                                        calculatedNumStr = ""
+                                        finalUnitText = uText
+                                        showMultiplier = true
+                                    }
+
+                                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                                        // Colored Tag Box for Serving
+                                        Surface(
+                                            shape = RoundedCornerShape(6.dp),
+                                            color = MaterialTheme.colorScheme.secondaryContainer
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                // RTL FIX: Text on the left, Number on the right
+                                                if (finalUnitText.isNotBlank()) {
+                                                    Text(finalUnitText, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSecondaryContainer)
+                                                    Spacer(modifier = Modifier.width(4.dp))
+                                                }
+                                                if (showMultiplier) {
+                                                    Text("${servingDisplay}x", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSecondaryContainer)
+                                                } else {
+                                                    Text(calculatedNumStr, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSecondaryContainer)
+                                                }
+                                            }
+                                        }
+
+                                        Spacer(modifier = Modifier.width(8.dp))
+
+                                        // Food Name
+                                        Text(
+                                            text = log.foodName,
+                                            fontWeight = FontWeight.Bold,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(2.dp))
                                     Text("${log.calories} kcal • P:${log.protein} C:${log.carbs} F:${log.fats}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                                 Text(timeStr, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha=0.5f))

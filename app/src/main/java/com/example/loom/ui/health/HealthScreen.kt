@@ -1,6 +1,7 @@
 package com.example.loom.ui.health
 
 import android.widget.Toast
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -11,6 +12,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -22,6 +24,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Circle
@@ -33,6 +36,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -44,6 +48,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.example.loom.data.local.entity.ConsumedFoodLog
 import com.example.loom.data.local.entity.Exercise
 import com.example.loom.data.local.entity.ExerciseTemplate
 import com.example.loom.data.local.entity.FoodItem
@@ -162,6 +167,11 @@ fun HealthScreen(viewModel: HealthViewModel) {
     val activity by viewModel.activity.collectAsState()
     val goal by viewModel.goal.collectAsState()
 
+    val targetCaloriesInt by viewModel.targetCalories.collectAsState()
+    val targetProteinInt by viewModel.targetProtein.collectAsState()
+    val targetCarbsInt by viewModel.targetCarbs.collectAsState()
+    val targetFatsInt by viewModel.targetFats.collectAsState()
+
     var showExerciseDialog by remember { mutableStateOf(false) }
     var selectedTabIndex by remember { mutableIntStateOf(0) }
     var templateToEdit by remember { mutableStateOf<ExerciseTemplate?>(null) }
@@ -189,6 +199,7 @@ fun HealthScreen(viewModel: HealthViewModel) {
     var foodToLog by remember { mutableStateOf<FoodItem?>(null) }
     var showNewFoodDialog by remember { mutableStateOf(false) }
     var foodToDelete by remember { mutableStateOf<FoodItem?>(null) }
+    var logDetailsToShow by remember { mutableStateOf<ConsumedFoodLog?>(null) }
 
     if (productToDelete != null) {
         AlertDialog(
@@ -211,6 +222,97 @@ fun HealthScreen(viewModel: HealthViewModel) {
                 Button(onClick = { viewModel.deleteFoodItem(foodToDelete!!); foodToDelete = null }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) { Text("Delete") }
             },
             dismissButton = { TextButton(onClick = { foodToDelete = null }) { Text("Cancel") } }
+        )
+    }
+
+    if (logDetailsToShow != null) {
+        val log = logDetailsToShow!!
+        val timeStr = timelineDateFormatter.format(Date(log.timestamp))
+        AlertDialog(
+            onDismissRequest = { logDetailsToShow = null },
+            title = { Text("Meal Details") },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Surface(
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        modifier = Modifier.size(80.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) { Text(log.emoji, fontSize = 40.sp) }
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(log.foodName, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+
+                    val unitDisplay = log.servingUnit.ifBlank { "serving" }
+                    val uText = unitDisplay.trim()
+                    val mResult = "\\d+(\\.\\d+)?".toRegex().find(uText)
+
+                    val calculatedNumStr: String
+                    val finalUnitText: String
+                    val showMultiplier: Boolean
+
+                    if (mResult != null) {
+                        val baseNum = mResult.value.toFloat()
+                        val totalNum = baseNum * log.servings
+                        calculatedNumStr = totalNum.formatWeight()
+                        finalUnitText = uText.replaceFirst(mResult.value, "").trim()
+                        showMultiplier = false
+                    } else {
+                        calculatedNumStr = ""
+                        finalUnitText = uText
+                        showMultiplier = true
+                    }
+
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                        if (finalUnitText.isNotBlank()) {
+                            Text(finalUnitText, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Spacer(modifier = Modifier.width(4.dp))
+                        }
+                        if (showMultiplier) {
+                            Text("${log.servings.formatWeight()}x", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        } else {
+                            Text(calculatedNumStr, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("•  $timeStr", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+
+                    Spacer(modifier = Modifier.height(24.dp))
+
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("${log.calories}", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.titleMedium)
+                            Text("kcal", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("${log.protein}g", fontWeight = FontWeight.Bold, color = Color(0xFF4CAF50), style = MaterialTheme.typography.titleMedium)
+                            Text("Pro", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("${log.carbs}g", fontWeight = FontWeight.Bold, color = Color(0xFFFFA726), style = MaterialTheme.typography.titleMedium)
+                            Text("Carbs", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("${log.fats}g", fontWeight = FontWeight.Bold, color = Color(0xFFE53935), style = MaterialTheme.typography.titleMedium)
+                            Text("Fats", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(onClick = { logDetailsToShow = null }) { Text("Close") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    viewModel.removeConsumedFoodLog(log)
+                    logDetailsToShow = null
+                }, colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) {
+                    Text("Delete Log")
+                }
+            }
         )
     }
 
@@ -298,13 +400,13 @@ fun HealthScreen(viewModel: HealthViewModel) {
 
         AlertDialog(
             onDismissRequest = { showFoodPantryDialog = false },
-            title = { Text("Edit Pantry") },
+            title = { Text("Edit Pantry & Log Meals") },
             text = {
                 Column {
                     OutlinedTextField(
                         value = currentSearchQuery,
                         onValueChange = { viewModel.updateFoodSearchQuery(it) },
-                        placeholder = { Text("Search foods to edit/delete...") },
+                        placeholder = { Text("Search foods to log/edit...") },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true
                     )
@@ -332,21 +434,44 @@ fun HealthScreen(viewModel: HealthViewModel) {
                                     Column(modifier = Modifier.weight(1f)) {
                                         Text(food.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
 
-                                        // --- NEW: Macro Visualizer for Health Tab ---
                                         Text(
                                             text = "P: ${food.protein}g • C: ${food.carbs}g • F: ${food.fats}g",
                                             style = MaterialTheme.typography.labelSmall,
                                             color = MaterialTheme.colorScheme.primary
                                         )
+                                        Spacer(modifier = Modifier.height(4.dp))
 
-                                        Text(
-                                            text = "${food.servingUnit} • ${food.calories} kcal",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                    IconButton(onClick = { foodToDelete = food }, modifier = Modifier.size(24.dp)) {
-                                        Icon(Icons.Default.Delete, "Delete", tint = MaterialTheme.colorScheme.error)
+                                        val uText = food.servingUnit.trim()
+                                        val mResult = "\\d+(\\.\\d+)?".toRegex().find(uText)
+                                        val numStr = mResult?.value ?: ""
+                                        val textStr = if (mResult != null) uText.replaceFirst(numStr, "").trim() else uText
+
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = "${food.calories} kcal",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+
+                                            Surface(shape = RoundedCornerShape(6.dp), color = MaterialTheme.colorScheme.secondaryContainer) {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                ) {
+                                                    if (textStr.isNotBlank()) {
+                                                        Text(text = textStr, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSecondaryContainer, fontWeight = FontWeight.Bold)
+                                                        Spacer(modifier = Modifier.width(4.dp))
+                                                    }
+                                                    if (numStr.isNotBlank()) {
+                                                        Text(text = numStr, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSecondaryContainer, fontWeight = FontWeight.Bold)
+                                                    }
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -798,7 +923,9 @@ fun HealthScreen(viewModel: HealthViewModel) {
                     .fillMaxWidth(0.95f)
                     .imePadding()
                     .padding(vertical = 24.dp)
-                    .heightIn(max = 750.dp),
+                    .heightIn(max = 750.dp)
+                    .wrapContentHeight()
+                    .animateContentSize(),
                 shape = RoundedCornerShape(24.dp),
                 color = MaterialTheme.colorScheme.surface
             ) {
@@ -808,7 +935,7 @@ fun HealthScreen(viewModel: HealthViewModel) {
                         Tab(selected = selectedTabIndex == 1, onClick = { selectedTabIndex = 1 }, text = { Text("Presets") })
                     }
 
-                    Box(modifier = Modifier.padding(16.dp).weight(1f)) {
+                    Box(modifier = Modifier.padding(16.dp)) {
                         if (selectedTabIndex == 0) {
                             var inputName by remember { mutableStateOf("") }
                             var expanded by remember { mutableStateOf(false) }
@@ -820,7 +947,7 @@ fun HealthScreen(viewModel: HealthViewModel) {
                             var inputWeight by remember { mutableStateOf("60") }
                             var advancedWeights by remember { mutableStateOf(mapOf<Int, String>()) }
 
-                            Column(modifier = Modifier.fillMaxSize()) {
+                            Column(modifier = Modifier.fillMaxWidth().wrapContentHeight()) {
                                 Column(modifier = Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
                                     ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
                                         OutlinedTextField(
@@ -935,7 +1062,7 @@ fun HealthScreen(viewModel: HealthViewModel) {
                             var builderWeight by remember { mutableStateOf("60") }
                             var builderAdvancedWeights by remember { mutableStateOf(mapOf<Int, String>()) }
 
-                            Column(modifier = Modifier.fillMaxSize()) {
+                            Column(modifier = Modifier.fillMaxWidth().wrapContentHeight()) {
                                 Column(modifier = Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
                                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                                         ExposedDropdownMenuBox(expanded = presetDropdownExpanded, onExpandedChange = { presetDropdownExpanded = it }, modifier = Modifier.weight(1f)) {
@@ -1221,9 +1348,7 @@ fun HealthScreen(viewModel: HealthViewModel) {
 
                                                 val isChecked = exercise.isCompleted
 
-                                                IconButton(onClick = {
-                                                    viewModel.toggleExerciseCompletion(exercise)
-                                                }) {
+                                                IconButton(onClick = { viewModel.toggleExerciseCompletion(exercise) }) {
                                                     Icon(
                                                         imageVector = if (isChecked) Icons.Outlined.CheckCircle else Icons.Outlined.Circle,
                                                         contentDescription = "Complete",
@@ -1259,7 +1384,9 @@ fun HealthScreen(viewModel: HealthViewModel) {
                     Column(modifier = Modifier.padding(20.dp)) {
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                             Text("Nutrition Log", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            TextButton(onClick = { showFoodPantryDialog = true }) { Text("Edit Pantry") }
+                            Button(onClick = { showFoodPantryDialog = true }, shape = RoundedCornerShape(12.dp), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp)) {
+                                Text("Pantry")
+                            }
                         }
                         Spacer(modifier = Modifier.height(16.dp))
 
@@ -1274,16 +1401,16 @@ fun HealthScreen(viewModel: HealthViewModel) {
                                 Canvas(modifier = Modifier.fillMaxSize()) {
                                     val strokeW = 14.dp.toPx()
                                     if (totalMacroCals == 0f) {
-                                        drawArc(Color.LightGray.copy(alpha=0.3f), 0f, 360f, false, style = Stroke(strokeW))
+                                        drawArc(Color.LightGray.copy(alpha=0.3f), 0f, 360f, false, style = Stroke(width = strokeW, cap = StrokeCap.Round))
                                     } else {
                                         var startAngle = -90f
                                         val proAngle = ((proGrams * 4f) / totalMacroCals) * 360f
                                         val carbAngle = ((carbGrams * 4f) / totalMacroCals) * 360f
                                         val fatAngle = ((fatGrams * 9f) / totalMacroCals) * 360f
 
-                                        drawArc(Color(0xFF4CAF50), startAngle, proAngle, false, style = Stroke(strokeW)); startAngle += proAngle
-                                        drawArc(Color(0xFFFFA726), startAngle, carbAngle, false, style = Stroke(strokeW)); startAngle += carbAngle
-                                        drawArc(Color(0xFFE53935), startAngle, fatAngle, false, style = Stroke(strokeW))
+                                        if (proAngle > 0f) { drawArc(Color(0xFF4CAF50), startAngle, proAngle, false, style = Stroke(width = strokeW, cap = StrokeCap.Round)); startAngle += proAngle }
+                                        if (carbAngle > 0f) { drawArc(Color(0xFFFFA726), startAngle, carbAngle, false, style = Stroke(width = strokeW, cap = StrokeCap.Round)); startAngle += carbAngle }
+                                        if (fatAngle > 0f) { drawArc(Color(0xFFE53935), startAngle, fatAngle, false, style = Stroke(width = strokeW, cap = StrokeCap.Round)) }
                                     }
                                 }
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -1293,9 +1420,9 @@ fun HealthScreen(viewModel: HealthViewModel) {
                             }
                             Spacer(modifier = Modifier.width(24.dp))
                             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.Circle, null, tint = Color(0xFF4CAF50), modifier = Modifier.size(12.dp)); Spacer(modifier = Modifier.width(8.dp)); Text("${proGrams}g Protein", style = MaterialTheme.typography.bodyMedium) }
-                                Row(verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.Circle, null, tint = Color(0xFFFFA726), modifier = Modifier.size(12.dp)); Spacer(modifier = Modifier.width(8.dp)); Text("${carbGrams}g Carbs", style = MaterialTheme.typography.bodyMedium) }
-                                Row(verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.Circle, null, tint = Color(0xFFE53935), modifier = Modifier.size(12.dp)); Spacer(modifier = Modifier.width(8.dp)); Text("${fatGrams}g Fats", style = MaterialTheme.typography.bodyMedium) }
+                                Row(verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.Circle, null, tint = Color(0xFF4CAF50), modifier = Modifier.size(12.dp)); Spacer(modifier = Modifier.width(8.dp)); Text("${proGrams}g / ${targetProteinInt}g Protein", style = MaterialTheme.typography.bodyMedium) }
+                                Row(verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.Circle, null, tint = Color(0xFFFFA726), modifier = Modifier.size(12.dp)); Spacer(modifier = Modifier.width(8.dp)); Text("${carbGrams}g / ${targetCarbsInt}g Carbs", style = MaterialTheme.typography.bodyMedium) }
+                                Row(verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.Circle, null, tint = Color(0xFFE53935), modifier = Modifier.size(12.dp)); Spacer(modifier = Modifier.width(8.dp)); Text("${fatGrams}g / ${targetFatsInt}g Fats", style = MaterialTheme.typography.bodyMedium) }
                             }
                         }
 
@@ -1328,11 +1455,86 @@ fun HealthScreen(viewModel: HealthViewModel) {
                                         }
                                     ) {
                                         val timeStr = timelineDateFormatter.format(Date(log.timestamp))
-                                        Row(modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                                            Text(log.emoji, fontSize = 24.sp)
-                                            Spacer(modifier = Modifier.width(12.dp))
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .background(MaterialTheme.colorScheme.surface)
+                                                .combinedClickable(
+                                                    onClick = { logDetailsToShow = log },
+                                                    onLongClick = { logDetailsToShow = log }
+                                                )
+                                                .padding(vertical = 8.dp, horizontal = 4.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Surface(
+                                                shape = CircleShape,
+                                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                                                modifier = Modifier.size(48.dp)
+                                            ) {
+                                                Box(contentAlignment = Alignment.Center) {
+                                                    Text(log.emoji, fontSize = 24.sp)
+                                                }
+                                            }
+                                            Spacer(modifier = Modifier.width(16.dp))
                                             Column(modifier = Modifier.weight(1f)) {
-                                                Text("${log.foodName} (${log.servings.formatWeight()})", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                                                val servingDisplay = log.servings.formatWeight()
+                                                val unitDisplay = log.servingUnit.ifBlank { "serving" }
+
+                                                // --- Dynamic Math Fix ---
+                                                val uText = unitDisplay.trim()
+                                                val mResult = "\\d+(\\.\\d+)?".toRegex().find(uText)
+
+                                                val calculatedNumStr: String
+                                                val finalUnitText: String
+                                                val showMultiplier: Boolean
+
+                                                if (mResult != null) {
+                                                    val baseNum = mResult.value.toFloat()
+                                                    val totalNum = baseNum * log.servings
+                                                    calculatedNumStr = totalNum.formatWeight()
+                                                    finalUnitText = uText.replaceFirst(mResult.value, "").trim()
+                                                    showMultiplier = false
+                                                } else {
+                                                    calculatedNumStr = ""
+                                                    finalUnitText = uText
+                                                    showMultiplier = true
+                                                }
+
+                                                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                                                    // Colored Tag Box for Serving
+                                                    Surface(
+                                                        shape = RoundedCornerShape(6.dp),
+                                                        color = MaterialTheme.colorScheme.secondaryContainer
+                                                    ) {
+                                                        Row(
+                                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                                            verticalAlignment = Alignment.CenterVertically
+                                                        ) {
+                                                            if (finalUnitText.isNotBlank()) {
+                                                                Text(finalUnitText, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSecondaryContainer)
+                                                                Spacer(modifier = Modifier.width(4.dp))
+                                                            }
+                                                            if (showMultiplier) {
+                                                                Text("${servingDisplay}x", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSecondaryContainer)
+                                                            } else {
+                                                                Text(calculatedNumStr, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSecondaryContainer)
+                                                            }
+                                                        }
+                                                    }
+
+                                                    Spacer(modifier = Modifier.width(8.dp))
+
+                                                    // Food Name
+                                                    Text(
+                                                        text = log.foodName,
+                                                        fontWeight = FontWeight.Bold,
+                                                        style = MaterialTheme.typography.bodyMedium,
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis,
+                                                        modifier = Modifier.weight(1f)
+                                                    )
+                                                }
+                                                Spacer(modifier = Modifier.height(2.dp))
                                                 Text("${log.calories} kcal • P:${log.protein} C:${log.carbs} F:${log.fats}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                             }
                                             Text(timeStr, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha=0.5f))

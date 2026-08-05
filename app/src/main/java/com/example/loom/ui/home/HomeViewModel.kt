@@ -212,7 +212,6 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             _isLoading.value = true
             try {
-                // Wipe all Room tables
                 trackerDao.wipeDailyRecords()
                 trackerDao.wipeTasks()
                 trackerDao.wipeTaskSections()
@@ -226,13 +225,11 @@ class HomeViewModel @Inject constructor(
                 trackerDao.wipeFoodItems()
                 sandboxDao.wipeAllSpaces()
 
-                // Reset DataStore Preferences to default
                 userPreferences.saveTargets(2800, 140, 350, 75)
                 userPreferences.saveDefaultWaterIncrement(250)
                 userPreferences.saveAppTheme("System")
                 userPreferences.setBiometricEnabled(true)
 
-                // Re-initialize standard defaults
                 repository.initializeTodayRecord()
                 repository.prepopulateTemplatesIfEmpty()
                 repository.prepopulateTagsIfEmpty()
@@ -269,6 +266,7 @@ class HomeViewModel @Inject constructor(
             foodName = food.name,
             emoji = getMealEmojiForTime(currentTime),
             servings = servings,
+            servingUnit = food.servingUnit, // Added Unit Save
             calories = totalCals, protein = totalPro, carbs = totalCarbs, fats = totalFats,
             timestamp = currentTime
         )
@@ -395,6 +393,7 @@ class HomeViewModel @Inject constructor(
             foodName = "ثبت دستی",
             emoji = "✍️",
             servings = 1f,
+            servingUnit = "serving",
             calories = cals, protein = pro, carbs = carbs, fats = fats,
             timestamp = currentTime
         )

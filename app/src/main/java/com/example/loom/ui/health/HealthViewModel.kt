@@ -45,6 +45,11 @@ class HealthViewModel @Inject constructor(
 
     val defaultWaterIncrement: StateFlow<Int> = userPreferences.defaultWaterIncrementFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 250)
 
+    val targetCalories: StateFlow<Int> = userPreferences.targetCaloriesFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 2800)
+    val targetProtein: StateFlow<Int> = userPreferences.targetProteinFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 140)
+    val targetCarbs: StateFlow<Int> = userPreferences.targetCarbsFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 350)
+    val targetFats: StateFlow<Int> = userPreferences.targetFatsFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 75)
+
     val weight: StateFlow<Float> = userPreferences.weightFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 70f)
     val height: StateFlow<Int> = userPreferences.heightFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 175)
     val age: StateFlow<Int> = userPreferences.ageFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 21)
@@ -64,7 +69,6 @@ class HealthViewModel @Inject constructor(
         .map { try { Json.decodeFromString<List<String>>(it?.completedSkincareStepsJson ?: "[]") } catch (e: Exception) { emptyList() } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    // --- Farsi Reactive Search ---
     private val _foodSearchQuery = MutableStateFlow("")
     val foodSearchQuery: StateFlow<String> = _foodSearchQuery.asStateFlow()
 
@@ -87,7 +91,6 @@ class HealthViewModel @Inject constructor(
     init {
         viewModelScope.launch {
             repository.prepopulateSkincareProductsIfEmpty()
-            // Removed prepopulateFoodPantryIfEmpty() because DB is from Kaggle
         }
     }
 
@@ -114,8 +117,9 @@ class HealthViewModel @Inject constructor(
         val log = ConsumedFoodLog(
             id = java.util.UUID.randomUUID().toString(),
             foodName = food.name,
-            emoji = getMealEmojiForTime(currentTime), // <--- DYNAMIC EMOJI
+            emoji = getMealEmojiForTime(currentTime),
             servings = servings,
+            servingUnit = food.servingUnit, // Added Unit Save
             calories = totalCals, protein = totalPro, carbs = totalCarbs, fats = totalFats,
             timestamp = currentTime
         )

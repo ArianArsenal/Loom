@@ -41,6 +41,7 @@ data class ConsumedFoodLog(
     val foodName: String,
     val emoji: String,
     val servings: Float,
+    val servingUnit: String = "",
     val calories: Int,
     val protein: Int,
     val carbs: Int,
