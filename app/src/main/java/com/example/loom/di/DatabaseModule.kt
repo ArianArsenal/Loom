@@ -1,6 +1,7 @@
 package com.example.loom.di
 
 import android.content.Context
+import androidx.room.Room
 import com.example.loom.data.local.AppDatabase
 import com.example.loom.data.local.dao.TrackerDao
 import com.example.loom.data.repository.TrackerRepository
@@ -18,7 +19,14 @@ object DatabaseModule {
     @Provides
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): AppDatabase {
-        return AppDatabase.getDatabase(context)
+        return Room.databaseBuilder(
+            context,
+            AppDatabase::class.java,
+            "loom_database.db"
+        )
+            .createFromAsset("loom_database.db") // This copies your pre-packaged Kaggle dataset
+            .fallbackToDestructiveMigration()
+            .build()
     }
 
     @Provides

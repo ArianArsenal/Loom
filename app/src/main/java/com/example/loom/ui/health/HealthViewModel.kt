@@ -15,8 +15,13 @@ import com.example.loom.data.local.preferences.UserPreferences
 import com.example.loom.data.repository.TrackerRepository
 import com.example.loom.util.DateUtils
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -38,7 +43,6 @@ class HealthViewModel @Inject constructor(
     val allSkincareRoutines: StateFlow<List<SkincareRoutine>> = repository.getAllSkincareRoutines().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val allSkincareProducts: StateFlow<List<SkincareProduct>> = repository.getAllSkincareProducts().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val allFoodItems: StateFlow<List<FoodItem>> = repository.getAllFoodItems().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val defaultWaterIncrement: StateFlow<Int> = userPreferences.defaultWaterIncrementFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 250)
 
     val weight: StateFlow<Float> = userPreferences.weightFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 70f)
@@ -60,10 +64,30 @@ class HealthViewModel @Inject constructor(
         .map { try { Json.decodeFromString<List<String>>(it?.completedSkincareStepsJson ?: "[]") } catch (e: Exception) { emptyList() } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    // --- Farsi Reactive Search ---
+    private val _foodSearchQuery = MutableStateFlow("")
+    val foodSearchQuery: StateFlow<String> = _foodSearchQuery.asStateFlow()
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val searchedFoodItems: StateFlow<List<FoodItem>> = _foodSearchQuery
+        .debounce(300L)
+        .flatMapLatest { query ->
+            if (query.isBlank()) {
+                repository.searchFoodItems("مرغ")
+            } else {
+                repository.searchFoodItems(query)
+            }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    fun updateFoodSearchQuery(query: String) {
+        _foodSearchQuery.value = query
+    }
+
     init {
         viewModelScope.launch {
             repository.prepopulateSkincareProductsIfEmpty()
-            repository.prepopulateFoodPantryIfEmpty()
+            // Removed prepopulateFoodPantryIfEmpty() because DB is from Kaggle
         }
     }
 
@@ -80,6 +104,8 @@ class HealthViewModel @Inject constructor(
 
     fun logFoodItem(food: FoodItem, servings: Float) = viewModelScope.launch {
         val record = todayRecord.value ?: return@launch
+
+        // Convert the Float macros to Ints for the DailyRecord log
         val totalCals = (food.calories * servings).toInt()
         val totalPro = (food.protein * servings).toInt()
         val totalCarbs = (food.carbs * servings).toInt()
@@ -87,7 +113,9 @@ class HealthViewModel @Inject constructor(
 
         val log = ConsumedFoodLog(
             id = java.util.UUID.randomUUID().toString(),
-            foodName = food.name, emoji = food.emoji, servings = servings,
+            foodName = food.name,
+            emoji = "🍽️", // Fallback emoji since we deleted the DB column
+            servings = servings,
             calories = totalCals, protein = totalPro, carbs = totalCarbs, fats = totalFats,
             timestamp = System.currentTimeMillis()
         )
@@ -114,7 +142,6 @@ class HealthViewModel @Inject constructor(
         repository.insertTemplateIfNotExists(name)
     }
 
-    // FIX: Function to update an existing exercise so it stays in place
     fun updateExercise(exercise: Exercise) = viewModelScope.launch { repository.updateExercise(exercise) }
 
     fun toggleExerciseCompletion(exercise: Exercise) = viewModelScope.launch {

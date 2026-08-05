@@ -5,6 +5,7 @@ import com.example.loom.data.local.entity.DailyRecord
 import com.example.loom.data.local.entity.DiaryNote
 import com.example.loom.data.local.entity.Exercise
 import com.example.loom.data.local.entity.ExerciseTemplate
+import com.example.loom.data.local.entity.FoodItem
 import com.example.loom.data.local.entity.NoteTag
 import com.example.loom.data.local.entity.SkincareProduct
 import com.example.loom.data.local.entity.SkincareRoutine
@@ -39,7 +40,6 @@ class TrackerRepository @Inject constructor(private val dao: TrackerDao) {
             record.waterIntakeMl += amountMl
             dao.updateDailyRecord(record)
         } else {
-            // If no record exists for that past day, create one
             val newRecord = DailyRecord(dateId = targetDateId, waterIntakeMl = amountMl)
             dao.insertDailyRecord(newRecord)
         }
@@ -52,6 +52,7 @@ class TrackerRepository @Inject constructor(private val dao: TrackerDao) {
             dao.updateDailyRecord(record)
         }
     }
+
     suspend fun updateDiaryNote(note: String) {
         val record = dao.getDailyRecordSync(DateUtils.getTodayDateId())
         if (record != null) {
@@ -63,7 +64,6 @@ class TrackerRepository @Inject constructor(private val dao: TrackerDao) {
     suspend fun logConsumedFood(cals: Int, pro: Int, carbs: Int, fats: Int, logsJson: String) {
         val record = dao.getDailyRecordSync(DateUtils.getTodayDateId())
         if (record != null) {
-            // FIX: .coerceAtLeast(0) completely prevents negative macros
             record.calories = (record.calories + cals).coerceAtLeast(0)
             record.protein = (record.protein + pro).coerceAtLeast(0)
             record.carbs = (record.carbs + carbs).coerceAtLeast(0)
@@ -81,11 +81,9 @@ class TrackerRepository @Inject constructor(private val dao: TrackerDao) {
             record.carbs = carbs.coerceAtLeast(0)
             record.fats = fats.coerceAtLeast(0)
 
-            // FIX: Auto-clear food list if macros are explicitly reset to 0 in the Calendar
             if (cals == 0 && pro == 0 && carbs == 0 && fats == 0) {
                 record.consumedFoodsJson = "[]"
             }
-
             dao.updateDailyRecord(record)
         } else {
             val newRecord = DailyRecord(dateId = targetDateId, calories = cals, protein = pro, carbs = carbs, fats = fats)
@@ -94,24 +92,9 @@ class TrackerRepository @Inject constructor(private val dao: TrackerDao) {
     }
 
     // --- FOOD PANTRY ---
-    fun getAllFoodItems(): Flow<List<com.example.loom.data.local.entity.FoodItem>> = dao.getAllFoodItems()
-    suspend fun insertFoodItem(food: com.example.loom.data.local.entity.FoodItem) = dao.insertFoodItem(food)
-    suspend fun deleteFoodItem(food: com.example.loom.data.local.entity.FoodItem) = dao.deleteFoodItem(food)
-
-    suspend fun prepopulateFoodPantryIfEmpty() {
-        if (dao.getFoodItemCount() == 0) {
-            val defaults = listOf(
-                com.example.loom.data.local.entity.FoodItem(emoji = "🍛", name = "Persian Rice (Kateh)", servingUnit = "Plate", calories = 250, protein = 5, carbs = 55, fats = 1),
-                com.example.loom.data.local.entity.FoodItem(emoji = "🍗", name = "Chicken Breast", servingUnit = "100g", calories = 165, protein = 31, carbs = 0, fats = 3),
-                com.example.loom.data.local.entity.FoodItem(emoji = "🥚", name = "Boiled Egg", servingUnit = "1 Egg", calories = 70, protein = 6, carbs = 0, fats = 5),
-                com.example.loom.data.local.entity.FoodItem(emoji = "🥩", name = "Beef Stew (Ghormeh Sabzi)", servingUnit = "Bowl", calories = 400, protein = 25, carbs = 15, fats = 28),
-                com.example.loom.data.local.entity.FoodItem(emoji = "🥛", name = "Whey Protein Shake", servingUnit = "Scoop", calories = 120, protein = 24, carbs = 3, fats = 1)
-            )
-            defaults.forEach { dao.insertFoodItem(it) }
-        }
-    }
-
-
+    fun searchFoodItems(query: String): Flow<List<FoodItem>> = dao.searchFoodItems(query)
+    suspend fun insertFoodItem(food: FoodItem) = dao.insertFoodItem(food)
+    suspend fun deleteFoodItem(food: FoodItem) = dao.deleteFoodItem(food)
 
     suspend fun updateCompletedSkincareRoutines(routinesJson: String) {
         val record = dao.getDailyRecordSync(DateUtils.getTodayDateId())
@@ -156,7 +139,7 @@ class TrackerRepository @Inject constructor(private val dao: TrackerDao) {
         name: String, sets: Int, reps: Int, weight: Float,
         weightListJson: String = "[]", isTimeBased: Boolean, duration: Int,
         presetName: String? = null, targetDateId: String = DateUtils.getTodayDateId(),
-        isCompleted: Boolean = false // FIX: Reverted default back to false
+        isCompleted: Boolean = false
     ) {
         dao.insertExercise(
             Exercise(
@@ -175,10 +158,7 @@ class TrackerRepository @Inject constructor(private val dao: TrackerDao) {
     }
 
     suspend fun deleteExercise(exercise: Exercise) = dao.deleteExercise(exercise)
-
-    suspend fun updateExercise(exercise: Exercise) {
-        dao.updateExercise(exercise)
-    }
+    suspend fun updateExercise(exercise: Exercise) { dao.updateExercise(exercise) }
 
     // --- Presets ---
     fun getAllPresets(): Flow<List<WorkoutPreset>> = dao.getAllPresets()

@@ -155,18 +155,15 @@ interface TrackerDao {
     @Delete
     suspend fun deleteSkincareProduct(product: SkincareProduct)
 
-    // --- NEW: Food Pantry ---
-    @Query("SELECT * FROM food_items ORDER BY name ASC")
-    fun getAllFoodItems(): Flow<List<FoodItem>>
+    // --- NEW: Food Pantry (Updated for Search) ---
+    @Query("SELECT * FROM food_items WHERE name LIKE '%' || :searchQuery || '%' ORDER BY name ASC LIMIT 50")
+    fun searchFoodItems(searchQuery: String): Flow<List<FoodItem>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertFoodItem(food: FoodItem)
 
     @Delete
     suspend fun deleteFoodItem(food: FoodItem)
-
-    @Query("SELECT COUNT(*) FROM food_items")
-    suspend fun getFoodItemCount(): Int
 
     @Query("SELECT * FROM exercises WHERE dateId LIKE :monthPrefix || '%'")
     fun getExercisesForMonth(monthPrefix: String): Flow<List<Exercise>>

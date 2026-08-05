@@ -139,11 +139,10 @@ data class SkincareRoutine(
 @Entity(tableName = "food_items")
 data class FoodItem(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
-    val emoji: String,
     val name: String,
     val servingUnit: String,
-    val calories: Int,
-    val protein: Int,
-    val carbs: Int,
-    val fats: Int
+    val calories: Float,
+    val protein: Float,
+    val carbs: Float,
+    val fats: Float
 )

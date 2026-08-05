@@ -1,6 +1,5 @@
 package com.example.loom.ui.health
 
-import android.widget.NumberPicker
 import android.widget.Toast
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -43,7 +42,6 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.example.loom.data.local.entity.Exercise
@@ -151,7 +149,6 @@ fun HealthScreen(viewModel: HealthViewModel) {
     val skincareRoutines by viewModel.allSkincareRoutines.collectAsState()
     val skincareProducts by viewModel.allSkincareProducts.collectAsState()
 
-    val allFoodItems by viewModel.allFoodItems.collectAsState()
     val defaultWaterIncrement by viewModel.defaultWaterIncrement.collectAsState()
 
     val consumedList by viewModel.consumedFoods.collectAsState()
@@ -219,17 +216,65 @@ fun HealthScreen(viewModel: HealthViewModel) {
 
     if (foodToLog != null && showFoodDialog) {
         var servingsStr by remember { mutableStateOf("1") }
+
         AlertDialog(
             onDismissRequest = { showFoodDialog = false; foodToLog = null },
             title = { Text("Log ${foodToLog!!.name}") },
             text = {
                 Column {
-                    Text("1 ${foodToLog!!.servingUnit} = ${foodToLog!!.calories} kcal", style = MaterialTheme.typography.bodyMedium)
+                    val currentMultiplier = servingsStr.toFloatOrNull() ?: 1f
+                    val dynamicCals = foodToLog!!.calories * currentMultiplier
+
+                    val unitText = foodToLog!!.servingUnit.trim()
+                    val numberRegex = "\\d+(\\.\\d+)?".toRegex()
+                    val matchResult = numberRegex.find(unitText)
+
+                    val textPart: String
+                    val formattedNum: String
+
+                    if (matchResult != null) {
+                        val baseNum = matchResult.value.toFloat()
+                        val calculatedNum = baseNum * currentMultiplier
+                        formattedNum = if (calculatedNum % 1f == 0f) calculatedNum.toInt().toString() else String.format(Locale.US, "%.1f", calculatedNum)
+                        textPart = unitText.replaceFirst(matchResult.value, "").trim()
+                    } else {
+                        formattedNum = if (currentMultiplier % 1f == 0f) currentMultiplier.toInt().toString() else String.format(Locale.US, "%.1f", currentMultiplier)
+                        textPart = unitText
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (textPart.isNotBlank()) {
+                            Text(text = textPart, style = MaterialTheme.typography.bodyLarge)
+                            Spacer(modifier = Modifier.width(6.dp))
+                        }
+
+                        Text(text = formattedNum, style = MaterialTheme.typography.bodyLarge)
+
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text(text = "=", style = MaterialTheme.typography.bodyLarge)
+                        Spacer(modifier = Modifier.width(12.dp))
+
+                        val calsStr = if (dynamicCals % 1f == 0f) dynamicCals.toInt().toString() else String.format(Locale.US, "%.1f", dynamicCals)
+                        Surface(shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.secondaryContainer) {
+                            Text(
+                                text = "$calsStr kcal",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                            )
+                        }
+                    }
+
                     Spacer(modifier = Modifier.height(16.dp))
                     OutlinedTextField(
                         value = servingsStr,
                         onValueChange = { servingsStr = it },
-                        label = { Text("How many ${foodToLog!!.servingUnit}s?") },
+                        label = { Text("Multiplier (e.g., 2 for double, 0.5 for half)") },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -248,29 +293,55 @@ fun HealthScreen(viewModel: HealthViewModel) {
     }
 
     if (showFoodPantryDialog) {
+        val currentSearchQuery by viewModel.foodSearchQuery.collectAsState()
+        val searchedFoods by viewModel.searchedFoodItems.collectAsState()
+
         AlertDialog(
             onDismissRequest = { showFoodPantryDialog = false },
             title = { Text("Edit Pantry") },
             text = {
-                LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    item { TextButton(onClick = { showNewFoodDialog = true }, modifier = Modifier.fillMaxWidth()) { Text("+ Create New Food") } }
-                    items(allFoodItems) { food ->
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                            modifier = Modifier.fillMaxWidth().combinedClickable(
-                                onClick = { foodToLog = food; showFoodDialog = true; showFoodPantryDialog = false },
-                                onLongClick = { foodToDelete = food }
-                            )
-                        ) {
-                            Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Text(food.emoji, fontSize = 24.sp)
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(food.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
-                                    Text("${food.calories} kcal / ${food.servingUnit}", style = MaterialTheme.typography.labelSmall)
+                Column {
+                    OutlinedTextField(
+                        value = currentSearchQuery,
+                        onValueChange = { viewModel.updateFoodSearchQuery(it) },
+                        placeholder = { Text("Search foods to edit/delete...") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        item {
+                            TextButton(onClick = { showNewFoodDialog = true }, modifier = Modifier.fillMaxWidth()) {
+                                Text("+ Create New Food")
+                            }
+                        }
+
+                        items(searchedFoods) { food ->
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                modifier = Modifier.fillMaxWidth().combinedClickable(
+                                    onClick = { foodToLog = food; showFoodDialog = true; showFoodPantryDialog = false },
+                                    onLongClick = { foodToDelete = food }
+                                )
+                            ) {
+                                Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Text("🍽️", fontSize = 24.sp)
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(food.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                                        // Harmonized with HomeScreen's exact layout:
+                                        Text(
+                                            text = "${food.servingUnit} • ${food.calories} kcal",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    IconButton(onClick = { foodToDelete = food }, modifier = Modifier.size(24.dp)) {
+                                        Icon(Icons.Default.Delete, "Delete", tint = MaterialTheme.colorScheme.error)
+                                    }
                                 }
-                                IconButton(onClick = { foodToDelete = food }, modifier = Modifier.size(24.dp)) { Icon(Icons.Default.Delete, "Delete", tint = MaterialTheme.colorScheme.error) }
                             }
                         }
                     }
@@ -282,7 +353,6 @@ fun HealthScreen(viewModel: HealthViewModel) {
     }
 
     if (showNewFoodDialog) {
-        var inputEmoji by remember { mutableStateOf("🍽️") }
         var inputName by remember { mutableStateOf("") }
         var inputServing by remember { mutableStateOf("Plate") }
         var inputCals by remember { mutableStateOf("") }
@@ -296,10 +366,12 @@ fun HealthScreen(viewModel: HealthViewModel) {
             text = {
                 LazyColumn {
                     item {
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedTextField(value = inputEmoji, onValueChange = { inputEmoji = it.take(2) }, label = { Text("Emoji") }, modifier = Modifier.weight(0.3f), textStyle = LocalTextStyle.current.copy(textAlign = TextAlign.Center, fontSize = 24.sp))
-                            OutlinedTextField(value = inputName, onValueChange = { inputName = it }, label = { Text("Food Name") }, modifier = Modifier.weight(0.7f))
-                        }
+                        OutlinedTextField(
+                            value = inputName,
+                            onValueChange = { inputName = it },
+                            label = { Text("Food Name") },
+                            modifier = Modifier.fillMaxWidth()
+                        )
                         Spacer(modifier = Modifier.height(8.dp))
                         OutlinedTextField(value = inputServing, onValueChange = { inputServing = it }, label = { Text("Serving Unit (e.g. Plate, Scoop, 100g)") }, modifier = Modifier.fillMaxWidth())
                         Spacer(modifier = Modifier.height(8.dp))
@@ -320,9 +392,12 @@ fun HealthScreen(viewModel: HealthViewModel) {
                     if (inputName.isNotBlank() && inputCals.isNotBlank()) {
                         viewModel.addFoodItem(
                             FoodItem(
-                                emoji = inputEmoji, name = inputName, servingUnit = inputServing,
-                                calories = inputCals.toIntOrNull() ?: 0, protein = inputPro.toIntOrNull() ?: 0,
-                                carbs = inputCarbs.toIntOrNull() ?: 0, fats = inputFats.toIntOrNull() ?: 0
+                                name = inputName,
+                                servingUnit = inputServing,
+                                calories = inputCals.toFloatOrNull() ?: 0f,
+                                protein = inputPro.toFloatOrNull() ?: 0f,
+                                carbs = inputCarbs.toFloatOrNull() ?: 0f,
+                                fats = inputFats.toFloatOrNull() ?: 0f
                             )
                         )
                         showNewFoodDialog = false

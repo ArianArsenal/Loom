@@ -79,6 +79,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -94,6 +95,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -114,6 +116,8 @@ import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
 import java.util.UUID
+
+import androidx.compose.ui.unit.LayoutDirection
 
 @Composable
 fun GaplessProgressBar(
@@ -144,7 +148,7 @@ fun HomeScreen(
     val completedRoutines by viewModel.completedSkincareRoutines.collectAsState()
     val completedSteps by viewModel.completedSkincareSteps.collectAsState()
 
-    val allFoodItems by viewModel.allFoodItems.collectAsState()
+
 
     val targetCaloriesInt by viewModel.targetCalories.collectAsState()
     val targetProteinInt by viewModel.targetProtein.collectAsState()
@@ -203,22 +207,78 @@ fun HomeScreen(
                             showNutritionDialog = false
                         }, modifier = Modifier.fillMaxWidth()) { Text("Add Macros") }
                     } else {
-                        ExposedDropdownMenuBox(expanded = foodDropdownExpanded, onExpandedChange = { foodDropdownExpanded = it }) {
+                        val currentSearchQuery by viewModel.foodSearchQuery.collectAsState()
+                        val searchedFoods by viewModel.searchedFoodItems.collectAsState()
+
+                        ExposedDropdownMenuBox(
+                            expanded = foodDropdownExpanded,
+                            onExpandedChange = { foodDropdownExpanded = it }
+                        ) {
                             OutlinedTextField(
-                                value = selectedFood?.name ?: foodSearchText,
-                                onValueChange = { foodSearchText = it; foodDropdownExpanded = true; selectedFood = null },
-                                placeholder = { Text("Search pantry...") },
+                                value = selectedFood?.name ?: currentSearchQuery,
+                                onValueChange = {
+                                    viewModel.updateFoodSearchQuery(it)
+                                    foodDropdownExpanded = true
+                                    selectedFood = null
+                                },
+                                placeholder = { Text("Search Persian & global foods...") },
                                 modifier = Modifier.menuAnchor().fillMaxWidth(),
                                 singleLine = true,
                                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = foodDropdownExpanded) }
                             )
-                            val filtered = allFoodItems.filter { it.name.contains(foodSearchText, true) }
-                            if (filtered.isNotEmpty() && foodDropdownExpanded) {
-                                ExposedDropdownMenu(expanded = foodDropdownExpanded, onDismissRequest = { foodDropdownExpanded = false }, modifier = Modifier.heightIn(max = 200.dp)) {
-                                    filtered.forEach { food ->
+
+                            if (searchedFoods.isNotEmpty() && foodDropdownExpanded) {
+                                ExposedDropdownMenu(
+                                    expanded = foodDropdownExpanded,
+                                    onDismissRequest = { foodDropdownExpanded = false },
+                                    modifier = Modifier.heightIn(max = 250.dp)
+                                ) {
+                                    searchedFoods.forEach { food ->
                                         DropdownMenuItem(
-                                            text = { Text("${food.emoji} ${food.name}") },
-                                            onClick = { selectedFood = food; foodDropdownExpanded = false }
+                                            text = {
+                                                Column(modifier = Modifier.fillMaxWidth()) {
+                                                    Text(text = food.name, fontWeight = FontWeight.Bold)
+                                                    Spacer(modifier = Modifier.height(4.dp))
+
+                                                    // Dropdown formatting fix
+                                                    val uText = food.servingUnit.trim()
+                                                    val mResult = "\\d+(\\.\\d+)?".toRegex().find(uText)
+                                                    val numStr = mResult?.value ?: ""
+                                                    val textStr = if (mResult != null) uText.replaceFirst(numStr, "").trim() else uText
+
+                                                    Row(
+                                                        modifier = Modifier.fillMaxWidth(),
+                                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        // Visually locked to "[Text] [Number]"
+                                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                                            if (textStr.isNotBlank()) {
+                                                                Text(text = textStr, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                                                Spacer(modifier = Modifier.width(4.dp))
+                                                            }
+                                                            if (numStr.isNotBlank()) {
+                                                                Text(text = numStr, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                                            }
+                                                        }
+
+                                                        Surface(shape = RoundedCornerShape(6.dp), color = MaterialTheme.colorScheme.secondaryContainer) {
+                                                            Text(
+                                                                text = "${food.calories} kcal",
+                                                                style = MaterialTheme.typography.labelSmall,
+                                                                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                                                fontWeight = FontWeight.Bold,
+                                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                            },
+                                            onClick = {
+                                                selectedFood = food
+                                                foodDropdownExpanded = false
+                                                viewModel.updateFoodSearchQuery("")
+                                            }
                                         )
                                     }
                                 }
@@ -227,10 +287,65 @@ fun HomeScreen(
 
                         if (selectedFood != null) {
                             Spacer(modifier = Modifier.height(16.dp))
-                            Text("1 ${selectedFood!!.servingUnit} = ${selectedFood!!.calories} kcal", style = MaterialTheme.typography.bodyMedium)
+
+                            val currentMultiplier = servingsStr.toFloatOrNull() ?: 1f
+                            val dynamicCals = selectedFood!!.calories * currentMultiplier
+
+                            // Improved Regex ignores invisible characters and finds the number anywhere
+                            val unitText = selectedFood!!.servingUnit.trim()
+                            val numberRegex = "\\d+(\\.\\d+)?".toRegex()
+                            val matchResult = numberRegex.find(unitText)
+
+                            val textPart: String
+                            val formattedNum: String
+
+                            if (matchResult != null) {
+                                val baseNum = matchResult.value.toFloat()
+                                val calculatedNum = baseNum * currentMultiplier
+                                formattedNum = if (calculatedNum % 1f == 0f) calculatedNum.toInt().toString() else String.format(Locale.US, "%.1f", calculatedNum)
+                                // Completely erases the original number to prevent duplication
+                                textPart = unitText.replaceFirst(matchResult.value, "").trim()
+                            } else {
+                                formattedNum = if (currentMultiplier % 1f == 0f) currentMultiplier.toInt().toString() else String.format(Locale.US, "%.1f", currentMultiplier)
+                                textPart = unitText
+                            }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                // Separated UI boxes physically lock the LTR layout to "[Text] [Number]"
+                                if (textPart.isNotBlank()) {
+                                    Text(text = textPart, style = MaterialTheme.typography.bodyLarge)
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                }
+
+                                Text(text = formattedNum, style = MaterialTheme.typography.bodyLarge)
+
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Text(text = "=", style = MaterialTheme.typography.bodyLarge)
+                                Spacer(modifier = Modifier.width(12.dp))
+
+                                val calsStr = if (dynamicCals % 1f == 0f) dynamicCals.toInt().toString() else String.format(Locale.US, "%.1f", dynamicCals)
+                                Surface(shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.secondaryContainer) {
+                                    Text(
+                                        text = "$calsStr kcal",
+                                        style = MaterialTheme.typography.labelLarge,
+                                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                                    )
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(8.dp))
                             OutlinedTextField(
-                                value = servingsStr, onValueChange = { servingsStr = it },
-                                label = { Text("Servings") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+                                value = servingsStr,
+                                onValueChange = { servingsStr = it },
+                                label = { Text("Multiplier (e.g., 2 for double, 0.5 for half)") },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                modifier = Modifier.fillMaxWidth()
                             )
                             Spacer(modifier = Modifier.height(16.dp))
                             Button(onClick = {
@@ -250,7 +365,6 @@ fun HomeScreen(
     }
 
     if (showNewFoodDialog) {
-        var inputEmoji by remember { mutableStateOf("🍽️") }
         var inputName by remember { mutableStateOf("") }
         var inputServing by remember { mutableStateOf("Plate") }
         var inputCals by remember { mutableStateOf("") }
@@ -264,10 +378,13 @@ fun HomeScreen(
             text = {
                 LazyColumn {
                     item {
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedTextField(value = inputEmoji, onValueChange = { inputEmoji = it.take(2) }, label = { Text("Emoji") }, modifier = Modifier.weight(0.3f), textStyle = LocalTextStyle.current.copy(textAlign = TextAlign.Center, fontSize = 24.sp))
-                            OutlinedTextField(value = inputName, onValueChange = { inputName = it }, label = { Text("Food Name") }, modifier = Modifier.weight(0.7f))
-                        }
+                        // Removed the Emoji input field, now the Name field takes the full width
+                        OutlinedTextField(
+                            value = inputName,
+                            onValueChange = { inputName = it },
+                            label = { Text("Food Name") },
+                            modifier = Modifier.fillMaxWidth()
+                        )
                         Spacer(modifier = Modifier.height(8.dp))
                         OutlinedTextField(value = inputServing, onValueChange = { inputServing = it }, label = { Text("Serving Unit") }, modifier = Modifier.fillMaxWidth())
                         Spacer(modifier = Modifier.height(8.dp))
@@ -286,7 +403,17 @@ fun HomeScreen(
             confirmButton = {
                 Button(onClick = {
                     if (inputName.isNotBlank() && inputCals.isNotBlank()) {
-                        viewModel.addFoodItemToPantry(FoodItem(emoji = inputEmoji, name = inputName, servingUnit = inputServing, calories = inputCals.toIntOrNull() ?: 0, protein = inputPro.toIntOrNull() ?: 0, carbs = inputCarbs.toIntOrNull() ?: 0, fats = inputFats.toIntOrNull() ?: 0))
+                        // Casts inputs to Float instead of Int, and removes the emoji parameter
+                        viewModel.addFoodItemToPantry(
+                            FoodItem(
+                                name = inputName,
+                                servingUnit = inputServing,
+                                calories = inputCals.toFloatOrNull() ?: 0f,
+                                protein = inputPro.toFloatOrNull() ?: 0f,
+                                carbs = inputCarbs.toFloatOrNull() ?: 0f,
+                                fats = inputFats.toFloatOrNull() ?: 0f
+                            )
+                        )
                         showNewFoodDialog = false
                     }
                 }) { Text("Save Food") }

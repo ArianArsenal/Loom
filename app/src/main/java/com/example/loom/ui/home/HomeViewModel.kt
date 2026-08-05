@@ -14,10 +14,13 @@ import com.example.loom.data.local.preferences.UserPreferences
 import com.example.loom.data.repository.TrackerRepository
 import com.example.loom.util.DateUtils
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -28,7 +31,7 @@ import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 import javax.inject.Inject
-
+import kotlinx.coroutines.flow.debounce
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     private val repository: TrackerRepository,
@@ -68,13 +71,27 @@ class HomeViewModel @Inject constructor(
     val diaryViewMode: StateFlow<Int> = _diaryViewMode.asStateFlow()
     fun setDiaryViewMode(mode: Int) { _diaryViewMode.value = mode }
 
+    private val _foodSearchQuery = MutableStateFlow("")
+    val foodSearchQuery: StateFlow<String> = _foodSearchQuery.asStateFlow()
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val searchedFoodItems: StateFlow<List<FoodItem>> = _foodSearchQuery
+        .debounce(300L)
+        .flatMapLatest { query ->
+            if (query.isBlank()) {
+                repository.searchFoodItems("مرغ") // Defaults to showing chicken-related items
+            } else {
+                repository.searchFoodItems(query)
+            }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     init {
         viewModelScope.launch {
             repository.initializeTodayRecord()
             repository.prepopulateTemplatesIfEmpty()
             repository.prepopulateTagsIfEmpty()
             repository.prepopulateTaskSectionsIfEmpty()
-            repository.prepopulateFoodPantryIfEmpty()
             repository.cleanupOldDoneTasks()
         }
     }
@@ -82,13 +99,16 @@ class HomeViewModel @Inject constructor(
     fun addWater() = viewModelScope.launch { repository.addWater(defaultWaterIncrement.value) }
     fun removeWater() = viewModelScope.launch { repository.removeWater(defaultWaterIncrement.value) }
 
-    val allFoodItems: StateFlow<List<FoodItem>> = repository.getAllFoodItems().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    fun updateFoodSearchQuery(query: String) {
+        _foodSearchQuery.value = query
+    }
 
     fun addFoodItemToPantry(food: FoodItem) = viewModelScope.launch { repository.insertFoodItem(food) }
 
     fun logFoodItem(food: FoodItem, servings: Float) = viewModelScope.launch {
         val record = todayRecord.value ?: return@launch
 
+        // Cast macro floats to ints for DailyRecord compatibility
         val totalCals = (food.calories * servings).toInt()
         val totalPro = (food.protein * servings).toInt()
         val totalCarbs = (food.carbs * servings).toInt()
@@ -96,8 +116,13 @@ class HomeViewModel @Inject constructor(
 
         val log = ConsumedFoodLog(
             id = java.util.UUID.randomUUID().toString(),
-            foodName = food.name, emoji = food.emoji, servings = servings,
-            calories = totalCals, protein = totalPro, carbs = totalCarbs, fats = totalFats,
+            foodName = food.name,
+            emoji = "🍽️", // Fallback emoji since it was removed from the CSV schema
+            servings = servings,
+            calories = totalCals,
+            protein = totalPro,
+            carbs = totalCarbs,
+            fats = totalFats,
             timestamp = System.currentTimeMillis()
         )
 
