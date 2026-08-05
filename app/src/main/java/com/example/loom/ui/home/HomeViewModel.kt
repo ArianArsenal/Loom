@@ -10,7 +10,6 @@ import com.example.loom.data.local.entity.*
 import com.example.loom.data.local.preferences.UserPreferences
 import com.example.loom.data.repository.TrackerRepository
 import com.example.loom.util.DateUtils
-import com.google.gson.Gson
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -24,7 +23,6 @@ import java.util.Date
 import java.util.Locale
 import javax.inject.Inject
 
-// --- MASTER JSON BACKUP MODEL ---
 data class LoomBackup(
     val dailyRecords: List<DailyRecord> = emptyList(),
     val tasks: List<Task> = emptyList(),
@@ -38,7 +36,7 @@ data class LoomBackup(
     val skincareRoutines: List<SkincareRoutine> = emptyList(),
     val foodItems: List<FoodItem> = emptyList(),
     val notionSpaces: List<NotionSpaceEntity> = emptyList(),
-    // DataStore Preferences
+
     val targetCalories: Int = 2800,
     val targetProtein: Int = 140,
     val targetCarbs: Int = 350,
@@ -52,8 +50,8 @@ data class LoomBackup(
 class HomeViewModel @Inject constructor(
     private val repository: TrackerRepository,
     private val userPreferences: UserPreferences,
-    private val trackerDao: TrackerDao, // Injected for direct full table reads
-    private val sandboxDao: SandboxDao  // Injected for Spaces backup
+    private val trackerDao: TrackerDao,
+    private val sandboxDao: SandboxDao
 ) : ViewModel() {
 
     val isBiometricEnabled: StateFlow<Boolean> = userPreferences.biometricEnabledFlow
@@ -131,13 +129,9 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    // ==========================================
-    // BACKUP & RESTORE ENGINE
-    // ==========================================
-
     fun exportDatabase(context: Context, uri: Uri, onSuccess: () -> Unit, onError: (String) -> Unit) {
         viewModelScope.launch(Dispatchers.IO) {
-            _isLoading.value = true // Start loading
+            _isLoading.value = true
             try {
                 val backup = LoomBackup(
                     dailyRecords = trackerDao.getAllDailyRecords().first(),
@@ -162,7 +156,6 @@ class HomeViewModel @Inject constructor(
                     isBiometricEnabled = isBiometricEnabled.value
                 )
 
-                // This formats the JSON beautifully with vertical structure and indents!
                 val gson = com.google.gson.GsonBuilder().setPrettyPrinting().create()
                 val jsonStr = gson.toJson(backup)
 
@@ -174,14 +167,14 @@ class HomeViewModel @Inject constructor(
             } catch (e: Exception) {
                 launch(Dispatchers.Main) { onError(e.message ?: "Unknown Error") }
             } finally {
-                _isLoading.value = false // Stop loading
+                _isLoading.value = false
             }
         }
     }
 
     fun importDatabase(context: Context, uri: Uri, onSuccess: () -> Unit, onError: (String) -> Unit) {
         viewModelScope.launch(Dispatchers.IO) {
-            _isLoading.value = true // Start loading
+            _isLoading.value = true
             try {
                 context.contentResolver.openInputStream(uri)?.use { inputStream ->
                     val jsonStr = inputStream.bufferedReader().use { it.readText() }
@@ -210,20 +203,61 @@ class HomeViewModel @Inject constructor(
             } catch (e: Exception) {
                 launch(Dispatchers.Main) { onError(e.message ?: "Invalid Backup File") }
             } finally {
-                _isLoading.value = false // Stop loading
+                _isLoading.value = false
             }
         }
     }
 
+    fun wipeAllData(onSuccess: () -> Unit, onError: (String) -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            _isLoading.value = true
+            try {
+                // Wipe all Room tables
+                trackerDao.wipeDailyRecords()
+                trackerDao.wipeTasks()
+                trackerDao.wipeTaskSections()
+                trackerDao.wipeExercises()
+                trackerDao.wipeWorkoutPresets()
+                trackerDao.wipeExerciseTemplates()
+                trackerDao.wipeDiaryNotes()
+                trackerDao.wipeNoteTags()
+                trackerDao.wipeSkincareProducts()
+                trackerDao.wipeSkincareRoutines()
+                trackerDao.wipeFoodItems()
+                sandboxDao.wipeAllSpaces()
+
+                // Reset DataStore Preferences to default
+                userPreferences.saveTargets(2800, 140, 350, 75)
+                userPreferences.saveDefaultWaterIncrement(250)
+                userPreferences.saveAppTheme("System")
+                userPreferences.setBiometricEnabled(true)
+
+                // Re-initialize standard defaults
+                repository.initializeTodayRecord()
+                repository.prepopulateTemplatesIfEmpty()
+                repository.prepopulateTagsIfEmpty()
+                repository.prepopulateTaskSectionsIfEmpty()
+
+                launch(Dispatchers.Main) { onSuccess() }
+            } catch (e: Exception) {
+                launch(Dispatchers.Main) { onError(e.message ?: "Failed to wipe data") }
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
 
     fun addWater() = viewModelScope.launch { repository.addWater(defaultWaterIncrement.value) }
     fun removeWater() = viewModelScope.launch { repository.removeWater(defaultWaterIncrement.value) }
-    fun updateFoodSearchQuery(query: String) { _foodSearchQuery.value = query }
+
+    fun updateFoodSearchQuery(query: String) {
+        _foodSearchQuery.value = query
+    }
+
     fun addFoodItemToPantry(food: FoodItem) = viewModelScope.launch { repository.insertFoodItem(food) }
 
     fun logFoodItem(food: FoodItem, servings: Float) = viewModelScope.launch {
         val record = todayRecord.value ?: return@launch
-
         val totalCals = (food.calories * servings).toInt()
         val totalPro = (food.protein * servings).toInt()
         val totalCarbs = (food.carbs * servings).toInt()
@@ -298,7 +332,7 @@ class HomeViewModel @Inject constructor(
                 subtasks[index] = subtasks[index].copy(isCompleted = !subtasks[index].isCompleted)
                 repository.updateTask(task.copy(subtasksJson = Json.encodeToString(subtasks)))
             }
-        } catch (e: Exception) { /* JSON Error */ }
+        } catch (e: Exception) { }
     }
 
     private suspend fun spawnNextRecurringTask(task: Task) {

@@ -185,4 +185,18 @@ interface TrackerDao {
 
     @Query("SELECT * FROM exercises WHERE dateId LIKE :monthPrefix || '%'")
     fun getExercisesForMonth(monthPrefix: String): Flow<List<Exercise>>
+
+
+    // --- DANGER ZONE (WIPE ALL DATA) ---
+    @Query("DELETE FROM daily_records") suspend fun wipeDailyRecords()
+    @Query("DELETE FROM tasks") suspend fun wipeTasks()
+    @Query("DELETE FROM task_sections") suspend fun wipeTaskSections()
+    @Query("DELETE FROM exercises") suspend fun wipeExercises()
+    @Query("DELETE FROM workout_presets") suspend fun wipeWorkoutPresets()
+    @Query("DELETE FROM exercise_templates") suspend fun wipeExerciseTemplates()
+    @Query("DELETE FROM diary_notes") suspend fun wipeDiaryNotes()
+    @Query("DELETE FROM note_tags") suspend fun wipeNoteTags()
+    @Query("DELETE FROM skincare_products") suspend fun wipeSkincareProducts()
+    @Query("DELETE FROM skincare_routines") suspend fun wipeSkincareRoutines()
+    @Query("DELETE FROM food_items") suspend fun wipeFoodItems()
 }

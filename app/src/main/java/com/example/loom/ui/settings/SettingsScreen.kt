@@ -5,13 +5,16 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.ColorLens
+import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.*
@@ -36,15 +39,15 @@ fun SettingsScreen(
     val context = LocalContext.current
     val appTheme by viewModel.appTheme.collectAsState()
     val isBiometricEnabled by viewModel.isBiometricEnabled.collectAsState()
+    val isLoading by viewModel.isLoading.collectAsState()
     var currentPin by remember { mutableStateOf(SecurityManager.getPin(context)) }
 
     // Dialog States
     var showSetPinDialog by remember { mutableStateOf(false) }
     var showAuthPinDialog by remember { mutableStateOf(false) }
+    var showWipeConfirmDialog by remember { mutableStateOf(false) }
     var pinInput by remember { mutableStateOf("") }
     var pinError by remember { mutableStateOf(false) }
-
-    val isLoading by viewModel.isLoading.collectAsState()
 
     // Backup & Restore OS Launchers
     val exportLauncher = rememberLauncherForActivityResult(
@@ -70,6 +73,57 @@ fun SettingsScreen(
             }
         }
     )
+
+    // Processing / Loading Dialog
+    if (isLoading) {
+        AlertDialog(
+            onDismissRequest = { /* Prevent dismissing by tapping outside */ },
+            confirmButton = {},
+            title = { Text("Processing Data") },
+            text = {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                    Spacer(modifier = Modifier.width(24.dp))
+                    Text("Please wait...", style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+        )
+    }
+
+    // Danger Zone Confirmation Dialog
+    if (showWipeConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showWipeConfirmDialog = false },
+            icon = { Icon(Icons.Default.DeleteForever, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
+            title = { Text("Erase All Data?") },
+            text = { Text("This will permanently delete all your tasks, logs, spaces, and routines. This action cannot be undone. Are you absolutely sure?") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.wipeAllData(
+                            onSuccess = {
+                                showWipeConfirmDialog = false
+                                Toast.makeText(context, "All data wiped successfully", Toast.LENGTH_SHORT).show()
+                            },
+                            onError = { err ->
+                                showWipeConfirmDialog = false
+                                Toast.makeText(context, "Error: $err", Toast.LENGTH_LONG).show()
+                            }
+                        )
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Yes, Erase Everything")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showWipeConfirmDialog = false }) { Text("Cancel") }
+            }
+        )
+    }
 
     // Dialog: Set NEW Pin
     if (showSetPinDialog) {
@@ -147,25 +201,6 @@ fun SettingsScreen(
         )
     }
 
-    // Processing / Loading Dialog
-    if (isLoading) {
-        AlertDialog(
-            onDismissRequest = { /* Prevent dismissing by tapping outside */ },
-            confirmButton = {}, // No buttons, forcing the user to wait
-            title = { Text("Processing Data") },
-            text = {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
-                    Spacer(modifier = Modifier.width(24.dp))
-                    Text("Please wait...", style = MaterialTheme.typography.bodyMedium)
-                }
-            }
-        )
-    }
-
     Scaffold(
         topBar = {
             TopAppBar(
@@ -175,7 +210,11 @@ fun SettingsScreen(
         }
     ) { paddingValues ->
         Column(
-            modifier = Modifier.fillMaxSize().padding(paddingValues).padding(horizontal = 20.dp)
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+                .padding(horizontal = 20.dp)
+                .verticalScroll(rememberScrollState())
         ) {
             Spacer(modifier = Modifier.height(8.dp))
 
@@ -311,6 +350,32 @@ fun SettingsScreen(
                     }
                 }
             }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // --- DANGER ZONE ---
+            Text("Danger Zone", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error)
+            Spacer(modifier = Modifier.height(8.dp))
+
+            ElevatedCard(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+            ) {
+                Row(
+                    modifier = Modifier.padding(16.dp).fillMaxWidth().clickable { showWipeConfirmDialog = true },
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Default.DeleteForever, contentDescription = "Delete All", tint = MaterialTheme.colorScheme.onErrorContainer)
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Erase All Data", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onErrorContainer)
+                        Text("Permanently wipe database and preferences", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.8f))
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(40.dp))
         }
     }
 }

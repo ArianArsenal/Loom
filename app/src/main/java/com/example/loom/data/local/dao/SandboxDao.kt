@@ -14,4 +14,8 @@ interface SandboxDao {
 
     @Delete
     suspend fun deleteSpace(space: NotionSpaceEntity)
+
+
+    @Query("DELETE FROM notion_spaces")
+    suspend fun wipeAllSpaces()
 }
