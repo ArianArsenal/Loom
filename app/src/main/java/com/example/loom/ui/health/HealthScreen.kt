@@ -331,7 +331,14 @@ fun HealthScreen(viewModel: HealthViewModel) {
                                     Spacer(modifier = Modifier.width(12.dp))
                                     Column(modifier = Modifier.weight(1f)) {
                                         Text(food.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
-                                        // Harmonized with HomeScreen's exact layout:
+
+                                        // --- NEW: Macro Visualizer for Health Tab ---
+                                        Text(
+                                            text = "P: ${food.protein}g • C: ${food.carbs}g • F: ${food.fats}g",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+
                                         Text(
                                             text = "${food.servingUnit} • ${food.calories} kcal",
                                             style = MaterialTheme.typography.bodySmall,

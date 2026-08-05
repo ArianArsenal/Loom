@@ -1,5 +1,6 @@
 package com.example.loom.ui.home
 
+import androidx.compose.runtime.key
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -72,12 +73,15 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SelectableDates
 import androidx.compose.material3.Surface
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberDatePickerState
+import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
@@ -203,12 +207,39 @@ fun HomeScreen(
                             val p = inputProtein.toIntOrNull() ?: 0
                             val cb = inputCarbs.toIntOrNull() ?: 0
                             val f = inputFats.toIntOrNull() ?: 0
-                            viewModel.editNutrition( (todayRecord?.calories ?: 0) + c, (todayRecord?.protein ?: 0) + p, (todayRecord?.carbs ?: 0) + cb, (todayRecord?.fats ?: 0) + f )
+
+                            // Replaced editNutrition with logManualMeal!
+                            viewModel.logManualMeal(c, p, cb, f)
+
                             showNutritionDialog = false
                         }, modifier = Modifier.fillMaxWidth()) { Text("Add Macros") }
                     } else {
                         val currentSearchQuery by viewModel.foodSearchQuery.collectAsState()
                         val searchedFoods by viewModel.searchedFoodItems.collectAsState()
+
+                        // --- NEW: Quick Picks Horizontal Scroll ---
+                        if (currentSearchQuery.isBlank() && selectedFood == null && searchedFoods.isNotEmpty()) {
+                            Text("Quick Picks", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                            Spacer(modifier = Modifier.height(8.dp))
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                items(searchedFoods.take(8)) { food -> // Takes the first 8 items
+                                    Surface(
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                        modifier = Modifier.clickable { selectedFood = food }
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.padding(12.dp),
+                                            horizontalAlignment = Alignment.CenterHorizontally
+                                        ) {
+                                            Text(food.name, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                                            Text("${food.calories} kcal", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        }
+                                    }
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(16.dp))
+                        }
 
                         ExposedDropdownMenuBox(
                             expanded = foodDropdownExpanded,
@@ -233,14 +264,21 @@ fun HomeScreen(
                                     onDismissRequest = { foodDropdownExpanded = false },
                                     modifier = Modifier.heightIn(max = 250.dp)
                                 ) {
-                                    searchedFoods.forEach { food ->
+                                    searchedFoods.forEachIndexed { index, food ->
                                         DropdownMenuItem(
+                                            // 1. Adds breathing room around each item
+                                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                                             text = {
                                                 Column(modifier = Modifier.fillMaxWidth()) {
                                                     Text(text = food.name, fontWeight = FontWeight.Bold)
+
+                                                    Text(
+                                                        text = "P: ${food.protein}g • C: ${food.carbs}g • F: ${food.fats}g",
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = MaterialTheme.colorScheme.primary
+                                                    )
                                                     Spacer(modifier = Modifier.height(4.dp))
 
-                                                    // Dropdown formatting fix
                                                     val uText = food.servingUnit.trim()
                                                     val mResult = "\\d+(\\.\\d+)?".toRegex().find(uText)
                                                     val numStr = mResult?.value ?: ""
@@ -251,7 +289,6 @@ fun HomeScreen(
                                                         horizontalArrangement = Arrangement.SpaceBetween,
                                                         verticalAlignment = Alignment.CenterVertically
                                                     ) {
-                                                        // Visually locked to "[Text] [Number]"
                                                         Row(verticalAlignment = Alignment.CenterVertically) {
                                                             if (textStr.isNotBlank()) {
                                                                 Text(text = textStr, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -280,6 +317,14 @@ fun HomeScreen(
                                                 viewModel.updateFoodSearchQuery("")
                                             }
                                         )
+
+                                        // 2. Adds a clean, subtle divider between items (skipping the last one)
+                                        if (index < searchedFoods.size - 1) {
+                                            HorizontalDivider(
+                                                modifier = Modifier.padding(horizontal = 16.dp),
+                                                color = MaterialTheme.colorScheme.surfaceVariant
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -291,7 +336,6 @@ fun HomeScreen(
                             val currentMultiplier = servingsStr.toFloatOrNull() ?: 1f
                             val dynamicCals = selectedFood!!.calories * currentMultiplier
 
-                            // Improved Regex ignores invisible characters and finds the number anywhere
                             val unitText = selectedFood!!.servingUnit.trim()
                             val numberRegex = "\\d+(\\.\\d+)?".toRegex()
                             val matchResult = numberRegex.find(unitText)
@@ -303,7 +347,6 @@ fun HomeScreen(
                                 val baseNum = matchResult.value.toFloat()
                                 val calculatedNum = baseNum * currentMultiplier
                                 formattedNum = if (calculatedNum % 1f == 0f) calculatedNum.toInt().toString() else String.format(Locale.US, "%.1f", calculatedNum)
-                                // Completely erases the original number to prevent duplication
                                 textPart = unitText.replaceFirst(matchResult.value, "").trim()
                             } else {
                                 formattedNum = if (currentMultiplier % 1f == 0f) currentMultiplier.toInt().toString() else String.format(Locale.US, "%.1f", currentMultiplier)
@@ -315,14 +358,11 @@ fun HomeScreen(
                                 horizontalArrangement = Arrangement.Center,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                // Separated UI boxes physically lock the LTR layout to "[Text] [Number]"
                                 if (textPart.isNotBlank()) {
                                     Text(text = textPart, style = MaterialTheme.typography.bodyLarge)
                                     Spacer(modifier = Modifier.width(6.dp))
                                 }
-
                                 Text(text = formattedNum, style = MaterialTheme.typography.bodyLarge)
-
                                 Spacer(modifier = Modifier.width(12.dp))
                                 Text(text = "=", style = MaterialTheme.typography.bodyLarge)
                                 Spacer(modifier = Modifier.width(12.dp))
@@ -458,20 +498,14 @@ fun HomeScreen(
                 title = { Text("Your Daily Loom", fontWeight = FontWeight.Bold) },
                 actions = { IconButton(onClick = onNavigateToSettings) { Icon(Icons.Default.Settings, "Settings") } },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color(0xFFE4F3E4),
-                    scrolledContainerColor = Color(0xFFE4F3E4),
-                    titleContentColor = Color(0xFF1B5E20),
-                    actionIconContentColor = Color(0xFF1B5E20)
+                    // Now it pulls the background and text colors dynamically based on Light/Dark mode!
+                    containerColor = MaterialTheme.colorScheme.background,
+                    scrolledContainerColor = MaterialTheme.colorScheme.background,
+                    titleContentColor = MaterialTheme.colorScheme.primary,
+                    actionIconContentColor = MaterialTheme.colorScheme.primary
                 )
             )
         },
-//        floatingActionButton = {
-//            FloatingActionButton(
-//                onClick = { taskToEdit = null; showTaskDialog = true },
-//                containerColor = MaterialTheme.colorScheme.primary,
-//                contentColor = MaterialTheme.colorScheme.onPrimary
-//            ) { Icon(Icons.Default.Add, "Add Task") }
-//        }
     ) { paddingValues ->
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(paddingValues).padding(horizontal = 20.dp),
@@ -483,7 +517,7 @@ fun HomeScreen(
                 ElevatedCard(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp), colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                     Column(modifier = Modifier.padding(20.dp)) {
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                            Text("Fuel", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("Nutrition Log", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Button(onClick = { showNutritionDialog = true }, shape = RoundedCornerShape(12.dp), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp)) { Text("+ Log Meal") }
                         }
                         Spacer(modifier = Modifier.height(12.dp))
@@ -538,6 +572,53 @@ fun HomeScreen(
                                 )
                             }
                         }
+
+                        val consumedList by viewModel.consumedFoods.collectAsState()
+
+                        Spacer(modifier = Modifier.height(24.dp))
+                        Text("Consumed Today", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.surfaceVariant)
+
+                        if (consumedList.isEmpty()) {
+                            Text("No meals logged yet.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        } else {
+                            consumedList.sortedByDescending { it.timestamp }.forEach { log ->
+                                key(log.id) {
+                                    val dismissState = rememberSwipeToDismissBoxState(
+                                        confirmValueChange = { dismissValue ->
+                                            if (dismissValue == SwipeToDismissBoxValue.EndToStart) {
+                                                viewModel.removeConsumedFoodLog(log)
+                                                true
+                                            } else false
+                                        }
+                                    )
+
+                                    SwipeToDismissBox(
+                                        state = dismissState,
+                                        enableDismissFromStartToEnd = false,
+                                        backgroundContent = {
+                                            val color = if (dismissState.targetValue == SwipeToDismissBoxValue.EndToStart) MaterialTheme.colorScheme.error else Color.Transparent
+                                            Box(modifier = Modifier.fillMaxSize().padding(vertical = 4.dp).background(color, RoundedCornerShape(8.dp)).padding(horizontal = 16.dp), contentAlignment = Alignment.CenterEnd) {
+                                                if (dismissState.targetValue != SwipeToDismissBoxValue.Settled) Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.onError)
+                                            }
+                                        }
+                                    ) {
+                                        val timeStr = java.text.SimpleDateFormat("h:mm a", java.util.Locale.getDefault()).format(java.util.Date(log.timestamp))
+                                        Row(modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                            Text(log.emoji, fontSize = 24.sp)
+                                            Spacer(modifier = Modifier.width(12.dp))
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                val servingsDisplay = if (log.servings % 1f == 0f) log.servings.toInt().toString() else log.servings.toString()
+                                                Text("${log.foodName} ($servingsDisplay)", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                                                Text("${log.calories} kcal • P:${log.protein} C:${log.carbs} F:${log.fats}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                            }
+                                            Text(timeStr, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha=0.5f))
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
                     }
                 }
             }

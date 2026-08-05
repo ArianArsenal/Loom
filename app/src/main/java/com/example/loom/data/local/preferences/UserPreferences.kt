@@ -1,6 +1,7 @@
 package com.example.loom.data.local.preferences
 
 import android.content.Context
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
@@ -28,8 +29,13 @@ class UserPreferences @Inject constructor(private val context: Context) {
         val TARGET_FATS = intPreferencesKey("target_fats")
 
         val DEFAULT_WATER_ML = intPreferencesKey("default_water_ml")
+
+        // NEW: Biometric Key
+        val BIOMETRIC_ENABLED = booleanPreferencesKey("biometric_enabled")
+        val APP_THEME = stringPreferencesKey("app_theme")
     }
 
+    val appThemeFlow: Flow<String> = context.dataStore.data.map { it[APP_THEME] ?: "System" }
     val weightFlow: Flow<Float> = context.dataStore.data.map { it[WEIGHT] ?: 70f }
     val heightFlow: Flow<Int> = context.dataStore.data.map { it[HEIGHT] ?: 175 }
     val ageFlow: Flow<Int> = context.dataStore.data.map { it[AGE] ?: 21 }
@@ -43,6 +49,13 @@ class UserPreferences @Inject constructor(private val context: Context) {
     val targetFatsFlow: Flow<Int> = context.dataStore.data.map { it[TARGET_FATS] ?: 75 }
 
     val defaultWaterIncrementFlow: Flow<Int> = context.dataStore.data.map { it[DEFAULT_WATER_ML] ?: 250 }
+
+    // NEW: Flow to read Biometric preference (defaults to true)
+    val biometricEnabledFlow: Flow<Boolean> = context.dataStore.data.map { it[BIOMETRIC_ENABLED] ?: true }
+
+    suspend fun saveAppTheme(theme: String) {
+        context.dataStore.edit { it[APP_THEME] = theme }
+    }
 
     suspend fun saveBioMetrics(weight: Float, height: Int, age: Int, gender: String, activity: String, goal: String) {
         context.dataStore.edit { preferences ->
@@ -78,8 +91,8 @@ class UserPreferences @Inject constructor(private val context: Context) {
             }
 
             val cals = tdee.toInt()
-            val protein = (weight * 2.2f).toInt() // 2.2g per kg
-            val fats = (weight * 0.8f).toInt()    // 0.8g per kg
+            val protein = (weight * 2.2f).toInt()
+            val fats = (weight * 0.8f).toInt()
             val carbs = ((cals - (protein * 4) - (fats * 9)) / 4).coerceAtLeast(0)
 
             preferences[TARGET_CALORIES] = cals
@@ -93,7 +106,6 @@ class UserPreferences @Inject constructor(private val context: Context) {
         context.dataStore.edit { it[DEFAULT_WATER_ML] = ml }
     }
 
-    // For manual overrides if needed
     suspend fun saveTargets(calories: Int, protein: Int, carbs: Int, fats: Int) {
         context.dataStore.edit { prefs ->
             prefs[TARGET_CALORIES] = calories
@@ -101,5 +113,10 @@ class UserPreferences @Inject constructor(private val context: Context) {
             prefs[TARGET_CARBS] = carbs
             prefs[TARGET_FATS] = fats
         }
+    }
+
+    // NEW: Function to save Biometric preference
+    suspend fun setBiometricEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[BIOMETRIC_ENABLED] = enabled }
     }
 }

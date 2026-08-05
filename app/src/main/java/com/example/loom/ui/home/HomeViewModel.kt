@@ -38,6 +38,22 @@ class HomeViewModel @Inject constructor(
     private val userPreferences: UserPreferences
 ) : ViewModel() {
 
+    val isBiometricEnabled: StateFlow<Boolean> = userPreferences.biometricEnabledFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
+
+    // 2. Add this function down with your other functions:
+    fun setBiometricEnabled(enabled: Boolean) = viewModelScope.launch {
+        userPreferences.setBiometricEnabled(enabled)
+    }
+
+    val appTheme: StateFlow<String> = userPreferences.appThemeFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "System")
+
+    // Add this with your other functions:
+    fun setAppTheme(theme: String) = viewModelScope.launch {
+        userPreferences.saveAppTheme(theme)
+    }
+
     val todayRecord: StateFlow<DailyRecord?> = repository.getTodayRecord().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     val consumedFoods: StateFlow<List<ConsumedFoodLog>> = todayRecord
@@ -108,22 +124,19 @@ class HomeViewModel @Inject constructor(
     fun logFoodItem(food: FoodItem, servings: Float) = viewModelScope.launch {
         val record = todayRecord.value ?: return@launch
 
-        // Cast macro floats to ints for DailyRecord compatibility
         val totalCals = (food.calories * servings).toInt()
         val totalPro = (food.protein * servings).toInt()
         val totalCarbs = (food.carbs * servings).toInt()
         val totalFats = (food.fats * servings).toInt()
+        val currentTime = System.currentTimeMillis()
 
         val log = ConsumedFoodLog(
             id = java.util.UUID.randomUUID().toString(),
             foodName = food.name,
-            emoji = "🍽️", // Fallback emoji since it was removed from the CSV schema
+            emoji = getMealEmojiForTime(currentTime), // <--- DYNAMIC EMOJI
             servings = servings,
-            calories = totalCals,
-            protein = totalPro,
-            carbs = totalCarbs,
-            fats = totalFats,
-            timestamp = System.currentTimeMillis()
+            calories = totalCals, protein = totalPro, carbs = totalCarbs, fats = totalFats,
+            timestamp = currentTime
         )
 
         val currentLogs = try { Json.decodeFromString<List<ConsumedFoodLog>>(record.consumedFoodsJson) } catch (e: Exception) { emptyList() }
@@ -226,4 +239,43 @@ class HomeViewModel @Inject constructor(
     fun deleteDiaryNote(note: DiaryNote) = viewModelScope.launch { repository.deleteDiaryNote(note) }
     fun addNoteTag(name: String, colorHex: String) = viewModelScope.launch { repository.insertNoteTag(name, colorHex) }
     fun deleteNoteTag(tag: NoteTag) = viewModelScope.launch { repository.deleteNoteTag(tag) }
+
+    private fun getMealEmojiForTime(timestamp: Long): String {
+        val hour = java.util.Calendar.getInstance().apply { timeInMillis = timestamp }.get(java.util.Calendar.HOUR_OF_DAY)
+        return when (hour) {
+            in 5..9 -> "🍳"   // Breakfast
+            in 10..12 -> "🍎"  // Morning Snack
+            in 13..15 -> "🍛"  // Lunch
+            in 16..19 -> "☕"   // Asraneh (عصرانه)
+            in 20..23 -> "🍲"  // Dinner
+            else -> "🌙"       // Midnight Snack
+        }
+    }
+
+    fun logManualMeal(cals: Int, pro: Int, carbs: Int, fats: Int) = viewModelScope.launch {
+        val record = todayRecord.value ?: return@launch
+        val currentTime = System.currentTimeMillis()
+
+        val log = ConsumedFoodLog(
+            id = java.util.UUID.randomUUID().toString(),
+            foodName = "ثبت دستی", // "Manual Entry"
+            emoji = "✍️", // A distinct icon so the user knows it was custom macros
+            servings = 1f,
+            calories = cals, protein = pro, carbs = carbs, fats = fats,
+            timestamp = currentTime
+        )
+
+        val currentLogs = try { Json.decodeFromString<List<ConsumedFoodLog>>(record.consumedFoodsJson) } catch (e: Exception) { emptyList() }
+        repository.logConsumedFood(cals, pro, carbs, fats, Json.encodeToString(currentLogs + log))
+    }
+
+    fun removeConsumedFoodLog(log: ConsumedFoodLog) = viewModelScope.launch {
+        val record = todayRecord.value ?: return@launch
+        val currentLogs = try { Json.decodeFromString<List<ConsumedFoodLog>>(record.consumedFoodsJson) } catch (e: Exception) { emptyList() }
+
+        val updatedLogs = currentLogs.filter { it.id != log.id }
+        repository.logConsumedFood(-log.calories, -log.protein, -log.carbs, -log.fats, Json.encodeToString(updatedLogs))
+    }
+
+
 }

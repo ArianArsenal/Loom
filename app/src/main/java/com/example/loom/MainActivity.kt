@@ -5,12 +5,14 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import androidx.fragment.app.FragmentActivity
-import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -19,25 +21,31 @@ import com.example.loom.ui.home.HomeViewModel
 import com.example.loom.ui.theme.LoomTheme
 import com.example.loom.worker.NotificationScheduler
 import dagger.hilt.android.AndroidEntryPoint
-import androidx.core.graphics.toColorInt
+
 @AndroidEntryPoint
 class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        enableEdgeToEdge(
-            statusBarStyle = SystemBarStyle.light(
-                "#E4F3E4".toColorInt(),
-                "#E4F3E4".toColorInt()
-            ),
-            navigationBarStyle = SystemBarStyle.light(
-                android.graphics.Color.TRANSPARENT,
-                android.graphics.Color.TRANSPARENT
-            )
-        )
+        // Dynamic edge-to-edge that automatically respects Light/Dark themes!
+        enableEdgeToEdge()
 
         setContent {
-            LoomTheme {
+            // 1. Instantiate the viewModel at the top level of setContent
+            val viewModel: HomeViewModel = hiltViewModel()
+
+            // 2. Collect the theme preference
+            val appTheme by viewModel.appTheme.collectAsState()
+
+            // 3. Determine if the theme should be dark based on the setting
+            val darkTheme = when (appTheme) {
+                "Dark" -> true
+                "Light" -> false
+                else -> isSystemInDarkTheme() // "System" fallback
+            }
+
+            // 4. Pass it into LoomTheme
+            LoomTheme(darkTheme = darkTheme) {
                 val context = LocalContext.current
 
                 val permissionLauncher = rememberLauncherForActivityResult(
@@ -65,8 +73,6 @@ class MainActivity : FragmentActivity() {
                     }
                 }
 
-                // Only instantiate the global HomeViewModel here
-                val viewModel: HomeViewModel = hiltViewModel()
                 LoomMainScreen(viewModel = viewModel)
             }
         }

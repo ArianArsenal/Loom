@@ -105,19 +105,19 @@ class HealthViewModel @Inject constructor(
     fun logFoodItem(food: FoodItem, servings: Float) = viewModelScope.launch {
         val record = todayRecord.value ?: return@launch
 
-        // Convert the Float macros to Ints for the DailyRecord log
         val totalCals = (food.calories * servings).toInt()
         val totalPro = (food.protein * servings).toInt()
         val totalCarbs = (food.carbs * servings).toInt()
         val totalFats = (food.fats * servings).toInt()
+        val currentTime = System.currentTimeMillis()
 
         val log = ConsumedFoodLog(
             id = java.util.UUID.randomUUID().toString(),
             foodName = food.name,
-            emoji = "🍽️", // Fallback emoji since we deleted the DB column
+            emoji = getMealEmojiForTime(currentTime), // <--- DYNAMIC EMOJI
             servings = servings,
             calories = totalCals, protein = totalPro, carbs = totalCarbs, fats = totalFats,
-            timestamp = System.currentTimeMillis()
+            timestamp = currentTime
         )
 
         val currentLogs = try { Json.decodeFromString<List<ConsumedFoodLog>>(record.consumedFoodsJson) } catch (e: Exception) { emptyList() }
@@ -180,5 +180,17 @@ class HealthViewModel @Inject constructor(
         val currentList = try { Json.decodeFromString<List<String>>(record.completedSkincareStepsJson) } catch (e: Exception) { emptyList() }.toMutableList()
         if (currentList.contains(stepId)) currentList.remove(stepId) else currentList.add(stepId)
         repository.updateCompletedSkincareSteps(Json.encodeToString(currentList))
+    }
+
+    private fun getMealEmojiForTime(timestamp: Long): String {
+        val hour = java.util.Calendar.getInstance().apply { timeInMillis = timestamp }.get(java.util.Calendar.HOUR_OF_DAY)
+        return when (hour) {
+            in 5..9 -> "🍳"
+            in 10..12 -> "🍎"
+            in 13..15 -> "🍛"
+            in 16..19 -> "☕"
+            in 20..23 -> "🍲"
+            else -> "🌙"
+        }
     }
 }

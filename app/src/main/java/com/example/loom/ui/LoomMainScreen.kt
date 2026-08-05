@@ -35,7 +35,7 @@ sealed class BottomNavItem(val route: String, val title: String, val icon: Image
     object Health : BottomNavItem("health", "Health", Icons.Default.Favorite)
     object Calendar : BottomNavItem("calendar", "Calendar", Icons.Default.DateRange)
     object Diary : BottomNavItem("diary", "Diary", Icons.Default.Book)
-    object Spaces : BottomNavItem("spaces", "Spaces", Icons.Default.Dashboard) // <-- Updated Name and Route
+    object Spaces : BottomNavItem("spaces", "Spaces", Icons.Default.Dashboard)
 }
 
 @Composable
@@ -47,7 +47,7 @@ fun LoomMainScreen(viewModel: HomeViewModel) {
         BottomNavItem.Health,
         BottomNavItem.Calendar,
         BottomNavItem.Diary,
-        BottomNavItem.Spaces // <-- Updated
+        BottomNavItem.Spaces
     )
 
     Scaffold(
@@ -60,22 +60,31 @@ fun LoomMainScreen(viewModel: HomeViewModel) {
                 tonalElevation = 8.dp
             ) {
                 items.forEach { item ->
+                    // FIX 1: Ensure the Home tab stays highlighted even when deep in the Settings screen
+                    val isSelected = currentRoute == item.route ||
+                            (item.route == BottomNavItem.Home.route && currentRoute == "settings")
+
                     NavigationBarItem(
                         icon = { Icon(item.icon, contentDescription = item.title) },
                         label = { Text(item.title) },
-                        selected = currentRoute == item.route,
+                        selected = isSelected,
                         colors = NavigationBarItemDefaults.colors(
                             selectedIconColor = MaterialTheme.colorScheme.onPrimary,
                             selectedTextColor = MaterialTheme.colorScheme.primary,
                             indicatorColor = MaterialTheme.colorScheme.primary
                         ),
                         onClick = {
-                            navController.navigate(item.route) {
-                                popUpTo(navController.graph.findStartDestination().id) {
-                                    saveState = true
+                            // FIX 2: Intercept the click. If on Settings and Home is clicked, pop back to the root!
+                            if (item.route == BottomNavItem.Home.route && currentRoute == "settings") {
+                                navController.popBackStack(BottomNavItem.Home.route, inclusive = false)
+                            } else {
+                                navController.navigate(item.route) {
+                                    popUpTo(navController.graph.findStartDestination().id) {
+                                        saveState = true
+                                    }
+                                    launchSingleTop = true
+                                    restoreState = true
                                 }
-                                launchSingleTop = true
-                                restoreState = true
                             }
                         }
                     )
@@ -114,7 +123,7 @@ fun LoomMainScreen(viewModel: HomeViewModel) {
             }
 
             // Spaces Route
-            composable(BottomNavItem.Spaces.route) { // <-- Updated
+            composable(BottomNavItem.Spaces.route) {
                 val context = LocalContext.current
                 val database = remember { AppDatabase.getDatabase(context) }
                 val sandboxViewModel: SandboxViewModel = viewModel(
