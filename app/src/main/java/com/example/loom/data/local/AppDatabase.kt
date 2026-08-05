@@ -31,7 +31,7 @@ import com.example.loom.data.local.entity.NotionSpaceEntity
         FoodItem::class,
         NotionSpaceEntity::class
     ],
-    version = 23, // <-- BUMPED TO 23
+    version = 24, // <-- BUMPED TO 24
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -125,6 +125,36 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_23_24 = object : Migration(23, 24) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // 1. Create a new table that matches the exact expected schema
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `food_items_new` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, 
+                        `name` TEXT NOT NULL, 
+                        `servingUnit` TEXT NOT NULL, 
+                        `calories` REAL NOT NULL, 
+                        `protein` REAL NOT NULL, 
+                        `carbs` REAL NOT NULL, 
+                        `fats` REAL NOT NULL
+                    )
+                """.trimIndent())
+
+                // 2. Copy the data over. We cast the old INTEGERS to REAL, and ignore the 'emoji' column
+                db.execSQL("""
+                    INSERT INTO `food_items_new` (`id`, `name`, `servingUnit`, `calories`, `protein`, `carbs`, `fats`)
+                    SELECT `id`, `name`, `servingUnit`, CAST(`calories` AS REAL), CAST(`protein` AS REAL), CAST(`carbs` AS REAL), CAST(`fats` AS REAL) 
+                    FROM `food_items`
+                """.trimIndent())
+
+                // 3. Drop the old table
+                db.execSQL("DROP TABLE `food_items`")
+
+                // 4. Rename the new table to replace the old one
+                db.execSQL("ALTER TABLE `food_items_new` RENAME TO `food_items`")
+            }
+        }
+
         private fun executeMigration(db: SupportSQLiteDatabase) {
             db.execSQL("""
                 CREATE TABLE IF NOT EXISTS `exercises_new` (
@@ -155,7 +185,7 @@ abstract class AppDatabase : RoomDatabase() {
                 Room.databaseBuilder(
                     context.applicationContext,
                     AppDatabase::class.java,
-                    "life_tracker_db"
+                    "loom_database.db"
                 )
                     .addMigrations(
                         MIGRATION_TO_17,
@@ -165,7 +195,8 @@ abstract class AppDatabase : RoomDatabase() {
                         MIGRATION_19_20,
                         MIGRATION_20_21,
                         MIGRATION_21_22,
-                        MIGRATION_22_23 // <-- Added new migration here
+                        MIGRATION_22_23, // <-- Added new migration here
+                        MIGRATION_23_24
                     )
                     .fallbackToDestructiveMigration()
                     .build().also { INSTANCE = it }
