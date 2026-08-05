@@ -1,11 +1,16 @@
 package com.example.loom.ui.settings
 
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.CloudDownload
+import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.ColorLens
 import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.Lock
@@ -30,16 +35,41 @@ fun SettingsScreen(
 ) {
     val context = LocalContext.current
     val appTheme by viewModel.appTheme.collectAsState()
-    // Connected permanently to Datastore!
     val isBiometricEnabled by viewModel.isBiometricEnabled.collectAsState()
     var currentPin by remember { mutableStateOf(SecurityManager.getPin(context)) }
 
     // Dialog States
     var showSetPinDialog by remember { mutableStateOf(false) }
     var showAuthPinDialog by remember { mutableStateOf(false) }
-
     var pinInput by remember { mutableStateOf("") }
     var pinError by remember { mutableStateOf(false) }
+
+    val isLoading by viewModel.isLoading.collectAsState()
+
+    // Backup & Restore OS Launchers
+    val exportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/json"),
+        onResult = { uri ->
+            uri?.let {
+                viewModel.exportDatabase(context, it,
+                    onSuccess = { Toast.makeText(context, "Export Successful!", Toast.LENGTH_SHORT).show() },
+                    onError = { err -> Toast.makeText(context, "Export Failed: $err", Toast.LENGTH_LONG).show() }
+                )
+            }
+        }
+    )
+
+    val importLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument(),
+        onResult = { uri ->
+            uri?.let {
+                viewModel.importDatabase(context, it,
+                    onSuccess = { Toast.makeText(context, "Import Successful!", Toast.LENGTH_SHORT).show() },
+                    onError = { err -> Toast.makeText(context, "Import Failed: $err", Toast.LENGTH_LONG).show() }
+                )
+            }
+        }
+    )
 
     // Dialog: Set NEW Pin
     if (showSetPinDialog) {
@@ -117,6 +147,25 @@ fun SettingsScreen(
         )
     }
 
+    // Processing / Loading Dialog
+    if (isLoading) {
+        AlertDialog(
+            onDismissRequest = { /* Prevent dismissing by tapping outside */ },
+            confirmButton = {}, // No buttons, forcing the user to wait
+            title = { Text("Processing Data") },
+            text = {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                    Spacer(modifier = Modifier.width(24.dp))
+                    Text("Please wait...", style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+        )
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -136,7 +185,6 @@ fun SettingsScreen(
 
             ElevatedCard(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                 Column {
-                    // App PIN
                     Row(modifier = Modifier.padding(16.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.Lock, contentDescription = "PIN", tint = MaterialTheme.colorScheme.primary)
                         Spacer(modifier = Modifier.width(16.dp))
@@ -149,7 +197,6 @@ fun SettingsScreen(
                                 if (currentPin == null) {
                                     showSetPinDialog = true
                                 } else {
-                                    // CHECK THE TOGGLE HERE
                                     if (isBiometricEnabled) {
                                         SecurityManager.authenticate(
                                             context = context,
@@ -159,7 +206,6 @@ fun SettingsScreen(
                                             onFallback = { showAuthPinDialog = true }
                                         )
                                     } else {
-                                        // Skip biometrics and go straight to PIN entry
                                         showAuthPinDialog = true
                                     }
                                 }
@@ -172,7 +218,6 @@ fun SettingsScreen(
 
                     HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.padding(horizontal = 16.dp))
 
-                    // Biometrics
                     Row(modifier = Modifier.padding(16.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.Fingerprint, contentDescription = "Security", tint = MaterialTheme.colorScheme.primary)
                         Spacer(modifier = Modifier.width(16.dp))
@@ -182,7 +227,7 @@ fun SettingsScreen(
                         }
                         Switch(
                             checked = isBiometricEnabled,
-                            onCheckedChange = { viewModel.setBiometricEnabled(it) } // Properly routed to ViewModel
+                            onCheckedChange = { viewModel.setBiometricEnabled(it) }
                         )
                     }
                 }
@@ -226,6 +271,42 @@ fun SettingsScreen(
                                     themeDropdownExpanded = false
                                 }
                             )
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // --- DATA MANAGEMENT SECTION ---
+            Text("Data Backup & Restore", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+            Spacer(modifier = Modifier.height(8.dp))
+
+            ElevatedCard(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                Column {
+                    Row(
+                        modifier = Modifier.padding(16.dp).fillMaxWidth().clickable { exportLauncher.launch("Loom_Backup.json") },
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.CloudUpload, contentDescription = "Export", tint = MaterialTheme.colorScheme.primary)
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Export Data", fontWeight = FontWeight.Bold)
+                            Text("Save all your logs, spaces, and routines to a file", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.padding(horizontal = 16.dp))
+
+                    Row(
+                        modifier = Modifier.padding(16.dp).fillMaxWidth().clickable { importLauncher.launch(arrayOf("application/json")) },
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.CloudDownload, contentDescription = "Import", tint = MaterialTheme.colorScheme.primary)
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Import Data", fontWeight = FontWeight.Bold)
+                            Text("Restore everything from a previous Loom backup", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }

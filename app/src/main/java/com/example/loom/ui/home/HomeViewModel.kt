@@ -1,28 +1,20 @@
 package com.example.loom.ui.home
 
+import android.content.Context
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.loom.data.local.entity.ConsumedFoodLog
-import com.example.loom.data.local.entity.DailyRecord
-import com.example.loom.data.local.entity.DiaryNote
-import com.example.loom.data.local.entity.FoodItem
-import com.example.loom.data.local.entity.NoteTag
-import com.example.loom.data.local.entity.SubTask
-import com.example.loom.data.local.entity.Task
-import com.example.loom.data.local.entity.TaskSection
+import com.example.loom.data.local.dao.SandboxDao
+import com.example.loom.data.local.dao.TrackerDao
+import com.example.loom.data.local.entity.*
 import com.example.loom.data.local.preferences.UserPreferences
 import com.example.loom.data.repository.TrackerRepository
 import com.example.loom.util.DateUtils
+import com.google.gson.Gson
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -31,17 +23,42 @@ import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 import javax.inject.Inject
-import kotlinx.coroutines.flow.debounce
+
+// --- MASTER JSON BACKUP MODEL ---
+data class LoomBackup(
+    val dailyRecords: List<DailyRecord> = emptyList(),
+    val tasks: List<Task> = emptyList(),
+    val taskSections: List<TaskSection> = emptyList(),
+    val exercises: List<Exercise> = emptyList(),
+    val workoutPresets: List<WorkoutPreset> = emptyList(),
+    val exerciseTemplates: List<ExerciseTemplate> = emptyList(),
+    val diaryNotes: List<DiaryNote> = emptyList(),
+    val noteTags: List<NoteTag> = emptyList(),
+    val skincareProducts: List<SkincareProduct> = emptyList(),
+    val skincareRoutines: List<SkincareRoutine> = emptyList(),
+    val foodItems: List<FoodItem> = emptyList(),
+    val notionSpaces: List<NotionSpaceEntity> = emptyList(),
+    // DataStore Preferences
+    val targetCalories: Int = 2800,
+    val targetProtein: Int = 140,
+    val targetCarbs: Int = 350,
+    val targetFats: Int = 75,
+    val defaultWaterIncrement: Int = 250,
+    val appTheme: String = "System",
+    val isBiometricEnabled: Boolean = true
+)
+
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     private val repository: TrackerRepository,
-    private val userPreferences: UserPreferences
+    private val userPreferences: UserPreferences,
+    private val trackerDao: TrackerDao, // Injected for direct full table reads
+    private val sandboxDao: SandboxDao  // Injected for Spaces backup
 ) : ViewModel() {
 
     val isBiometricEnabled: StateFlow<Boolean> = userPreferences.biometricEnabledFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
 
-    // 2. Add this function down with your other functions:
     fun setBiometricEnabled(enabled: Boolean) = viewModelScope.launch {
         userPreferences.setBiometricEnabled(enabled)
     }
@@ -49,7 +66,6 @@ class HomeViewModel @Inject constructor(
     val appTheme: StateFlow<String> = userPreferences.appThemeFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "System")
 
-    // Add this with your other functions:
     fun setAppTheme(theme: String) = viewModelScope.launch {
         userPreferences.saveAppTheme(theme)
     }
@@ -81,7 +97,7 @@ class HomeViewModel @Inject constructor(
     val allDiaryNotes: StateFlow<List<DiaryNote>> = repository.getAllDiaryNotes().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val allNoteTags: StateFlow<List<NoteTag>> = repository.getAllNoteTags().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val pinnedSkincareRoutines: StateFlow<List<com.example.loom.data.local.entity.SkincareRoutine>> = repository.getPinnedSkincareRoutines().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val pinnedSkincareRoutines: StateFlow<List<SkincareRoutine>> = repository.getPinnedSkincareRoutines().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private val _diaryViewMode = MutableStateFlow(1)
     val diaryViewMode: StateFlow<Int> = _diaryViewMode.asStateFlow()
@@ -90,12 +106,15 @@ class HomeViewModel @Inject constructor(
     private val _foodSearchQuery = MutableStateFlow("")
     val foodSearchQuery: StateFlow<String> = _foodSearchQuery.asStateFlow()
 
+    private val _isLoading = MutableStateFlow(false)
+    val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
+
     @OptIn(ExperimentalCoroutinesApi::class)
     val searchedFoodItems: StateFlow<List<FoodItem>> = _foodSearchQuery
         .debounce(300L)
         .flatMapLatest { query ->
             if (query.isBlank()) {
-                repository.searchFoodItems("مرغ") // Defaults to showing chicken-related items
+                repository.searchFoodItems("مرغ")
             } else {
                 repository.searchFoodItems(query)
             }
@@ -112,13 +131,94 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    fun addWater() = viewModelScope.launch { repository.addWater(defaultWaterIncrement.value) }
-    fun removeWater() = viewModelScope.launch { repository.removeWater(defaultWaterIncrement.value) }
+    // ==========================================
+    // BACKUP & RESTORE ENGINE
+    // ==========================================
 
-    fun updateFoodSearchQuery(query: String) {
-        _foodSearchQuery.value = query
+    fun exportDatabase(context: Context, uri: Uri, onSuccess: () -> Unit, onError: (String) -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            _isLoading.value = true // Start loading
+            try {
+                val backup = LoomBackup(
+                    dailyRecords = trackerDao.getAllDailyRecords().first(),
+                    tasks = trackerDao.getAllTasks().first(),
+                    taskSections = trackerDao.getAllTaskSections().first(),
+                    exercises = trackerDao.getAllExercises().first(),
+                    workoutPresets = trackerDao.getAllPresets().first(),
+                    exerciseTemplates = trackerDao.getAllTemplates().first(),
+                    diaryNotes = trackerDao.getAllDiaryNotes().first(),
+                    noteTags = trackerDao.getAllNoteTags().first(),
+                    skincareProducts = trackerDao.getAllSkincareProducts().first(),
+                    skincareRoutines = trackerDao.getAllSkincareRoutines().first(),
+                    foodItems = trackerDao.getAllFoodItems().first(),
+                    notionSpaces = sandboxDao.getAllSpaces().first(),
+
+                    targetCalories = targetCalories.value,
+                    targetProtein = targetProtein.value,
+                    targetCarbs = targetCarbs.value,
+                    targetFats = targetFats.value,
+                    defaultWaterIncrement = defaultWaterIncrement.value,
+                    appTheme = appTheme.value,
+                    isBiometricEnabled = isBiometricEnabled.value
+                )
+
+                // This formats the JSON beautifully with vertical structure and indents!
+                val gson = com.google.gson.GsonBuilder().setPrettyPrinting().create()
+                val jsonStr = gson.toJson(backup)
+
+                context.contentResolver.openOutputStream(uri)?.use { outputStream ->
+                    outputStream.write(jsonStr.toByteArray())
+                }
+
+                launch(Dispatchers.Main) { onSuccess() }
+            } catch (e: Exception) {
+                launch(Dispatchers.Main) { onError(e.message ?: "Unknown Error") }
+            } finally {
+                _isLoading.value = false // Stop loading
+            }
+        }
     }
 
+    fun importDatabase(context: Context, uri: Uri, onSuccess: () -> Unit, onError: (String) -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            _isLoading.value = true // Start loading
+            try {
+                context.contentResolver.openInputStream(uri)?.use { inputStream ->
+                    val jsonStr = inputStream.bufferedReader().use { it.readText() }
+                    val backup = com.google.gson.Gson().fromJson(jsonStr, LoomBackup::class.java)
+
+                    backup.dailyRecords.forEach { trackerDao.insertDailyRecordReplace(it) }
+                    backup.tasks.forEach { trackerDao.insertTask(it) }
+                    backup.taskSections.forEach { trackerDao.insertTaskSection(it) }
+                    backup.exercises.forEach { trackerDao.insertExercise(it) }
+                    backup.workoutPresets.forEach { trackerDao.insertPreset(it) }
+                    backup.exerciseTemplates.forEach { trackerDao.insertTemplate(it) }
+                    backup.diaryNotes.forEach { trackerDao.insertDiaryNote(it) }
+                    backup.noteTags.forEach { trackerDao.insertNoteTagReplace(it) }
+                    backup.skincareProducts.forEach { trackerDao.insertSkincareProductReplace(it) }
+                    backup.skincareRoutines.forEach { trackerDao.insertSkincareRoutine(it) }
+                    backup.foodItems.forEach { trackerDao.insertFoodItem(it) }
+                    backup.notionSpaces.forEach { sandboxDao.saveSpace(it) }
+
+                    userPreferences.saveTargets(backup.targetCalories, backup.targetProtein, backup.targetCarbs, backup.targetFats)
+                    userPreferences.saveDefaultWaterIncrement(backup.defaultWaterIncrement)
+                    userPreferences.saveAppTheme(backup.appTheme)
+                    userPreferences.setBiometricEnabled(backup.isBiometricEnabled)
+
+                    launch(Dispatchers.Main) { onSuccess() }
+                }
+            } catch (e: Exception) {
+                launch(Dispatchers.Main) { onError(e.message ?: "Invalid Backup File") }
+            } finally {
+                _isLoading.value = false // Stop loading
+            }
+        }
+    }
+
+
+    fun addWater() = viewModelScope.launch { repository.addWater(defaultWaterIncrement.value) }
+    fun removeWater() = viewModelScope.launch { repository.removeWater(defaultWaterIncrement.value) }
+    fun updateFoodSearchQuery(query: String) { _foodSearchQuery.value = query }
     fun addFoodItemToPantry(food: FoodItem) = viewModelScope.launch { repository.insertFoodItem(food) }
 
     fun logFoodItem(food: FoodItem, servings: Float) = viewModelScope.launch {
@@ -133,7 +233,7 @@ class HomeViewModel @Inject constructor(
         val log = ConsumedFoodLog(
             id = java.util.UUID.randomUUID().toString(),
             foodName = food.name,
-            emoji = getMealEmojiForTime(currentTime), // <--- DYNAMIC EMOJI
+            emoji = getMealEmojiForTime(currentTime),
             servings = servings,
             calories = totalCals, protein = totalPro, carbs = totalCarbs, fats = totalFats,
             timestamp = currentTime
@@ -243,12 +343,12 @@ class HomeViewModel @Inject constructor(
     private fun getMealEmojiForTime(timestamp: Long): String {
         val hour = java.util.Calendar.getInstance().apply { timeInMillis = timestamp }.get(java.util.Calendar.HOUR_OF_DAY)
         return when (hour) {
-            in 5..9 -> "🍳"   // Breakfast
-            in 10..12 -> "🍎"  // Morning Snack
-            in 13..15 -> "🍛"  // Lunch
-            in 16..19 -> "☕"   // Asraneh (عصرانه)
-            in 20..23 -> "🍲"  // Dinner
-            else -> "🌙"       // Midnight Snack
+            in 5..9 -> "🍳"
+            in 10..12 -> "🍎"
+            in 13..15 -> "🍛"
+            in 16..19 -> "☕"
+            in 20..23 -> "🍲"
+            else -> "🌙"
         }
     }
 
@@ -258,8 +358,8 @@ class HomeViewModel @Inject constructor(
 
         val log = ConsumedFoodLog(
             id = java.util.UUID.randomUUID().toString(),
-            foodName = "ثبت دستی", // "Manual Entry"
-            emoji = "✍️", // A distinct icon so the user knows it was custom macros
+            foodName = "ثبت دستی",
+            emoji = "✍️",
             servings = 1f,
             calories = cals, protein = pro, carbs = carbs, fats = fats,
             timestamp = currentTime
@@ -276,6 +376,4 @@ class HomeViewModel @Inject constructor(
         val updatedLogs = currentLogs.filter { it.id != log.id }
         repository.logConsumedFood(-log.calories, -log.protein, -log.carbs, -log.fats, Json.encodeToString(updatedLogs))
     }
-
-
 }

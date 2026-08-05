@@ -22,8 +22,14 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface TrackerDao {
     // --- Daily Records ---
+    @Query("SELECT * FROM daily_records")
+    fun getAllDailyRecords(): Flow<List<DailyRecord>> // NEW: For Backup
+
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertDailyRecord(record: DailyRecord): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertDailyRecordReplace(record: DailyRecord) // NEW: For Restore
 
     @Update
     suspend fun updateDailyRecord(record: DailyRecord)
@@ -67,6 +73,9 @@ interface TrackerDao {
     suspend fun deleteTaskSection(section: TaskSection)
 
     // --- Exercises ---
+    @Query("SELECT * FROM exercises")
+    fun getAllExercises(): Flow<List<Exercise>> // NEW: For Backup
+
     @Query("SELECT * FROM exercises WHERE dateId = :date ORDER BY id ASC")
     fun getExercisesForDate(date: String): Flow<List<Exercise>>
 
@@ -121,6 +130,9 @@ interface TrackerDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertNoteTag(tag: NoteTag)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertNoteTagReplace(tag: NoteTag) // NEW: For Restore
+
     @Query("SELECT COUNT(*) FROM note_tags")
     suspend fun getNoteTagCount(): Int
 
@@ -130,7 +142,7 @@ interface TrackerDao {
     @Query("DELETE FROM tasks WHERE status = 'DONE' AND completionDateMillis > 0 AND completionDateMillis < :thresholdMillis")
     suspend fun deleteOldDoneTasks(thresholdMillis: Long)
 
-    // --- NEW: Skincare Engine ---
+    // --- Skincare Engine ---
     @Query("SELECT * FROM skincare_routines")
     fun getAllSkincareRoutines(): Flow<List<SkincareRoutine>>
 
@@ -149,13 +161,19 @@ interface TrackerDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertSkincareProduct(product: SkincareProduct)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertSkincareProductReplace(product: SkincareProduct) // NEW: For Restore
+
     @Query("SELECT COUNT(*) FROM skincare_products")
     suspend fun getSkincareProductCount(): Int
 
     @Delete
     suspend fun deleteSkincareProduct(product: SkincareProduct)
 
-    // --- NEW: Food Pantry (Updated for Search) ---
+    // --- Food Pantry ---
+    @Query("SELECT * FROM food_items")
+    fun getAllFoodItems(): Flow<List<FoodItem>> // NEW: For Backup
+
     @Query("SELECT * FROM food_items WHERE name LIKE '%' || :searchQuery || '%' ORDER BY name ASC LIMIT 50")
     fun searchFoodItems(searchQuery: String): Flow<List<FoodItem>>
 

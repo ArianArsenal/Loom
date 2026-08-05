@@ -3,6 +3,7 @@ package com.example.loom.di
 import android.content.Context
 import androidx.room.Room
 import com.example.loom.data.local.AppDatabase
+import com.example.loom.data.local.dao.SandboxDao
 import com.example.loom.data.local.dao.TrackerDao
 import com.example.loom.data.repository.TrackerRepository
 import dagger.Module
@@ -38,5 +39,10 @@ object DatabaseModule {
     @Singleton
     fun provideTrackerRepository(dao: TrackerDao): TrackerRepository {
         return TrackerRepository(dao)
+    }
+
+    @Provides
+    fun provideSandboxDao(database: AppDatabase): SandboxDao {
+        return database.sandboxDao
     }
 }
