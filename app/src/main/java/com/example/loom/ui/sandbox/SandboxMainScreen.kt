@@ -16,72 +16,127 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.example.loom.data.models.SandboxBlock
 import com.example.loom.data.models.SandboxSpace
-import com.example.loom.utils.SecurityManager // Make sure this import matches your project!
+import com.example.loom.utils.SecurityManager
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 enum class SandboxRoute { HUB, CANVAS }
+
+
 
 @Composable
 fun SandboxMainScreen(viewModel: SandboxViewModel) {
     val context = LocalContext.current
     var currentRoute by remember { mutableStateOf(SandboxRoute.HUB) }
     var spaceBackstack by remember { mutableStateOf(emptyList<String>()) }
+
     val allSpaces by viewModel.allSpaces.collectAsState()
+    val isBiometricEnabled by viewModel.isBiometricEnabled.collectAsState()
 
     val activeSpace = allSpaces.find { it.id == spaceBackstack.lastOrNull() }
 
     // Security Dialog States
     var spaceToUnlock by remember { mutableStateOf<SandboxSpace?>(null) }
     var showPinFallback by remember { mutableStateOf(false) }
+    var showNoSecurityDialog by remember { mutableStateOf(false) }
     var passwordInput by remember { mutableStateOf("") }
     var passwordError by remember { mutableStateOf(false) }
 
-    // Reusable Navigation Logic with Security Interception
-    val attemptNavigateToSpace = { spaceId: String, isNested: Boolean ->
-        val targetSpace = allSpaces.find { it.id == spaceId }
+    // Locks to prevent double-taps and store pending navigation
+    var isNavigating by remember { mutableStateOf(false) }
+    var pendingNavigation by remember { mutableStateOf<Pair<String, Boolean>?>(null) }
 
-        if (targetSpace?.isPrivate == true) {
-            spaceToUnlock = targetSpace
-            SecurityManager.authenticate(
-                context = context,
-                title = "Unlock Private Space",
-                onSuccess = {
-                    if (isNested) spaceBackstack = spaceBackstack + spaceId
-                    else {
-                        spaceBackstack = listOf(spaceId)
-                        currentRoute = SandboxRoute.CANVAS
+    val savedPin = SecurityManager.getPin(context)
+    val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
+    val scope = rememberCoroutineScope()
+
+    // Master Navigation Logic with Security Interception
+    val attemptNavigateToSpace = { spaceId: String, isNested: Boolean ->
+        if (!isNavigating) {
+            isNavigating = true
+            focusManager.clearFocus()
+
+            val targetSpace = allSpaces.find { it.id == spaceId }
+
+            val executeNavigation = {
+                if (isNested) spaceBackstack = spaceBackstack + spaceId
+                else {
+                    spaceBackstack = listOf(spaceId)
+                    currentRoute = SandboxRoute.CANVAS
+                }
+                isNavigating = false
+            }
+
+            if (targetSpace?.isPrivate == true) {
+                // THE FIX: Check if the PIN is null OR an empty string
+                val hasPin = !savedPin.isNullOrBlank()
+                val hasBio = isBiometricEnabled && SecurityManager.hasBiometricHardware(context)
+
+                if (!hasPin && !hasBio) {
+                    showNoSecurityDialog = true
+                } else if (hasBio) {
+                    scope.launch {
+                        kotlinx.coroutines.delay(100) // UI settle delay
+                        SecurityManager.authenticate(
+                            context = context,
+                            title = "Unlock Private Space",
+                            onSuccess = { executeNavigation() },
+                            onFallback = {
+                                if (hasPin) {
+                                    spaceToUnlock = targetSpace
+                                    pendingNavigation = Pair(spaceId, isNested)
+                                    showPinFallback = true
+                                } else {
+                                    showNoSecurityDialog = true
+                                }
+                            }
+                        )
                     }
-                    spaceToUnlock = null
-                    showPinFallback = false
-                },
-                onFallback = { showPinFallback = true }
-            )
-        } else {
-            if (isNested) spaceBackstack = spaceBackstack + spaceId
-            else {
-                spaceBackstack = listOf(spaceId)
-                currentRoute = SandboxRoute.CANVAS
+                } else {
+                    spaceToUnlock = targetSpace
+                    pendingNavigation = Pair(spaceId, isNested)
+                    showPinFallback = true
+                }
+            } else {
+                executeNavigation() // Public space, go right in
             }
         }
     }
 
+    // "Go to Settings" Warning Dialog
+    if (showNoSecurityDialog) {
+        AlertDialog(
+            onDismissRequest = { showNoSecurityDialog = false; isNavigating = false },
+            title = { Text("Security Not Configured", fontWeight = FontWeight.Bold) },
+            text = { Text("This space is private, but you haven't set up an App PIN or Biometric unlock. Please go to Settings to configure your security.") },
+            confirmButton = {
+                Button(onClick = { showNoSecurityDialog = false; isNavigating = false }) { Text("OK") }
+            }
+        )
+    }
+
     // PIN Fallback Dialog
     if (showPinFallback && spaceToUnlock != null) {
-        val savedPin = SecurityManager.getPin(context)
-
         AlertDialog(
-            onDismissRequest = { spaceToUnlock = null; passwordInput = ""; passwordError = false; showPinFallback = false },
+            onDismissRequest = {
+                spaceToUnlock = null; passwordInput = ""; passwordError = false
+                showPinFallback = false; isNavigating = false; pendingNavigation = null
+            },
             title = { Text("Private Space") },
             text = {
                 Column {
-                    if (savedPin == null) {
+                    // THE FIX: Use isNullOrBlank()
+                    if (savedPin.isNullOrBlank()) {
                         Text("No PIN has been configured. Please go to Settings to set up an App PIN.", color = MaterialTheme.colorScheme.error)
                     } else {
                         Text("Enter your custom PIN to unlock:", style = MaterialTheme.typography.bodyMedium)
@@ -96,24 +151,32 @@ fun SandboxMainScreen(viewModel: SandboxViewModel) {
                 }
             },
             confirmButton = {
-                if (savedPin != null) {
+                if (!savedPin.isNullOrBlank()) {
                     Button(onClick = {
                         if (passwordInput == savedPin) {
-                            if (currentRoute == SandboxRoute.HUB) {
-                                spaceBackstack = listOf(spaceToUnlock!!.id)
-                                currentRoute = SandboxRoute.CANVAS
-                            } else {
-                                spaceBackstack = spaceBackstack + spaceToUnlock!!.id
+                            pendingNavigation?.let { (id, isNested) ->
+                                if (isNested) spaceBackstack = spaceBackstack + id
+                                else {
+                                    spaceBackstack = listOf(id)
+                                    currentRoute = SandboxRoute.CANVAS
+                                }
                             }
                             spaceToUnlock = null
                             passwordInput = ""
                             passwordError = false
                             showPinFallback = false
+                            isNavigating = false
+                            pendingNavigation = null
                         } else passwordError = true
                     }) { Text("Unlock") }
                 }
             },
-            dismissButton = { TextButton(onClick = { spaceToUnlock = null; passwordInput = ""; passwordError = false; showPinFallback = false }) { Text("Cancel") } }
+            dismissButton = {
+                TextButton(onClick = {
+                    spaceToUnlock = null; passwordInput = ""; passwordError = false
+                    showPinFallback = false; isNavigating = false; pendingNavigation = null
+                }) { Text("Cancel") }
+            }
         )
     }
 

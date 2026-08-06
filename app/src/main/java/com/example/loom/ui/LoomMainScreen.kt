@@ -126,8 +126,10 @@ fun LoomMainScreen(viewModel: HomeViewModel) {
             composable(BottomNavItem.Spaces.route) {
                 val context = LocalContext.current
                 val database = remember { AppDatabase.getDatabase(context) }
+                val userPreferences = remember { com.example.loom.data.local.preferences.UserPreferences(context) }
+
                 val sandboxViewModel: SandboxViewModel = viewModel(
-                    factory = SandboxViewModelFactory(database.sandboxDao)
+                    factory = SandboxViewModelFactory(database.sandboxDao, userPreferences)
                 )
 
                 SandboxMainScreen(viewModel = sandboxViewModel)

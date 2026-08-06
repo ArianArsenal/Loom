@@ -31,7 +31,7 @@ import com.example.loom.data.local.entity.NotionSpaceEntity
         FoodItem::class,
         NotionSpaceEntity::class
     ],
-    version = 24, // <-- BUMPED TO 24
+    version = 25, // <-- BUMPED TO 25
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -117,17 +117,14 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
-        // NEW MIGRATION: Adds Privacy Lock
         private val MIGRATION_22_23 = object : Migration(22, 23) {
             override fun migrate(db: SupportSQLiteDatabase) {
-                // In SQLite, Booleans are stored as INTEGER (0 = false, 1 = true)
                 db.execSQL("ALTER TABLE `notion_spaces` ADD COLUMN `isPrivate` INTEGER NOT NULL DEFAULT 0")
             }
         }
 
         private val MIGRATION_23_24 = object : Migration(23, 24) {
             override fun migrate(db: SupportSQLiteDatabase) {
-                // 1. Create a new table that matches the exact expected schema
                 db.execSQL("""
                     CREATE TABLE IF NOT EXISTS `food_items_new` (
                         `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, 
@@ -140,18 +137,21 @@ abstract class AppDatabase : RoomDatabase() {
                     )
                 """.trimIndent())
 
-                // 2. Copy the data over. We cast the old INTEGERS to REAL, and ignore the 'emoji' column
                 db.execSQL("""
                     INSERT INTO `food_items_new` (`id`, `name`, `servingUnit`, `calories`, `protein`, `carbs`, `fats`)
                     SELECT `id`, `name`, `servingUnit`, CAST(`calories` AS REAL), CAST(`protein` AS REAL), CAST(`carbs` AS REAL), CAST(`fats` AS REAL) 
                     FROM `food_items`
                 """.trimIndent())
 
-                // 3. Drop the old table
                 db.execSQL("DROP TABLE `food_items`")
-
-                // 4. Rename the new table to replace the old one
                 db.execSQL("ALTER TABLE `food_items_new` RENAME TO `food_items`")
+            }
+        }
+
+        // NEW MIGRATION: Injects the isUserCreated flag into the database table!
+        private val MIGRATION_24_25 = object : Migration(24, 25) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `food_items` ADD COLUMN `isUserCreated` INTEGER NOT NULL DEFAULT 0")
             }
         }
 
@@ -195,8 +195,9 @@ abstract class AppDatabase : RoomDatabase() {
                         MIGRATION_19_20,
                         MIGRATION_20_21,
                         MIGRATION_21_22,
-                        MIGRATION_22_23, // <-- Added new migration here
-                        MIGRATION_23_24
+                        MIGRATION_22_23,
+                        MIGRATION_23_24,
+                        MIGRATION_24_25 // <-- Added new migration here
                     )
                     .fallbackToDestructiveMigration()
                     .build().also { INSTANCE = it }

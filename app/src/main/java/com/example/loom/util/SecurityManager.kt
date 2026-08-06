@@ -1,6 +1,10 @@
-package com.example.loom.utils // Adjust package name as needed
+package com.example.loom.utils
 
 import android.content.Context
+import android.content.ContextWrapper
+import android.os.Handler
+import android.os.Looper
+import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
@@ -9,19 +13,30 @@ object SecurityManager {
     private const val PREFS_NAME = "loom_security_prefs"
     private const val KEY_PIN = "custom_app_pin"
 
-    // Retrieve the saved PIN (Returns null if the user hasn't set one yet)
+    // THE LOCK: Prevents multiple prompts from ever stacking on top of each other
+    private var isAuthenticating = false
+
+    private tailrec fun Context.getActivity(): FragmentActivity? = when (this) {
+        is FragmentActivity -> this
+        is ContextWrapper -> baseContext.getActivity()
+        else -> null
+    }
+
     fun getPin(context: Context): String? {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         return prefs.getString(KEY_PIN, null)
     }
 
-    // Save the new PIN
     fun savePin(context: Context, pin: String) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         prefs.edit().putString(KEY_PIN, pin).apply()
     }
 
-    // Global Biometric Prompt that any screen can call
+    fun hasBiometricHardware(context: Context): Boolean {
+        val manager = BiometricManager.from(context)
+        return manager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_WEAK) == BiometricManager.BIOMETRIC_SUCCESS
+    }
+
     fun authenticate(
         context: Context,
         title: String = "Unlock",
@@ -29,23 +44,30 @@ object SecurityManager {
         onSuccess: () -> Unit,
         onFallback: () -> Unit
     ) {
-        val activity = context as? FragmentActivity
+        // If a prompt is already processing, completely ignore the new request!
+        if (isAuthenticating) return
+
+        val activity = context.getActivity()
         if (activity == null) {
             onFallback()
             return
         }
 
+        isAuthenticating = true
         val executor = ContextCompat.getMainExecutor(activity)
-        val biometricPrompt = BiometricPrompt(activity, executor,
+
+        val prompt = BiometricPrompt(activity, executor,
             object : BiometricPrompt.AuthenticationCallback() {
                 override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
                     super.onAuthenticationError(errorCode, errString)
-                    onFallback() // User clicked "Use App PIN" or fingerprint failed/canceled
+                    isAuthenticating = false
+                    Handler(Looper.getMainLooper()).postDelayed({ onFallback() }, 100)
                 }
 
                 override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
                     super.onAuthenticationSucceeded(result)
-                    onSuccess()
+                    isAuthenticating = false
+                    Handler(Looper.getMainLooper()).postDelayed({ onSuccess() }, 250)
                 }
             }
         )
@@ -54,8 +76,9 @@ object SecurityManager {
             .setTitle(title)
             .setSubtitle(subtitle)
             .setNegativeButtonText("Use App PIN")
+            .setConfirmationRequired(false)
             .build()
 
-        biometricPrompt.authenticate(promptInfo)
+        prompt.authenticate(promptInfo)
     }
 }

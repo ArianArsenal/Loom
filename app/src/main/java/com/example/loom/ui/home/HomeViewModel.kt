@@ -144,9 +144,8 @@ class HomeViewModel @Inject constructor(
                     noteTags = trackerDao.getAllNoteTags().first(),
                     skincareProducts = trackerDao.getAllSkincareProducts().first(),
                     skincareRoutines = trackerDao.getAllSkincareRoutines().first(),
-                    foodItems = trackerDao.getAllFoodItems().first(),
+                    foodItems = trackerDao.getUserCreatedFoodItems().first(),
                     notionSpaces = sandboxDao.getAllSpaces().first(),
-
                     targetCalories = targetCalories.value,
                     targetProtein = targetProtein.value,
                     targetCarbs = targetCarbs.value,
@@ -222,7 +221,7 @@ class HomeViewModel @Inject constructor(
                 trackerDao.wipeNoteTags()
                 trackerDao.wipeSkincareProducts()
                 trackerDao.wipeSkincareRoutines()
-                trackerDao.wipeFoodItems()
+                trackerDao.wipeUserCreatedFoodItems()
                 sandboxDao.wipeAllSpaces()
 
                 userPreferences.saveTargets(2800, 140, 350, 75)
@@ -251,7 +250,10 @@ class HomeViewModel @Inject constructor(
         _foodSearchQuery.value = query
     }
 
-    fun addFoodItemToPantry(food: FoodItem) = viewModelScope.launch { repository.insertFoodItem(food) }
+    fun addFoodItemToPantry(food: FoodItem) = viewModelScope.launch {
+        // Automatically tags any manually added food as user-created
+        repository.insertFoodItem(food.copy(isUserCreated = true))
+    }
 
     fun logFoodItem(food: FoodItem, servings: Float) = viewModelScope.launch {
         val record = todayRecord.value ?: return@launch

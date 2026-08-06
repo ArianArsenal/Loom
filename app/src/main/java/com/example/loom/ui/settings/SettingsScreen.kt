@@ -48,6 +48,7 @@ fun SettingsScreen(
     var showWipeConfirmDialog by remember { mutableStateOf(false) }
     var pinInput by remember { mutableStateOf("") }
     var pinError by remember { mutableStateOf(false) }
+    var pendingDisableBiometric by remember { mutableStateOf(false) }
 
     // Backup & Restore OS Launchers
     val exportLauncher = rememberLauncherForActivityResult(
@@ -158,7 +159,24 @@ fun SettingsScreen(
                     enabled = pinInput.length == 4
                 ) { Text("Save PIN") }
             },
-            dismissButton = { TextButton(onClick = { showSetPinDialog = false; pinInput = "" }) { Text("Cancel") } }
+            dismissButton = {
+                Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
+                    if (!currentPin.isNullOrBlank()) {
+                        TextButton(
+                            onClick = {
+                                SecurityManager.savePin(context, "") // Erase PIN
+                                currentPin = ""
+                                showSetPinDialog = false
+                                pinInput = ""
+                                Toast.makeText(context, "PIN Removed", Toast.LENGTH_SHORT).show()
+                            },
+                            colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                        ) { Text("Remove PIN") }
+                        Spacer(modifier = Modifier.weight(1f))
+                    }
+                    TextButton(onClick = { showSetPinDialog = false; pinInput = "" }) { Text("Cancel") }
+                }
+            }
         )
     }
 
@@ -191,13 +209,20 @@ fun SettingsScreen(
                         showAuthPinDialog = false
                         pinInput = ""
                         pinError = false
-                        showSetPinDialog = true
+                        if (pendingDisableBiometric) {
+                            viewModel.setBiometricEnabled(false)
+                            pendingDisableBiometric = false
+                        } else {
+                            showSetPinDialog = true
+                        }
                     } else {
                         pinError = true
                     }
                 }) { Text("Verify") }
             },
-            dismissButton = { TextButton(onClick = { showAuthPinDialog = false; pinInput = ""; pinError = false }) { Text("Cancel") } }
+            dismissButton = {
+                TextButton(onClick = { showAuthPinDialog = false; pinInput = ""; pinError = false; pendingDisableBiometric = false }) { Text("Cancel") }
+            }
         )
     }
 
@@ -228,12 +253,12 @@ fun SettingsScreen(
                         Icon(Icons.Default.Lock, contentDescription = "PIN", tint = MaterialTheme.colorScheme.primary)
                         Spacer(modifier = Modifier.width(16.dp))
                         Column(modifier = Modifier.weight(1f)) {
-                            Text(if (currentPin == null) "Set App PIN" else "Change App PIN", fontWeight = FontWeight.Bold)
+                            Text(if (currentPin.isNullOrBlank()) "Set App PIN" else "Change App PIN", fontWeight = FontWeight.Bold)
                             Text("Fallback security for private spaces", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         Button(
                             onClick = {
-                                if (currentPin == null) {
+                                if (currentPin.isNullOrBlank()) {
                                     showSetPinDialog = true
                                 } else {
                                     if (isBiometricEnabled) {
@@ -251,7 +276,7 @@ fun SettingsScreen(
                             },
                             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp)
                         ) {
-                            Text(if (currentPin == null) "Setup" else "Change")
+                            Text(if (currentPin.isNullOrBlank()) "Setup" else "Manage")
                         }
                     }
 
@@ -266,7 +291,27 @@ fun SettingsScreen(
                         }
                         Switch(
                             checked = isBiometricEnabled,
-                            onCheckedChange = { viewModel.setBiometricEnabled(it) }
+                            onCheckedChange = { isEnabling ->
+                                if (isEnabling) {
+                                    viewModel.setBiometricEnabled(true)
+                                } else {
+                                    if (currentPin.isNullOrBlank()) {
+                                        // FIX: If they don't even have a PIN, let them turn it off freely!
+                                        viewModel.setBiometricEnabled(false)
+                                    } else {
+                                        SecurityManager.authenticate(
+                                            context = context,
+                                            title = "Verify Identity",
+                                            subtitle = "Authenticate to disable Security",
+                                            onSuccess = { viewModel.setBiometricEnabled(false) },
+                                            onFallback = {
+                                                pendingDisableBiometric = true
+                                                showAuthPinDialog = true
+                                            }
+                                        )
+                                    }
+                                }
+                            }
                         )
                     }
                 }

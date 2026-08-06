@@ -145,5 +145,6 @@ data class FoodItem(
     val calories: Float,
     val protein: Float,
     val carbs: Float,
-    val fats: Float
+    val fats: Float,
+    var isUserCreated: Boolean = false
 )

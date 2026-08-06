@@ -126,11 +126,16 @@ fun NoteListScreen(
     var noteToUnlock by remember { mutableStateOf<DiaryNote?>(null) }
     var showPinFallback by remember { mutableStateOf(false) }
 
+    // NEW UX STATE
+    var showNoSecurityDialog by remember { mutableStateOf(false) }
+    var isCardLocked by remember { mutableStateOf(false) }
+
     var passwordInput by remember { mutableStateOf("") }
     var passwordError by remember { mutableStateOf(false) }
     var tagToDelete by remember { mutableStateOf<NoteTag?>(null) }
 
     val context = LocalContext.current
+    val isBiometricEnabled by viewModel.isBiometricEnabled.collectAsState()
 
     val filteredNotes = notes.filter {
         it.title.contains(searchQuery, true) || it.content.contains(searchQuery, true) || it.tag.contains(searchQuery, true)
@@ -139,16 +144,29 @@ fun NoteListScreen(
     val pinnedNotes = filteredNotes.filter { it.isPinned }
     val unpinnedNotes = filteredNotes.filter { !it.isPinned }
 
-    // Fallback PIN Dialog (shows if biometric fails, is canceled, or isn't available)
+    // "Go to Settings" Warning Dialog
+    if (showNoSecurityDialog) {
+        AlertDialog(
+            onDismissRequest = { showNoSecurityDialog = false; isCardLocked = false },
+            title = { Text("Security Not Configured", fontWeight = FontWeight.Bold) },
+            text = { Text("This note is private, but you haven't set up an App PIN or Biometric unlock. Please go to Settings to configure your security.") },
+            confirmButton = {
+                Button(onClick = { showNoSecurityDialog = false; isCardLocked = false }) { Text("OK") }
+            }
+        )
+    }
+
+    // Fallback PIN Dialog
     if (showPinFallback && noteToUnlock != null) {
         val savedPin = com.example.loom.utils.SecurityManager.getPin(context)
 
         AlertDialog(
-            onDismissRequest = { noteToUnlock = null; passwordInput = ""; passwordError = false; showPinFallback = false },
+            onDismissRequest = { noteToUnlock = null; passwordInput = ""; passwordError = false; showPinFallback = false; isCardLocked = false },
             title = { Text("Private Note") },
             text = {
                 Column {
-                    if (savedPin == null) {
+                    // THE FIX: Check for isNullOrBlank
+                    if (savedPin.isNullOrBlank()) {
                         Text("No PIN has been configured. Please go to Settings to set up an App PIN.", color = MaterialTheme.colorScheme.error)
                     } else {
                         Text("Enter your custom PIN to unlock:", style = MaterialTheme.typography.bodyMedium)
@@ -163,7 +181,7 @@ fun NoteListScreen(
                 }
             },
             confirmButton = {
-                if (savedPin != null) {
+                if (!savedPin.isNullOrBlank()) {
                     Button(onClick = {
                         if (passwordInput == savedPin) {
                             onNoteClick(noteToUnlock!!)
@@ -171,11 +189,12 @@ fun NoteListScreen(
                             passwordInput = ""
                             passwordError = false
                             showPinFallback = false
+                            isCardLocked = false // Unlock UI
                         } else passwordError = true
                     }) { Text("Unlock") }
                 }
             },
-            dismissButton = { TextButton(onClick = { noteToUnlock = null; passwordInput = ""; passwordError = false; showPinFallback = false }) { Text("Cancel") } }
+            dismissButton = { TextButton(onClick = { noteToUnlock = null; passwordInput = ""; passwordError = false; showPinFallback = false; isCardLocked = false }) { Text("Cancel") } }
         )
     }
 
@@ -248,22 +267,46 @@ fun NoteListScreen(
                 val gridColumns = when (viewMode) { 0 -> 1; 1 -> 2; else -> 3 }
                 val cardHeight = when (viewMode) { 0 -> 140.dp; 1 -> 180.dp; else -> 160.dp }
 
-                // Triggers Biometric Prompt
+                val savedPin = com.example.loom.utils.SecurityManager.getPin(context)
+                val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
+                val scope = rememberCoroutineScope()
+
                 val handleUnlockRequest: (DiaryNote) -> Unit = { note ->
-                    noteToUnlock = note
-                    // Using our new shared SecurityManager!
-                    com.example.loom.utils.SecurityManager.authenticate(
-                        context = context,
-                        title = "Unlock Private Note",
-                        onSuccess = {
-                            onNoteClick(note)
-                            noteToUnlock = null
-                            showPinFallback = false
-                        },
-                        onFallback = {
+                    if (!isCardLocked) {
+                        isCardLocked = true // Lock the UI
+                        focusManager.clearFocus()
+
+                        // THE FIX: Check if PIN is not null AND not empty
+                        val hasPin = !savedPin.isNullOrBlank()
+                        val hasBio = isBiometricEnabled && com.example.loom.utils.SecurityManager.hasBiometricHardware(context)
+
+                        if (!hasPin && !hasBio) {
+                            showNoSecurityDialog = true
+                        } else if (hasBio) {
+                            scope.launch {
+                                kotlinx.coroutines.delay(100)
+                                com.example.loom.utils.SecurityManager.authenticate(
+                                    context = context,
+                                    title = "Unlock Private Note",
+                                    onSuccess = {
+                                        onNoteClick(note)
+                                        isCardLocked = false
+                                    },
+                                    onFallback = {
+                                        if (hasPin) {
+                                            noteToUnlock = note
+                                            showPinFallback = true
+                                        } else {
+                                            showNoSecurityDialog = true
+                                        }
+                                    }
+                                )
+                            }
+                        } else {
+                            noteToUnlock = note
                             showPinFallback = true
                         }
-                    )
+                    }
                 }
 
                 LazyVerticalGrid(
@@ -358,7 +401,6 @@ fun NoteCard(note: DiaryNote, allTags: List<NoteTag>, height: androidx.compose.u
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun NoteEditor(initialNote: DiaryNote?, allTags: List<NoteTag>, viewModel: HomeViewModel, onNavigateBack: () -> Unit) {
-    // ... [The entire NoteEditor composable remains completely unchanged] ...
     var currentId by remember { mutableIntStateOf(initialNote?.id ?: 0) }
     var title by remember { mutableStateOf(initialNote?.title ?: "") }
     var selectedTag by remember { mutableStateOf(initialNote?.tag ?: "Personal") }

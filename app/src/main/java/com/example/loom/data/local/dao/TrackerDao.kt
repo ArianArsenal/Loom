@@ -173,7 +173,8 @@ interface TrackerDao {
     // --- Food Pantry ---
     @Query("SELECT * FROM food_items")
     fun getAllFoodItems(): Flow<List<FoodItem>> // NEW: For Backup
-
+    @Query("SELECT * FROM food_items WHERE isUserCreated = 1")
+    fun getUserCreatedFoodItems(): Flow<List<FoodItem>>
     @Query("SELECT * FROM food_items WHERE name LIKE '%' || :searchQuery || '%' ORDER BY name ASC LIMIT 50")
     fun searchFoodItems(searchQuery: String): Flow<List<FoodItem>>
 
@@ -198,5 +199,5 @@ interface TrackerDao {
     @Query("DELETE FROM note_tags") suspend fun wipeNoteTags()
     @Query("DELETE FROM skincare_products") suspend fun wipeSkincareProducts()
     @Query("DELETE FROM skincare_routines") suspend fun wipeSkincareRoutines()
-    @Query("DELETE FROM food_items") suspend fun wipeFoodItems()
+    @Query("DELETE FROM food_items WHERE isUserCreated = 1") suspend fun wipeUserCreatedFoodItems()
 }

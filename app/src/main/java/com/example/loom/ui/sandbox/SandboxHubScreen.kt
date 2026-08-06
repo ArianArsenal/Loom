@@ -39,7 +39,7 @@ fun SandboxHubScreen(
     onNavigateToSpace: (String) -> Unit
 ) {
     var editingTagsForSpace by remember { mutableStateOf<SandboxSpace?>(null) }
-    var showCreateDialog by remember { mutableStateOf(false) } // NEW: Controls the Template Chooser
+    var showCreateDialog by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
     Scaffold(
@@ -51,7 +51,7 @@ fun SandboxHubScreen(
         },
         floatingActionButton = {
             FloatingActionButton(
-                onClick = { showCreateDialog = true }, // TRIGGER TEMPLATE CHOOSER INSTEAD OF BLANK SPACE
+                onClick = { showCreateDialog = true },
                 containerColor = MaterialTheme.colorScheme.primary,
                 shape = RoundedCornerShape(16.dp)
             ) { Icon(Icons.Default.Add, "New", tint = MaterialTheme.colorScheme.onPrimary) }
@@ -145,6 +145,7 @@ fun SandboxHubScreen(
                         ) {
                             ElevatedCard(
                                 modifier = Modifier.fillMaxWidth().clickable {
+                                    // DELEGATES SECURE NAVIGATION TO THE MAIN SCREEN
                                     val bumpedSpace = space.copy(updatedAt = System.currentTimeMillis())
                                     viewModel.saveSpace(bumpedSpace)
                                     onNavigateToSpace(bumpedSpace.id)
@@ -169,7 +170,6 @@ fun SandboxHubScreen(
                                                 Icon(Icons.Default.PushPin, "Pinned", modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
                                                 Spacer(Modifier.width(4.dp))
                                             }
-                                            // NEW: LOCK ICON INDICATOR
                                             if (space.isPrivate) {
                                                 Icon(Icons.Default.Lock, "Private", modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.error)
                                                 Spacer(Modifier.width(4.dp))
@@ -238,7 +238,6 @@ fun SandboxHubScreen(
             )
         }
 
-        // NEW: TEMPLATE CHOOSER DIALOG
         if (showCreateDialog) {
             val appTemplates = com.example.loom.utils.TemplateManager.appTemplates
             val userTemplates = remember { com.example.loom.utils.TemplateManager.getCustomTemplates(context) }
@@ -257,8 +256,8 @@ fun SandboxHubScreen(
                                 modifier = Modifier.clickable {
                                     val type = object : TypeToken<List<SandboxBlock>>() {}.type
                                     val initialBlocks: List<SandboxBlock> = try {
-                                        gson.fromJson(template.blocksJson, type) ?: listOf(SandboxBlock(content = ZWSP))
-                                    } catch(e: Exception) { listOf(SandboxBlock(content = ZWSP)) }
+                                        gson.fromJson(template.blocksJson, type) ?: listOf(SandboxBlock(content = "\u200B"))
+                                    } catch(e: Exception) { listOf(SandboxBlock(content = "\u200B")) }
 
                                     val newSpace = SandboxSpace(
                                         title = if (template.id == "empty") "" else template.name,
@@ -281,8 +280,8 @@ fun SandboxHubScreen(
                                     modifier = Modifier.clickable {
                                         val type = object : TypeToken<List<SandboxBlock>>() {}.type
                                         val initialBlocks: List<SandboxBlock> = try {
-                                            gson.fromJson(template.blocksJson, type) ?: listOf(SandboxBlock(content = ZWSP))
-                                        } catch(e: Exception) { listOf(SandboxBlock(content = ZWSP)) }
+                                            gson.fromJson(template.blocksJson, type) ?: listOf(SandboxBlock(content = "\u200B"))
+                                        } catch(e: Exception) { listOf(SandboxBlock(content = "\u200B")) }
 
                                         val newSpace = SandboxSpace(
                                             title = template.name,
