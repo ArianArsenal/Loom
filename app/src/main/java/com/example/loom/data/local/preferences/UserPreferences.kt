@@ -29,8 +29,10 @@ class UserPreferences @Inject constructor(private val context: Context) {
         val TARGET_FATS = intPreferencesKey("target_fats")
 
         val DEFAULT_WATER_ML = intPreferencesKey("default_water_ml")
+        val WATER_DAILY_GOAL = intPreferencesKey("water_daily_goal")
+        val AUTO_WATER_GOAL = booleanPreferencesKey("auto_water_goal")
+        val CUSTOM_WATER_CONTAINERS = stringPreferencesKey("custom_water_containers")
 
-        // NEW: Biometric Key
         val BIOMETRIC_ENABLED = booleanPreferencesKey("biometric_enabled")
         val APP_THEME = stringPreferencesKey("app_theme")
     }
@@ -49,13 +51,17 @@ class UserPreferences @Inject constructor(private val context: Context) {
     val targetFatsFlow: Flow<Int> = context.dataStore.data.map { it[TARGET_FATS] ?: 75 }
 
     val defaultWaterIncrementFlow: Flow<Int> = context.dataStore.data.map { it[DEFAULT_WATER_ML] ?: 250 }
+    val waterDailyGoalFlow: Flow<Int> = context.dataStore.data.map { it[WATER_DAILY_GOAL] ?: 3000 }
+    val autoWaterGoalFlow: Flow<Boolean> = context.dataStore.data.map { it[AUTO_WATER_GOAL] ?: true }
 
-    // NEW: Flow to read Biometric preference (defaults to true)
+    // Default containers JSON string
+    val customWaterContainersFlow: Flow<String> = context.dataStore.data.map {
+        it[CUSTOM_WATER_CONTAINERS] ?: """[{"id":"1","name":"Glass","iconEmoji":"LocalDrink","volumeMl":250,"hydrationFactor":1.0},{"id":"2","name":"Shaker","iconEmoji":"LocalCafe","volumeMl":600,"hydrationFactor":1.0},{"id":"3","name":"Bottle","iconEmoji":"WaterDrop","volumeMl":1500,"hydrationFactor":1.0}]"""
+    }
+
     val biometricEnabledFlow: Flow<Boolean> = context.dataStore.data.map { it[BIOMETRIC_ENABLED] ?: true }
 
-    suspend fun saveAppTheme(theme: String) {
-        context.dataStore.edit { it[APP_THEME] = theme }
-    }
+    suspend fun saveAppTheme(theme: String) { context.dataStore.edit { it[APP_THEME] = theme } }
 
     suspend fun saveBioMetrics(weight: Float, height: Int, age: Int, gender: String, activity: String, goal: String) {
         context.dataStore.edit { preferences ->
@@ -66,29 +72,11 @@ class UserPreferences @Inject constructor(private val context: Context) {
             preferences[ACTIVITY_LEVEL] = activity
             preferences[FITNESS_GOAL] = goal
 
-            // Mifflin-St Jeor Equation
-            val bmr = if (gender == "Male") {
-                (10 * weight) + (6.25 * height) - (5 * age) + 5
-            } else {
-                (10 * weight) + (6.25 * height) - (5 * age) - 161
-            }
-
-            val multiplier = when (activity) {
-                "Sedentary" -> 1.2f
-                "Light" -> 1.375f
-                "Moderate" -> 1.55f
-                "Active" -> 1.725f
-                "Very Active" -> 1.9f
-                else -> 1.2f
-            }
-
+            // Mifflin-St Jeor
+            val bmr = if (gender == "Male") { (10 * weight) + (6.25 * height) - (5 * age) + 5 } else { (10 * weight) + (6.25 * height) - (5 * age) - 161 }
+            val multiplier = when (activity) { "Sedentary" -> 1.2f; "Light" -> 1.375f; "Moderate" -> 1.55f; "Active" -> 1.725f; "Very Active" -> 1.9f; else -> 1.2f }
             var tdee = bmr * multiplier
-
-            tdee += when (goal) {
-                "Lose Weight" -> -500f
-                "Build Muscle" -> 300f
-                else -> 0f
-            }
+            tdee += when (goal) { "Lose Weight" -> -500f; "Build Muscle" -> 300f; else -> 0f }
 
             val cals = tdee.toInt()
             val protein = (weight * 2.2f).toInt()
@@ -99,24 +87,29 @@ class UserPreferences @Inject constructor(private val context: Context) {
             preferences[TARGET_PROTEIN] = protein
             preferences[TARGET_FATS] = fats
             preferences[TARGET_CARBS] = carbs
+
+            // Auto-calculate hydration (35ml per kg)
+            val isAutoWater = preferences[AUTO_WATER_GOAL] ?: true
+            if (isAutoWater) {
+                preferences[WATER_DAILY_GOAL] = (weight * 35).toInt()
+            }
         }
     }
 
-    suspend fun saveDefaultWaterIncrement(ml: Int) {
-        context.dataStore.edit { it[DEFAULT_WATER_ML] = ml }
+    suspend fun saveDefaultWaterIncrement(ml: Int) { context.dataStore.edit { it[DEFAULT_WATER_ML] = ml } }
+    suspend fun saveWaterDailyGoal(goalMl: Int, isAuto: Boolean) {
+        context.dataStore.edit {
+            it[WATER_DAILY_GOAL] = goalMl
+            it[AUTO_WATER_GOAL] = isAuto
+        }
     }
+    suspend fun saveCustomWaterContainers(json: String) { context.dataStore.edit { it[CUSTOM_WATER_CONTAINERS] = json } }
 
     suspend fun saveTargets(calories: Int, protein: Int, carbs: Int, fats: Int) {
         context.dataStore.edit { prefs ->
-            prefs[TARGET_CALORIES] = calories
-            prefs[TARGET_PROTEIN] = protein
-            prefs[TARGET_CARBS] = carbs
-            prefs[TARGET_FATS] = fats
+            prefs[TARGET_CALORIES] = calories; prefs[TARGET_PROTEIN] = protein; prefs[TARGET_CARBS] = carbs; prefs[TARGET_FATS] = fats
         }
     }
 
-    // NEW: Function to save Biometric preference
-    suspend fun setBiometricEnabled(enabled: Boolean) {
-        context.dataStore.edit { it[BIOMETRIC_ENABLED] = enabled }
-    }
+    suspend fun setBiometricEnabled(enabled: Boolean) { context.dataStore.edit { it[BIOMETRIC_ENABLED] = enabled } }
 }

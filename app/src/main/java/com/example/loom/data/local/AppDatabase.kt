@@ -31,7 +31,7 @@ import com.example.loom.data.local.entity.NotionSpaceEntity
         FoodItem::class,
         NotionSpaceEntity::class
     ],
-    version = 26, // <-- BUMPED TO 26 FOR SKINCARE PRODUCT PROFILE FIELDS
+    version = 27, // <-- BUMPED TO 27 FOR HYDRATION LOGS
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -154,13 +154,19 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
-        // NEW MIGRATION: Injects the Skincare Profile fields into the database!
         private val MIGRATION_25_26 = object : Migration(25, 26) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE `skincare_products` ADD COLUMN `brand` TEXT NOT NULL DEFAULT ''")
                 db.execSQL("ALTER TABLE `skincare_products` ADD COLUMN `details` TEXT NOT NULL DEFAULT ''")
                 db.execSQL("ALTER TABLE `skincare_products` ADD COLUMN `timeOfUseEmoji` TEXT NOT NULL DEFAULT '☀️/🌙'")
                 db.execSQL("ALTER TABLE `skincare_products` ADD COLUMN `frequency` TEXT NOT NULL DEFAULT 'Daily'")
+            }
+        }
+
+        // NEW MIGRATION: Injects the Hydration logs JSON field into the database!
+        private val MIGRATION_26_27 = object : Migration(26, 27) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `daily_records` ADD COLUMN `waterLogsJson` TEXT NOT NULL DEFAULT '[]'")
             }
         }
 
@@ -207,7 +213,8 @@ abstract class AppDatabase : RoomDatabase() {
                         MIGRATION_22_23,
                         MIGRATION_23_24,
                         MIGRATION_24_25,
-                        MIGRATION_25_26 // <-- Added new migration here
+                        MIGRATION_25_26,
+                        MIGRATION_26_27 // <-- Added new migration here
                     )
                     .fallbackToDestructiveMigration()
                     .build().also { INSTANCE = it }

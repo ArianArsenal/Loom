@@ -110,6 +110,9 @@ class HomeViewModel @Inject constructor(
     val allSkincareProducts: StateFlow<List<SkincareProduct>> = repository.getAllSkincareProducts()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    val waterDailyGoal: StateFlow<Int> = userPreferences.waterDailyGoalFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 3000)
+
     @OptIn(ExperimentalCoroutinesApi::class)
     val searchedFoodItems: StateFlow<List<FoodItem>> = _foodSearchQuery
         .debounce(300L)

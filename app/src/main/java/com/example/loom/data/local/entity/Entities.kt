@@ -15,7 +15,27 @@ data class DailyRecord(
     var completedSkincareRoutinesJson: String = "[]",
     var completedSkincareStepsJson: String = "[]",
     var consumedFoodsJson: String = "[]",
+    var waterLogsJson: String = "[]", // NEW: Stores detailed hydration timeline
     var diaryEntry: String = ""
+)
+
+@Serializable
+data class WaterLog(
+    val id: String,
+    val containerName: String,
+    val emoji: String,
+    val amountMl: Int,
+    val hydrationFactor: Float,
+    val timestamp: Long
+)
+
+@Serializable
+data class WaterContainer(
+    val id: String,
+    val name: String,
+    val iconEmoji: String,
+    val volumeMl: Int,
+    val hydrationFactor: Float = 1.0f
 )
 
 @Entity(tableName = "tasks")

@@ -68,7 +68,7 @@ fun HomeScreen(
     val targetCarbsInt by viewModel.targetCarbs.collectAsState()
     val targetFatsInt by viewModel.targetFats.collectAsState()
     val defaultWaterIncrement by viewModel.defaultWaterIncrement.collectAsState()
-
+    val dailyGoal by viewModel.waterDailyGoal.collectAsState() // NEW
     var showNutritionDialog by remember { mutableStateOf(false) }
     var isManualEntry by remember { mutableStateOf(false) }
     var showNewFoodDialog by remember { mutableStateOf(false) }
@@ -360,7 +360,7 @@ fun HomeScreen(
                 )
             }
             item {
-                HydrationCard(todayRecord = todayRecord, defaultWaterIncrement = defaultWaterIncrement, viewModel = viewModel)
+                HydrationCard(todayRecord = todayRecord, dailyGoal = dailyGoal, defaultWaterIncrement = defaultWaterIncrement, viewModel = viewModel)
             }
             item {
                 SkincareRoutinesCard(pinnedRoutines = pinnedRoutines, completedRoutines = completedRoutines, completedSteps = completedSteps, viewModel = viewModel)

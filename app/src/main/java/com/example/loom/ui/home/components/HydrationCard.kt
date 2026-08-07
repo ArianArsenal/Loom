@@ -25,9 +25,10 @@ import com.example.loom.ui.home.HomeViewModel
 import java.util.Locale
 
 @Composable
-fun AnimatedWaterGlassIcon(intakeMl: Int, goalMl: Int = 3000, modifier: Modifier = Modifier) {
-    // Clamps the progress between 0% and 100%
-    val targetProgress = (intakeMl.toFloat() / goalMl.toFloat()).coerceIn(0f, 1f)
+fun AnimatedWaterGlassIcon(intakeMl: Int, goalMl: Int, modifier: Modifier = Modifier) {
+    // Avoid division by zero just in case
+    val safeGoal = if (goalMl > 0) goalMl else 3000
+    val targetProgress = (intakeMl.toFloat() / safeGoal.toFloat()).coerceIn(0f, 1f)
 
     val animatedProgress by animateFloatAsState(
         targetValue = targetProgress,
@@ -40,48 +41,35 @@ fun AnimatedWaterGlassIcon(intakeMl: Int, goalMl: Int = 3000, modifier: Modifier
 
     Box(
         modifier = modifier
-            .size(width = 20.dp, height = 24.dp) // Slightly taller to look like a glass
+            .size(width = 20.dp, height = 24.dp)
             .drawBehind {
                 val stroke = 2.dp.toPx()
                 val corner = 6.dp.toPx()
-
-                // Draw a perfect U-shape for the glass rim
                 val path = Path().apply {
-                    moveTo(stroke / 2f, 0f) // Start at Top Left
-                    lineTo(stroke / 2f, size.height - corner) // Left wall
-                    // Curve bottom left
+                    moveTo(stroke / 2f, 0f)
+                    lineTo(stroke / 2f, size.height - corner)
                     quadraticBezierTo(stroke / 2f, size.height - stroke / 2f, corner, size.height - stroke / 2f)
-                    lineTo(size.width - corner, size.height - stroke / 2f) // Bottom floor
-                    // Curve bottom right
+                    lineTo(size.width - corner, size.height - stroke / 2f)
                     quadraticBezierTo(size.width - stroke / 2f, size.height - stroke / 2f, size.width - stroke / 2f, size.height - corner)
-                    lineTo(size.width - stroke / 2f, 0f) // Right wall
+                    lineTo(size.width - stroke / 2f, 0f)
                 }
-
-                drawPath(
-                    path = path,
-                    color = glassColor,
-                    style = Stroke(width = stroke, cap = StrokeCap.Round)
-                )
+                drawPath(path = path, color = glassColor, style = Stroke(width = stroke, cap = StrokeCap.Round))
             }
-            // Padding pushes the liquid inside the glass walls
             .padding(start = 3.dp, end = 3.dp, bottom = 3.dp, top = 2.dp)
-            // Clips the bottom of the liquid to match the curve of the glass
             .clip(RoundedCornerShape(bottomStart = 4.dp, bottomEnd = 4.dp)),
         contentAlignment = Alignment.BottomCenter
     ) {
-        // The Liquid
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .fillMaxHeight(animatedProgress)
-                // Slight rounding on the top of the liquid so it looks like water tension
                 .background(liquidColor, RoundedCornerShape(topStart = 2.dp, topEnd = 2.dp))
         )
     }
 }
 
 @Composable
-fun HydrationCard(todayRecord: DailyRecord?, defaultWaterIncrement: Int, viewModel: HomeViewModel) {
+fun HydrationCard(todayRecord: DailyRecord?, dailyGoal: Int, defaultWaterIncrement: Int, viewModel: HomeViewModel) {
     ElevatedCard(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(24.dp),
@@ -96,7 +84,7 @@ fun HydrationCard(todayRecord: DailyRecord?, defaultWaterIncrement: Int, viewMod
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     AnimatedWaterGlassIcon(
                         intakeMl = todayRecord?.waterIntakeMl ?: 0,
-                        goalMl = 3000,
+                        goalMl = dailyGoal, // Now dynamically tracks the Health tab goal!
                         modifier = Modifier.padding(end = 8.dp)
                     )
                     Text("Hydration", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)

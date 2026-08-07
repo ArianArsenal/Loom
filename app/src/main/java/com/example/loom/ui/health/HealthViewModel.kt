@@ -57,6 +57,37 @@ class HealthViewModel @Inject constructor(
     val activity: StateFlow<String> = userPreferences.activityFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "Moderate")
     val goal: StateFlow<String> = userPreferences.goalFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "Maintain")
 
+    val waterDailyGoal: StateFlow<Int> = userPreferences.waterDailyGoalFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 3000)
+    val isAutoWaterGoal: StateFlow<Boolean> = userPreferences.autoWaterGoalFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
+
+    val customWaterContainers: StateFlow<List<com.example.loom.data.local.entity.WaterContainer>> = userPreferences.customWaterContainersFlow
+        .map { try { Json.decodeFromString<List<com.example.loom.data.local.entity.WaterContainer>>(it) } catch (e: Exception) { emptyList() } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val waterLogs: StateFlow<List<com.example.loom.data.local.entity.WaterLog>> = todayRecord
+        .map { try { Json.decodeFromString<List<com.example.loom.data.local.entity.WaterLog>>(it?.waterLogsJson ?: "[]") } catch (e: Exception) { emptyList() } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    fun saveWaterGoal(goal: Int, isAuto: Boolean) = viewModelScope.launch { userPreferences.saveWaterDailyGoal(goal, isAuto) }
+    fun saveCustomWaterContainers(containers: List<com.example.loom.data.local.entity.WaterContainer>) = viewModelScope.launch {
+        userPreferences.saveCustomWaterContainers(Json.encodeToString(containers))
+    }
+
+    fun logDetailedWater(container: com.example.loom.data.local.entity.WaterContainer) = viewModelScope.launch {
+        val currentLogs = waterLogs.value
+        val newLog = com.example.loom.data.local.entity.WaterLog(
+            id = java.util.UUID.randomUUID().toString(),
+            containerName = container.name, emoji = container.iconEmoji, amountMl = container.volumeMl, hydrationFactor = container.hydrationFactor, timestamp = System.currentTimeMillis()
+        )
+        repository.logDetailedWater(Json.encodeToString(currentLogs + newLog))
+    }
+
+    fun removeDetailedWaterLog(logId: String) = viewModelScope.launch {
+        val currentLogs = waterLogs.value
+        val updatedLogs = currentLogs.filter { it.id != logId }
+        repository.logDetailedWater(Json.encodeToString(updatedLogs))
+    }
+
     val consumedFoods: StateFlow<List<ConsumedFoodLog>> = todayRecord
         .map { try { Json.decodeFromString<List<ConsumedFoodLog>>(it?.consumedFoodsJson ?: "[]") } catch (e: Exception) { emptyList() } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())

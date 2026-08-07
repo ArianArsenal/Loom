@@ -14,6 +14,7 @@ import com.example.loom.data.local.entity.TaskSection
 import com.example.loom.data.local.entity.WorkoutPreset
 import com.example.loom.util.DateUtils
 import kotlinx.coroutines.flow.Flow
+import kotlinx.serialization.encodeToString
 import javax.inject.Inject
 
 class TrackerRepository @Inject constructor(private val dao: TrackerDao) {
@@ -34,21 +35,51 @@ class TrackerRepository @Inject constructor(private val dao: TrackerDao) {
     fun getDailyRecordFlow(dateId: String): Flow<DailyRecord?> = dao.getDailyRecordFlow(dateId)
     fun getRecordsForMonth(monthPrefix: String): Flow<List<DailyRecord>> = dao.getRecordsForMonth(monthPrefix)
 
+
+    suspend fun logDetailedWater(logsJson: String) {
+        val record = dao.getDailyRecordSync(DateUtils.getTodayDateId())
+        if (record != null) {
+            // Calculate total net hydration from logs
+            val logsList = try { kotlinx.serialization.json.Json.decodeFromString<List<com.example.loom.data.local.entity.WaterLog>>(logsJson) } catch (e: Exception) { emptyList() }
+            var netHydration = 0f
+            logsList.forEach { netHydration += (it.amountMl * it.hydrationFactor) }
+
+            record.waterLogsJson = logsJson
+            record.waterIntakeMl = netHydration.toInt() // Syncs the Home Tab progress bar automatically!
+            dao.updateDailyRecord(record)
+        }
+    }
+
+    // Keep this for backward compatibility and Home tab Quick Add
     suspend fun addWater(amountMl: Int, targetDateId: String = DateUtils.getTodayDateId()) {
         val record = dao.getDailyRecordSync(targetDateId)
         if (record != null) {
+            val currentLogs = try { kotlinx.serialization.json.Json.decodeFromString<List<com.example.loom.data.local.entity.WaterLog>>(record.waterLogsJson) } catch (e: Exception) { emptyList() }
+            val newLog = com.example.loom.data.local.entity.WaterLog(
+                id = java.util.UUID.randomUUID().toString(),
+                containerName = "Quick Add", emoji = "💧", amountMl = amountMl, hydrationFactor = 1.0f, timestamp = System.currentTimeMillis()
+            )
+            val updatedJson = kotlinx.serialization.json.Json.encodeToString(currentLogs + newLog)
+
+            record.waterLogsJson = updatedJson
             record.waterIntakeMl += amountMl
             dao.updateDailyRecord(record)
-        } else {
-            val newRecord = DailyRecord(dateId = targetDateId, waterIntakeMl = amountMl)
-            dao.insertDailyRecord(newRecord)
         }
     }
 
     suspend fun removeWater(amountMl: Int, targetDateId: String = DateUtils.getTodayDateId()) {
         val record = dao.getDailyRecordSync(targetDateId)
-        if (record != null && record.waterIntakeMl > 0) {
-            record.waterIntakeMl = (record.waterIntakeMl - amountMl).coerceAtLeast(0)
+        if (record != null) {
+            val currentLogs = try { kotlinx.serialization.json.Json.decodeFromString<List<com.example.loom.data.local.entity.WaterLog>>(record.waterLogsJson) } catch (e: Exception) { emptyList() }.toMutableList()
+            if (currentLogs.isNotEmpty()) {
+                // FIXED: Using removeAt to avoid API 35 conflicts
+                val removedLog = currentLogs.removeAt(currentLogs.lastIndex)
+                val updatedJson = kotlinx.serialization.json.Json.encodeToString(currentLogs)
+                record.waterLogsJson = updatedJson
+                record.waterIntakeMl = (record.waterIntakeMl - (removedLog.amountMl * removedLog.hydrationFactor).toInt()).coerceAtLeast(0)
+            } else {
+                record.waterIntakeMl = (record.waterIntakeMl - amountMl).coerceAtLeast(0)
+            }
             dao.updateDailyRecord(record)
         }
     }
