@@ -107,6 +107,9 @@ class HomeViewModel @Inject constructor(
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
+    val allSkincareProducts: StateFlow<List<SkincareProduct>> = repository.getAllSkincareProducts()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     @OptIn(ExperimentalCoroutinesApi::class)
     val searchedFoodItems: StateFlow<List<FoodItem>> = _foodSearchQuery
         .debounce(300L)
@@ -294,6 +297,30 @@ class HomeViewModel @Inject constructor(
         repository.updateCompletedSkincareSteps(Json.encodeToString(currentList))
     }
 
+    fun deleteSkincareProduct(product: SkincareProduct) = viewModelScope.launch {
+        repository.deleteSkincareProduct(product)
+    }
+
+    // Syncs with the Master Checkbox logic from the Health Tab
+    fun toggleAllSkincareSteps(routineName: String, products: List<String>, isCompleted: Boolean) = viewModelScope.launch {
+        val record = todayRecord.value ?: return@launch
+        val currentSteps = try { Json.decodeFromString<List<String>>(record.completedSkincareStepsJson) } catch (e: Exception) { emptyList() }.toMutableList()
+
+        products.forEach { p ->
+            val stepId = "${routineName}_$p"
+            if (isCompleted) {
+                if (!currentSteps.contains(stepId)) currentSteps.add(stepId)
+            } else {
+                currentSteps.remove(stepId)
+            }
+        }
+        repository.updateCompletedSkincareSteps(Json.encodeToString(currentSteps))
+    }
+
+    fun saveSkincareRoutine(routine: SkincareRoutine) = viewModelScope.launch { repository.insertSkincareRoutine(routine) }
+
+    fun updateSkincareProduct(product: SkincareProduct) = viewModelScope.launch { repository.updateSkincareProduct(product) }
+
     fun updateDiaryNote(note: String) = viewModelScope.launch { repository.updateDiaryNote(note) }
 
     fun addTask(task: Task) = viewModelScope.launch { repository.insertTask(task) }
@@ -392,7 +419,7 @@ class HomeViewModel @Inject constructor(
 
         val log = ConsumedFoodLog(
             id = java.util.UUID.randomUUID().toString(),
-            foodName = "ثبت دستی",
+            foodName = "Manual Entry",
             emoji = "✍️",
             servings = 1f,
             servingUnit = "serving",

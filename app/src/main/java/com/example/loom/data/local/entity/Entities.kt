@@ -124,9 +124,15 @@ data class NoteTag(
     val colorHex: String
 )
 
+@Serializable
 @Entity(tableName = "skincare_products")
 data class SkincareProduct(
-    @PrimaryKey val name: String
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val name: String,
+    val brand: String = "",
+    val details: String = "",
+    val timeOfUseEmoji: String = "☀️/🌙",
+    val frequency: String = "Daily"
 )
 
 @Entity(tableName = "skincare_routines")

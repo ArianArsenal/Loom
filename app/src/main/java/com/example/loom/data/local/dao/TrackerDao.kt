@@ -23,13 +23,13 @@ import kotlinx.coroutines.flow.Flow
 interface TrackerDao {
     // --- Daily Records ---
     @Query("SELECT * FROM daily_records")
-    fun getAllDailyRecords(): Flow<List<DailyRecord>> // NEW: For Backup
+    fun getAllDailyRecords(): Flow<List<DailyRecord>>
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertDailyRecord(record: DailyRecord): Long
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertDailyRecordReplace(record: DailyRecord) // NEW: For Restore
+    suspend fun insertDailyRecordReplace(record: DailyRecord)
 
     @Update
     suspend fun updateDailyRecord(record: DailyRecord)
@@ -74,7 +74,7 @@ interface TrackerDao {
 
     // --- Exercises ---
     @Query("SELECT * FROM exercises")
-    fun getAllExercises(): Flow<List<Exercise>> // NEW: For Backup
+    fun getAllExercises(): Flow<List<Exercise>>
 
     @Query("SELECT * FROM exercises WHERE dateId = :date ORDER BY id ASC")
     fun getExercisesForDate(date: String): Flow<List<Exercise>>
@@ -131,7 +131,7 @@ interface TrackerDao {
     suspend fun insertNoteTag(tag: NoteTag)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertNoteTagReplace(tag: NoteTag) // NEW: For Restore
+    suspend fun insertNoteTagReplace(tag: NoteTag)
 
     @Query("SELECT COUNT(*) FROM note_tags")
     suspend fun getNoteTagCount(): Int
@@ -162,7 +162,11 @@ interface TrackerDao {
     suspend fun insertSkincareProduct(product: SkincareProduct)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertSkincareProductReplace(product: SkincareProduct) // NEW: For Restore
+    suspend fun insertSkincareProductReplace(product: SkincareProduct)
+
+    // NEW: Update function for Product Profiles
+    @Update
+    suspend fun updateSkincareProduct(product: SkincareProduct)
 
     @Query("SELECT COUNT(*) FROM skincare_products")
     suspend fun getSkincareProductCount(): Int
@@ -172,7 +176,7 @@ interface TrackerDao {
 
     // --- Food Pantry ---
     @Query("SELECT * FROM food_items")
-    fun getAllFoodItems(): Flow<List<FoodItem>> // NEW: For Backup
+    fun getAllFoodItems(): Flow<List<FoodItem>>
     @Query("SELECT * FROM food_items WHERE isUserCreated = 1")
     fun getUserCreatedFoodItems(): Flow<List<FoodItem>>
     @Query("SELECT * FROM food_items WHERE name LIKE '%' || :searchQuery || '%' ORDER BY name ASC LIMIT 50")
@@ -186,7 +190,6 @@ interface TrackerDao {
 
     @Query("SELECT * FROM exercises WHERE dateId LIKE :monthPrefix || '%'")
     fun getExercisesForMonth(monthPrefix: String): Flow<List<Exercise>>
-
 
     // --- DANGER ZONE (WIPE ALL DATA) ---
     @Query("DELETE FROM daily_records") suspend fun wipeDailyRecords()

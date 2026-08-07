@@ -168,7 +168,9 @@ class HealthViewModel @Inject constructor(
 
     fun saveSkincareRoutine(routine: SkincareRoutine) = viewModelScope.launch { repository.insertSkincareRoutine(routine) }
     fun deleteSkincareRoutine(routine: SkincareRoutine) = viewModelScope.launch { repository.deleteSkincareRoutine(routine) }
-    fun addSkincareProduct(name: String) = viewModelScope.launch { repository.insertSkincareProduct(SkincareProduct(name)) }
+    fun addSkincareProduct(name: String) = viewModelScope.launch {
+        repository.insertSkincareProduct(SkincareProduct(name = name))
+    }
     fun deleteSkincareProduct(product: SkincareProduct) = viewModelScope.launch { repository.deleteSkincareProduct(product) }
 
     fun toggleSkincareRoutine(routineName: String) = viewModelScope.launch {
@@ -186,6 +188,49 @@ class HealthViewModel @Inject constructor(
         repository.updateCompletedSkincareSteps(Json.encodeToString(currentList))
     }
 
+    // 1. Logs the routine to today's list (so it appears on the screen)
+    fun logSkincareRoutine(routineName: String) = viewModelScope.launch {
+        val record = todayRecord.value ?: return@launch
+        val currentRoutines = try { Json.decodeFromString<List<String>>(record.completedSkincareRoutinesJson) } catch (e: Exception) { emptyList() }.toMutableList()
+        if (!currentRoutines.contains(routineName)) {
+            currentRoutines.add(routineName)
+            repository.updateCompletedSkincareRoutines(Json.encodeToString(currentRoutines))
+        }
+    }
+
+    // 2. Swiping the card removes it from today's list AND clears its checkboxes
+    fun removeLoggedSkincareRoutine(routineName: String, products: List<String>) = viewModelScope.launch {
+        val record = todayRecord.value ?: return@launch
+        val currentRoutines = try { Json.decodeFromString<List<String>>(record.completedSkincareRoutinesJson) } catch (e: Exception) { emptyList() }.toMutableList()
+        val currentSteps = try { Json.decodeFromString<List<String>>(record.completedSkincareStepsJson) } catch (e: Exception) { emptyList() }.toMutableList()
+
+        currentRoutines.remove(routineName)
+        products.forEach { p ->
+            val stepId = "${routineName}_$p"
+            currentSteps.remove(stepId)
+        }
+
+        repository.updateCompletedSkincareRoutines(Json.encodeToString(currentRoutines))
+        repository.updateCompletedSkincareSteps(Json.encodeToString(currentSteps))
+    }
+
+    // 3. The Master Checkbox toggles all items without making the card disappear
+    fun toggleAllSkincareSteps(routineName: String, products: List<String>, isCompleted: Boolean) = viewModelScope.launch {
+        val record = todayRecord.value ?: return@launch
+        val currentSteps = try { Json.decodeFromString<List<String>>(record.completedSkincareStepsJson) } catch (e: Exception) { emptyList() }.toMutableList()
+
+        products.forEach { p ->
+            val stepId = "${routineName}_$p"
+            if (isCompleted) {
+                if (!currentSteps.contains(stepId)) currentSteps.add(stepId)
+            } else {
+                currentSteps.remove(stepId)
+            }
+        }
+        repository.updateCompletedSkincareSteps(Json.encodeToString(currentSteps))
+    }
+
+    fun updateSkincareProduct(product: SkincareProduct) = viewModelScope.launch { repository.updateSkincareProduct(product) }
     private fun getMealEmojiForTime(timestamp: Long): String {
         val hour = java.util.Calendar.getInstance().apply { timeInMillis = timestamp }.get(java.util.Calendar.HOUR_OF_DAY)
         return when (hour) {

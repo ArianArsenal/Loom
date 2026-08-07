@@ -218,6 +218,8 @@ class TrackerRepository @Inject constructor(private val dao: TrackerDao) {
     fun getAllSkincareProducts(): Flow<List<SkincareProduct>> = dao.getAllSkincareProducts()
     suspend fun insertSkincareProduct(product: SkincareProduct) = dao.insertSkincareProduct(product)
 
+    suspend fun updateSkincareProduct(product: SkincareProduct) = dao.updateSkincareProduct(product)
+
     suspend fun prepopulateSkincareProductsIfEmpty() {
         if (dao.getSkincareProductCount() == 0) {
             val defaults = listOf(
