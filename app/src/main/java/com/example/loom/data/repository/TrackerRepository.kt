@@ -55,9 +55,28 @@ class TrackerRepository @Inject constructor(private val dao: TrackerDao) {
         val record = dao.getDailyRecordSync(targetDateId)
         if (record != null) {
             val currentLogs = try { kotlinx.serialization.json.Json.decodeFromString<List<com.example.loom.data.local.entity.WaterLog>>(record.waterLogsJson) } catch (e: Exception) { emptyList() }
+
+            // Find matching container name/icon based on volume, or fallback nicely
+            val containerName = when (amountMl) {
+                250 -> "Glass"
+                600 -> "Shaker"
+                1500 -> "Bottle"
+                else -> "${amountMl}ml Drink"
+            }
+            val iconKey = when (amountMl) {
+                250 -> "LocalDrink"
+                600 -> "LocalCafe"
+                1500 -> "WaterDrop"
+                else -> "LocalDrink"
+            }
+
             val newLog = com.example.loom.data.local.entity.WaterLog(
                 id = java.util.UUID.randomUUID().toString(),
-                containerName = "Quick Add", emoji = "💧", amountMl = amountMl, hydrationFactor = 1.0f, timestamp = System.currentTimeMillis()
+                containerName = containerName,
+                emoji = iconKey,
+                amountMl = amountMl,
+                hydrationFactor = 1.0f,
+                timestamp = System.currentTimeMillis()
             )
             val updatedJson = kotlinx.serialization.json.Json.encodeToString(currentLogs + newLog)
 

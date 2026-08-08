@@ -211,14 +211,14 @@ fun HealthHydration(viewModel: HealthViewModel) {
                 TextButton(onClick = { showContainerDialog = true }) { Text("Edit Setup") }
             }
 
-            // THE FIX: Exact UI match to your screenshot (No icons, large ML, small label)
+            // Selection Row (Logs removed from clickable)
             Row(modifier = Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 customContainers.forEach { container ->
                     val isDefault = defaultIncrement == container.volumeMl
                     Surface(
                         modifier = Modifier.weight(1f).clickable {
+                            // ONLY updates selection, does not log it!
                             viewModel.saveDefaultWaterIncrement(container.volumeMl)
-                            viewModel.logDetailedWater(container)
                         },
                         shape = RoundedCornerShape(12.dp),
                         color = if (isDefault) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
@@ -230,6 +230,25 @@ fun HealthHydration(viewModel: HealthViewModel) {
                         }
                     }
                 }
+            }
+
+            // NEW: Dedicated Log Button
+            Spacer(modifier = Modifier.height(12.dp))
+            Button(
+                onClick = {
+                    // Finds the selected container to log, safely defaulting if not found
+                    val selectedContainer = customContainers.find { it.volumeMl == defaultIncrement } ?: customContainers.firstOrNull()
+                    if (selectedContainer != null) {
+                        viewModel.logDetailedWater(selectedContainer)
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                contentPadding = PaddingValues(vertical = 12.dp)
+            ) {
+                Icon(Icons.Default.Add, contentDescription = "Log Water")
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Log ${defaultIncrement}ml", fontWeight = FontWeight.Bold)
             }
 
             // Timeline History
