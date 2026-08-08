@@ -248,30 +248,59 @@ fun HealthBio(viewModel: HealthViewModel) {
 
                         // Daily Weight Logger
                         Spacer(modifier = Modifier.height(12.dp))
-                        val isWeightLoggedToday = (todayRecord?.weightLogKg ?: 0f) > 0f
+                        val loggedWeight = todayRecord?.weightLogKg ?: 0f
+                        val isWeightLoggedToday = loggedWeight > 0f
 
                         if (isWeightLoggedToday) {
+                            // Calculate the difference between today's weight and the base Bio weight
+                            val weightDiff = loggedWeight - weight
+                            val diffText = when {
+                                weightDiff < 0f -> "⬇ ${String.format(Locale.US, "%.1f", -weightDiff)} kg"
+                                weightDiff > 0f -> "⬆ ${String.format(Locale.US, "%.1f", weightDiff)} kg"
+                                else -> "⚖️ No change"
+                            }
+
+                            // Smart color-coding based on your active goal!
+                            val diffColor = when {
+                                weightDiff < 0f -> if (goal == "Lose Weight") Color(0xFF4CAF50) else MaterialTheme.colorScheme.error
+                                weightDiff > 0f -> if (goal == "Build Muscle") Color(0xFF4CAF50) else MaterialTheme.colorScheme.error
+                                else -> MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                            }
+
                             Surface(
                                 modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(50),
+                                shape = RoundedCornerShape(16.dp),
                                 color = MaterialTheme.colorScheme.primaryContainer,
-                                onClick = { /* Optional: Open a dialog to edit it here in the future */ }
                             ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(Icons.Outlined.Scale, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimaryContainer)
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Text("Today's Weight: ${todayRecord?.weightLogKg} kg", color = MaterialTheme.colorScheme.onPrimaryContainer, fontWeight = FontWeight.Bold)
-                                    }
-                                    IconButton(
-                                        onClick = { viewModel.deleteDailyWeight() },
-                                        modifier = Modifier.size(24.dp)
+                                Column(modifier = Modifier.padding(16.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Icon(Icons.Default.Close, contentDescription = "Delete Weight", tint = MaterialTheme.colorScheme.onPrimaryContainer)
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(Icons.Outlined.Scale, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimaryContainer)
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text("Today: ${loggedWeight.formatWeight()} kg", color = MaterialTheme.colorScheme.onPrimaryContainer, fontWeight = FontWeight.Bold)
+                                        }
+                                        IconButton(
+                                            onClick = { viewModel.deleteDailyWeight() },
+                                            modifier = Modifier.size(24.dp)
+                                        ) {
+                                            Icon(Icons.Default.Close, contentDescription = "Delete Weight", tint = MaterialTheme.colorScheme.onPrimaryContainer)
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(8.dp))
+
+                                    // The Stats Row
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background.copy(alpha = 0.4f), RoundedCornerShape(8.dp)).padding(horizontal = 12.dp, vertical = 8.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text("Change from base weight:", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                                        Text(diffText, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = diffColor)
                                     }
                                 }
                             }

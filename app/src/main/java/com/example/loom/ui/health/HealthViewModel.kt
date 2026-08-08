@@ -66,10 +66,11 @@ class HealthViewModel @Inject constructor(
     val phaseWeeks: StateFlow<Int> = userPreferences.phaseWeeksFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 12)
     val calorieCycling: StateFlow<Boolean> = userPreferences.calorieCyclingFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
+    // FIX: Use .copy() here as well
     fun deleteDailyWeight() = viewModelScope.launch {
         val record = todayRecord.value ?: return@launch
-        record.weightLogKg = 0f
-        repository.updateDailyRecord(record)
+        val updatedRecord = record.copy(weightLogKg = 0f)
+        repository.updateDailyRecord(updatedRecord)
     }
 
     val customWaterContainers: StateFlow<List<com.example.loom.data.local.entity.WaterContainer>> = userPreferences.customWaterContainersFlow
@@ -141,10 +142,11 @@ class HealthViewModel @Inject constructor(
         userPreferences.saveBioMetrics(weight, height, age, gender, activity, goal, bodyFat, dietType, phaseWeeks, isCycling)
     }
 
+    // FIX: Use .copy() so StateFlow triggers a UI recomposition instantly!
     fun logDailyWeight(weightKg: Float) = viewModelScope.launch {
         val record = todayRecord.value ?: return@launch
-        record.weightLogKg = weightKg
-        repository.updateDailyRecord(record) // Make sure updateDailyRecord exists in your repository!
+        val updatedRecord = record.copy(weightLogKg = weightKg)
+        repository.updateDailyRecord(updatedRecord)
     }
 
     fun saveDefaultWaterIncrement(ml: Int) = viewModelScope.launch {
