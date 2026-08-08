@@ -22,7 +22,8 @@ data class DailyRecord(
     // NEW FIELDS
     var sleepHours: Float = 0f,
     var sleepRating: Int = 0, // 1 to 5 stars
-    var measurementsJson: String = "{}" // Stores a Map<String, Float> of body parts
+    var measurementsJson: String = "{}", // Stores a Map<String, Float> of body parts
+    var completedSupplementsJson: String = "[]"
 )
 
 @Serializable

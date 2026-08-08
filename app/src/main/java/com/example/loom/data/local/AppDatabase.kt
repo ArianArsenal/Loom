@@ -31,7 +31,7 @@ import com.example.loom.data.local.entity.NotionSpaceEntity
         FoodItem::class,
         NotionSpaceEntity::class
     ],
-    version = 29, // <-- BUMPED TO 29
+    version = 30, // <-- BUMPED TO 30
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -188,7 +188,11 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
-        // Don't forget to add MIGRATION_27_28 to your .addMigrations() list in getDatabase!
+        private val MIGRATION_29_30 = object : Migration(29, 30) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `daily_records` ADD COLUMN `completedSupplementsJson` TEXT NOT NULL DEFAULT '[]'")
+            }
+        }
 
         private fun executeMigration(db: SupportSQLiteDatabase) {
             db.execSQL("""
@@ -236,7 +240,8 @@ abstract class AppDatabase : RoomDatabase() {
                         MIGRATION_25_26,
                         MIGRATION_26_27, // <-- Added new migration here
                         MIGRATION_27_28,
-                        MIGRATION_28_29
+                        MIGRATION_28_29,
+                        MIGRATION_29_30
 
                     )
                     .fallbackToDestructiveMigration()

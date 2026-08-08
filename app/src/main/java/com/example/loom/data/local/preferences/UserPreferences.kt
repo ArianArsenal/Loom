@@ -46,6 +46,9 @@ class UserPreferences @Inject constructor(private val context: Context) {
         val IS_FASTING = booleanPreferencesKey("is_fasting")
 
         val HIDDEN_HEALTH_CARDS = stringPreferencesKey("hidden_health_cards")
+
+        val SUPPLEMENTS_ROSTER = stringPreferencesKey("supplements_roster")
+        val SUPPLEMENT_CATEGORIES = stringPreferencesKey("supplement_categories")
     }
 
     val hiddenHealthCardsFlow: Flow<Set<String>> = context.dataStore.data.map { preferences ->
@@ -89,8 +92,18 @@ class UserPreferences @Inject constructor(private val context: Context) {
         it[CUSTOM_WATER_CONTAINERS] ?: """[{"id":"1","name":"Glass","iconEmoji":"LocalDrink","volumeMl":250,"hydrationFactor":1.0},{"id":"2","name":"Shaker","iconEmoji":"LocalCafe","volumeMl":600,"hydrationFactor":1.0},{"id":"3","name":"Bottle","iconEmoji":"WaterDrop","volumeMl":1500,"hydrationFactor":1.0}]"""
     }
 
+    // Default to the upgraded JSON structure
+    private val defaultSupplements = """[{"id":"1","name":"Vitamin D3","dosage":"2000 IU","category":"Supplement","timeOfUse":"Morning","recurrenceType":"DAILY","recurrenceValue":"","instruction":"With Food"},{"id":"2","name":"Vitamin C","dosage":"500mg","category":"Supplement","timeOfUse":"Anytime","recurrenceType":"DAILY","recurrenceValue":"","instruction":"None"},{"id":"3","name":"Magnesium","dosage":"200mg","category":"Supplement","timeOfUse":"Before Bed","recurrenceType":"DAILY","recurrenceValue":"","instruction":"None"},{"id":"4","name":"Zinc","dosage":"15mg","category":"Supplement","timeOfUse":"Evening","recurrenceType":"DAILY","recurrenceValue":"","instruction":"With Food"},{"id":"5","name":"Omega-3 Fish Oil","dosage":"1000mg","category":"Supplement","timeOfUse":"Morning","recurrenceType":"DAILY","recurrenceValue":"","instruction":"With Food"},{"id":"6","name":"Creatine","dosage":"5g","category":"Supplement","timeOfUse":"Anytime","recurrenceType":"DAILY","recurrenceValue":"","instruction":"With Water"},{"id":"7","name":"Whey Protein","dosage":"30g","category":"Supplement","timeOfUse":"Anytime","recurrenceType":"DAILY","recurrenceValue":"","instruction":"With Water"},{"id":"8","name":"Multivitamin","dosage":"1 pill","category":"Supplement","timeOfUse":"Morning","recurrenceType":"DAILY","recurrenceValue":"","instruction":"With Food"},{"id":"9","name":"B-Complex","dosage":"1 cap","category":"Supplement","timeOfUse":"Morning","recurrenceType":"DAILY","recurrenceValue":"","instruction":"With Food"},{"id":"10","name":"Iron","dosage":"18mg","category":"Supplement","timeOfUse":"Anytime","recurrenceType":"DAILY","recurrenceValue":"","instruction":"With Food"},{"id":"11","name":"Vitamin B12","dosage":"1000mcg","category":"Supplement","timeOfUse":"Morning","recurrenceType":"DAILY","recurrenceValue":"","instruction":"None"},{"id":"12","name":"Ashwagandha","dosage":"500mg","category":"Supplement","timeOfUse":"Evening","recurrenceType":"DAILY","recurrenceValue":"","instruction":"None"},{"id":"13","name":"Probiotics","dosage":"1 cap","category":"Supplement","timeOfUse":"Morning","recurrenceType":"DAILY","recurrenceValue":"","instruction":"Empty Stomach"}]"""
+    val supplementsRosterFlow: Flow<String> = context.dataStore.data.map { it[SUPPLEMENTS_ROSTER] ?: defaultSupplements }
+    // NEW: Categories Flow
+    private val defaultCategories = """["Supplement", "Medication", "Pre-workout"]"""
+    val supplementCategoriesFlow: Flow<String> = context.dataStore.data.map { it[SUPPLEMENT_CATEGORIES] ?: defaultCategories }
     val biometricEnabledFlow: Flow<Boolean> = context.dataStore.data.map { it[BIOMETRIC_ENABLED] ?: true }
 
+    suspend fun saveSupplementsRoster(json: String) {
+        context.dataStore.edit { it[SUPPLEMENTS_ROSTER] = json }
+    }
+    suspend fun saveSupplementCategories(json: String) { context.dataStore.edit { it[SUPPLEMENT_CATEGORIES] = json } }
     suspend fun toggleHealthCardVisibility(cardName: String, isVisible: Boolean) {
         context.dataStore.edit { preferences ->
             val currentJson = preferences[HIDDEN_HEALTH_CARDS] ?: "[]"

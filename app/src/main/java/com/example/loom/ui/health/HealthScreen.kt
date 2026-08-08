@@ -27,6 +27,7 @@ fun HealthScreen(viewModel: HealthViewModel) {
     val availableCards: List<Pair<String, @Composable () -> Unit>> = listOf(
         "Workout Tracker" to { HealthWorkout(viewModel) },
         "Nutrition Engine" to { HealthNutrition(viewModel) },
+        "Supplements & Vitamins" to { SupplementsCard(viewModel) }, // NEW ITEM HERE
         "Skincare Routine" to { HealthSkincare(viewModel) },
         "Hydration Engine" to { HealthHydration(viewModel) },
         "Sleep & Recovery" to { SleepRecoveryCard(viewModel) },
