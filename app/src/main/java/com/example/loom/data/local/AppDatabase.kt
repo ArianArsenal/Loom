@@ -31,7 +31,7 @@ import com.example.loom.data.local.entity.NotionSpaceEntity
         FoodItem::class,
         NotionSpaceEntity::class
     ],
-    version = 27, // <-- BUMPED TO 27 FOR HYDRATION LOGS
+    version = 28, // <-- BUMPED TO 28 FOR BIO ENGINE
     exportSchema = false
 )
 @TypeConverters(Converters::class)

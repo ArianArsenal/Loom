@@ -1,5 +1,13 @@
 package com.example.loom.ui.health
 
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -28,6 +36,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
@@ -53,6 +63,55 @@ val containerIcons = mapOf(
 
 fun getContainerIcon(key: String): ImageVector {
     return containerIcons[key] ?: Icons.Outlined.LocalDrink
+}
+
+// NEW: Custom Animated Flowing Water Progress Bar
+@Composable
+fun AnimatedWaterProgressBar(
+    progress: Float,
+    modifier: Modifier = Modifier
+) {
+    // 1. Smoothly animate the physical width of the progress bar when logging
+    val animatedProgress by animateFloatAsState(
+        targetValue = progress.coerceIn(0f, 1f),
+        animationSpec = tween(durationMillis = 1200, easing = FastOutSlowInEasing),
+        label = "WaterProgressHorizontal"
+    )
+
+    // 2. Create a continuous horizontal flowing gradient effect
+    val infiniteTransition = rememberInfiniteTransition(label = "flow")
+    val offsetX by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 500f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(2000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "flowingOffset"
+    )
+
+    val trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
+    val waterColor = MaterialTheme.colorScheme.primary
+    val waterHighlight = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)
+
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(50))
+            .background(trackColor)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxHeight()
+                .fillMaxWidth(animatedProgress)
+                .background(
+                    brush = Brush.linearGradient(
+                        colors = listOf(waterColor, waterHighlight, waterColor),
+                        start = Offset(offsetX, 0f),
+                        end = Offset(offsetX + 500f, 0f)
+                    )
+                )
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -189,7 +248,7 @@ fun HealthHydration(viewModel: HealthViewModel) {
         Column(modifier = Modifier.padding(20.dp)) {
             // Header & Goal Progress
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text("Hydration Engine", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Hydration", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 IconButton(onClick = { showGoalDialog = true }, modifier = Modifier.size(24.dp)) { Icon(Icons.Default.Edit, "Edit Goal", tint = MaterialTheme.colorScheme.primary) }
             }
             Spacer(modifier = Modifier.height(12.dp))
@@ -201,7 +260,9 @@ fun HealthHydration(viewModel: HealthViewModel) {
                 Text("Goal: $dailyGoal ml", style = MaterialTheme.typography.bodySmall)
             }
             Spacer(modifier = Modifier.height(8.dp))
-            GaplessProgressBar(progress = progress, color = MaterialTheme.colorScheme.primary, modifier = Modifier.fillMaxWidth().height(12.dp))
+
+            // Replaced GaplessProgressBar with our new Animated Water Progress Bar
+            AnimatedWaterProgressBar(progress = progress, modifier = Modifier.fillMaxWidth().height(14.dp))
 
             Spacer(modifier = Modifier.height(24.dp))
 
@@ -211,13 +272,12 @@ fun HealthHydration(viewModel: HealthViewModel) {
                 TextButton(onClick = { showContainerDialog = true }) { Text("Edit Setup") }
             }
 
-            // Selection Row (Logs removed from clickable)
+            // Selection Row
             Row(modifier = Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 customContainers.forEach { container ->
                     val isDefault = defaultIncrement == container.volumeMl
                     Surface(
                         modifier = Modifier.weight(1f).clickable {
-                            // ONLY updates selection, does not log it!
                             viewModel.saveDefaultWaterIncrement(container.volumeMl)
                         },
                         shape = RoundedCornerShape(12.dp),
@@ -232,11 +292,10 @@ fun HealthHydration(viewModel: HealthViewModel) {
                 }
             }
 
-            // NEW: Dedicated Log Button
+            // Dedicated Log Button
             Spacer(modifier = Modifier.height(12.dp))
             Button(
                 onClick = {
-                    // Finds the selected container to log, safely defaulting if not found
                     val selectedContainer = customContainers.find { it.volumeMl == defaultIncrement } ?: customContainers.firstOrNull()
                     if (selectedContainer != null) {
                         viewModel.logDetailedWater(selectedContainer)
@@ -260,7 +319,6 @@ fun HealthHydration(viewModel: HealthViewModel) {
                     logs.sortedByDescending { it.timestamp }.forEach { log ->
                         Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                // Renders the proper Material Icon using the saved string key
                                 Icon(getContainerIcon(log.emoji), contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
                                 Spacer(modifier = Modifier.width(12.dp))
                                 Column {

@@ -16,7 +16,8 @@ data class DailyRecord(
     var completedSkincareStepsJson: String = "[]",
     var consumedFoodsJson: String = "[]",
     var waterLogsJson: String = "[]", // NEW: Stores detailed hydration timeline
-    var diaryEntry: String = ""
+    var diaryEntry: String = "",
+    var weightLogKg: Float = 0f
 )
 
 @Serializable
