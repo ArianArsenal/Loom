@@ -15,9 +15,14 @@ data class DailyRecord(
     var completedSkincareRoutinesJson: String = "[]",
     var completedSkincareStepsJson: String = "[]",
     var consumedFoodsJson: String = "[]",
-    var waterLogsJson: String = "[]", // NEW: Stores detailed hydration timeline
+    var waterLogsJson: String = "[]",
     var diaryEntry: String = "",
-    var weightLogKg: Float = 0f
+    var weightLogKg: Float = 0f,
+
+    // NEW FIELDS
+    var sleepHours: Float = 0f,
+    var sleepRating: Int = 0, // 1 to 5 stars
+    var measurementsJson: String = "{}" // Stores a Map<String, Float> of body parts
 )
 
 @Serializable

@@ -1,10 +1,13 @@
 package com.example.loom.ui.health
 
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -247,12 +250,99 @@ fun HealthBio(viewModel: HealthViewModel) {
                         }
 
                         // Daily Weight Logger
+                        var showWeightLogDialog by remember { mutableStateOf(false) }
+
+                        if (showWeightLogDialog) {
+                            // Start the dialog at today's logged weight, OR the base weight if nothing is logged yet
+                            var sliderWeight by remember { mutableFloatStateOf(if ((todayRecord?.weightLogKg ?: 0f) > 0f) todayRecord!!.weightLogKg else weight) }
+
+                            // Sets the initial scroll position so the active weight is visible immediately
+                            val listState = rememberLazyListState(initialFirstVisibleItemIndex = (sliderWeight.toInt() - 20).coerceAtLeast(0))
+
+                            AlertDialog(
+                                onDismissRequest = { showWeightLogDialog = false },
+                                title = { Text("Log Today's Weight", fontWeight = FontWeight.Bold) },
+                                text = {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                                        Text(
+                                            text = "${String.format(Locale.US, "%.1f", sliderWeight)} kg",
+                                            style = MaterialTheme.typography.displayMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+
+                                        // Horizontal Scrollable Number Selection (Whole KGs)
+                                        LazyRow(
+                                            state = listState,
+                                            modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
+                                            horizontalArrangement = Arrangement.spacedBy(16.dp),
+                                            contentPadding = PaddingValues(horizontal = 60.dp) // Gives room to scroll smoothly to the edges
+                                        ) {
+                                            val minWeight = 20
+                                            val maxWeight = 250
+                                            items(maxWeight - minWeight + 1) { index ->
+                                                val itemWeight = minWeight + index
+                                                val isSelected = itemWeight == sliderWeight.toInt()
+
+                                                Column(
+                                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                                    modifier = Modifier
+                                                        .clip(RoundedCornerShape(12.dp))
+                                                        .clickable {
+                                                            // Keep the exact decimal when a new whole number is tapped
+                                                            val decimal = sliderWeight - sliderWeight.toInt()
+                                                            sliderWeight = itemWeight.toFloat() + decimal
+                                                        }
+                                                        .padding(8.dp)
+                                                ) {
+                                                    Text(
+                                                        text = itemWeight.toString(),
+                                                        style = if (isSelected) MaterialTheme.typography.headlineMedium else MaterialTheme.typography.titleMedium,
+                                                        color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                                    )
+                                                    Spacer(modifier = Modifier.height(4.dp))
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .size(6.dp)
+                                                            .clip(CircleShape)
+                                                            .background(if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent)
+                                                    )
+                                                }
+                                            }
+                                        }
+
+                                        // Precision Controls
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceEvenly,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            OutlinedButton(onClick = { sliderWeight = (sliderWeight - 1f).coerceAtLeast(20f) }, contentPadding = PaddingValues(0.dp), modifier = Modifier.size(48.dp)) { Text("-1") }
+                                            OutlinedButton(onClick = { sliderWeight = (sliderWeight - 0.1f).coerceAtLeast(20f) }, contentPadding = PaddingValues(0.dp), modifier = Modifier.size(48.dp)) { Text("-.1") }
+                                            OutlinedButton(onClick = { sliderWeight += 0.1f }, contentPadding = PaddingValues(0.dp), modifier = Modifier.size(48.dp)) { Text("+.1") }
+                                            OutlinedButton(onClick = { sliderWeight += 1f }, contentPadding = PaddingValues(0.dp), modifier = Modifier.size(48.dp)) { Text("+1") }
+                                        }
+                                    }
+                                },
+                                confirmButton = {
+                                    Button(onClick = {
+                                        val finalWeight = String.format(Locale.US, "%.1f", sliderWeight).toFloat()
+                                        viewModel.logDailyWeight(finalWeight)
+                                        showWeightLogDialog = false
+                                    }) { Text("Save Log") }
+                                },
+                                dismissButton = {
+                                    TextButton(onClick = { showWeightLogDialog = false }) { Text("Cancel") }
+                                }
+                            )
+                        }
+
                         Spacer(modifier = Modifier.height(12.dp))
                         val loggedWeight = todayRecord?.weightLogKg ?: 0f
                         val isWeightLoggedToday = loggedWeight > 0f
 
                         if (isWeightLoggedToday) {
-                            // Calculate the difference between today's weight and the base Bio weight
                             val weightDiff = loggedWeight - weight
                             val diffText = when {
                                 weightDiff < 0f -> "⬇ ${String.format(Locale.US, "%.1f", -weightDiff)} kg"
@@ -260,7 +350,6 @@ fun HealthBio(viewModel: HealthViewModel) {
                                 else -> "⚖️ No change"
                             }
 
-                            // Smart color-coding based on your active goal!
                             val diffColor = when {
                                 weightDiff < 0f -> if (goal == "Lose Weight") Color(0xFF4CAF50) else MaterialTheme.colorScheme.error
                                 weightDiff > 0f -> if (goal == "Build Muscle") Color(0xFF4CAF50) else MaterialTheme.colorScheme.error
@@ -271,6 +360,7 @@ fun HealthBio(viewModel: HealthViewModel) {
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = RoundedCornerShape(16.dp),
                                 color = MaterialTheme.colorScheme.primaryContainer,
+                                onClick = { showWeightLogDialog = true } // <-- Lets you edit today's weight by tapping the card!
                             ) {
                                 Column(modifier = Modifier.padding(16.dp)) {
                                     Row(
@@ -293,7 +383,6 @@ fun HealthBio(viewModel: HealthViewModel) {
 
                                     Spacer(modifier = Modifier.height(8.dp))
 
-                                    // The Stats Row
                                     Row(
                                         modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background.copy(alpha = 0.4f), RoundedCornerShape(8.dp)).padding(horizontal = 12.dp, vertical = 8.dp),
                                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -306,12 +395,12 @@ fun HealthBio(viewModel: HealthViewModel) {
                             }
                         } else {
                             OutlinedButton(
-                                onClick = { viewModel.logDailyWeight(weight) },
+                                onClick = { showWeightLogDialog = true }, // <-- Now opens the precision dialog instead of auto-logging!
                                 modifier = Modifier.fillMaxWidth(),
                             ) {
                                 Icon(Icons.Outlined.Scale, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                                 Spacer(modifier = Modifier.width(8.dp))
-                                Text("Log Weight Today ($weight kg)", color = MaterialTheme.colorScheme.primary)
+                                Text("Log Weight Today", color = MaterialTheme.colorScheme.primary)
                             }
                         }
                     }

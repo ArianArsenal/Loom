@@ -25,7 +25,11 @@ fun HealthScreen(viewModel: HealthViewModel) {
             item { HealthNutrition(viewModel) }
             item { HealthSkincare(viewModel) }
             item { HealthHydration(viewModel) }
+            item { SleepRecoveryCard(viewModel) }
             item { HealthBio(viewModel) }
+            item { BodyMeasurementsCard(viewModel) }
+            item { FastingTimerCard(viewModel) }
+
         }
     }
 }

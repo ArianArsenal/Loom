@@ -38,7 +38,17 @@ class UserPreferences @Inject constructor(private val context: Context) {
 
         val BIOMETRIC_ENABLED = booleanPreferencesKey("biometric_enabled")
         val APP_THEME = stringPreferencesKey("app_theme")
+
+        // Add to your companion object keys:
+        val FASTING_START_TIME = longPreferencesKey("fasting_start_time")
+        val FASTING_GOAL_HOURS = intPreferencesKey("fasting_goal_hours")
+        val IS_FASTING = booleanPreferencesKey("is_fasting")
     }
+
+    // Add these state flows:
+    val fastingStartTimeFlow: Flow<Long> = context.dataStore.data.map { it[FASTING_START_TIME] ?: 0L }
+    val fastingGoalHoursFlow: Flow<Int> = context.dataStore.data.map { it[FASTING_GOAL_HOURS] ?: 16 }
+    val isFastingFlow: Flow<Boolean> = context.dataStore.data.map { it[IS_FASTING] ?: false }
 
     val appThemeFlow: Flow<String> = context.dataStore.data.map { it[APP_THEME] ?: "System" }
     val weightFlow: Flow<Float> = context.dataStore.data.map { it[WEIGHT] ?: 70f }
@@ -145,6 +155,15 @@ class UserPreferences @Inject constructor(private val context: Context) {
 
             val isAutoWater = preferences[AUTO_WATER_GOAL] ?: true
             if (isAutoWater) preferences[WATER_DAILY_GOAL] = (weight * 35).toInt()
+        }
+    }
+
+    // Add this control function:
+    suspend fun setFastingState(isFasting: Boolean, startTime: Long, goalHours: Int) {
+        context.dataStore.edit { prefs ->
+            prefs[IS_FASTING] = isFasting
+            prefs[FASTING_START_TIME] = startTime
+            prefs[FASTING_GOAL_HOURS] = goalHours
         }
     }
 

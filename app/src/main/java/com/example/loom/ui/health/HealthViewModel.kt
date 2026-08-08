@@ -35,6 +35,11 @@ class HealthViewModel @Inject constructor(
     private val userPreferences: UserPreferences
 ) : ViewModel() {
 
+    // Fasting StateFlows
+    val isFasting: StateFlow<Boolean> = userPreferences.isFastingFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+    val fastingStartTime: StateFlow<Long> = userPreferences.fastingStartTimeFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0L)
+    val fastingGoalHours: StateFlow<Int> = userPreferences.fastingGoalHoursFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 16)
+
     val todayRecord: StateFlow<DailyRecord?> = repository.getTodayRecord().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
     val todayExercises: StateFlow<List<Exercise>> = repository.getExercisesForDate(DateUtils.getTodayDateId()).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val allPresets: StateFlow<List<WorkoutPreset>> = repository.getAllPresets().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -292,5 +297,26 @@ class HealthViewModel @Inject constructor(
             in 20..23 -> "🍲"
             else -> "🌙"
         }
+    }
+
+    fun toggleFasting(start: Boolean, goalHours: Int) = viewModelScope.launch {
+        if (start) {
+            userPreferences.setFastingState(true, System.currentTimeMillis(), goalHours)
+        } else {
+            userPreferences.setFastingState(false, 0L, goalHours)
+        }
+    }
+
+    fun logSleep(hours: Float, rating: Int) = viewModelScope.launch {
+        val record = todayRecord.value ?: return@launch
+        val updatedRecord = record.copy(sleepHours = hours, sleepRating = rating)
+        repository.updateDailyRecord(updatedRecord)
+    }
+
+    fun logMeasurements(measurements: Map<String, Float>) = viewModelScope.launch {
+        val record = todayRecord.value ?: return@launch
+        val json = kotlinx.serialization.json.Json.encodeToString(measurements)
+        val updatedRecord = record.copy(measurementsJson = json)
+        repository.updateDailyRecord(updatedRecord)
     }
 }
