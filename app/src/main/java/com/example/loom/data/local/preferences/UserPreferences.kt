@@ -5,6 +5,7 @@ import androidx.datastore.preferences.core.*
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.serialization.encodeToString
 import javax.inject.Inject
 
 private val Context.dataStore by preferencesDataStore(name = "user_settings")
@@ -43,6 +44,17 @@ class UserPreferences @Inject constructor(private val context: Context) {
         val FASTING_START_TIME = longPreferencesKey("fasting_start_time")
         val FASTING_GOAL_HOURS = intPreferencesKey("fasting_goal_hours")
         val IS_FASTING = booleanPreferencesKey("is_fasting")
+
+        val HIDDEN_HEALTH_CARDS = stringPreferencesKey("hidden_health_cards")
+    }
+
+    val hiddenHealthCardsFlow: Flow<Set<String>> = context.dataStore.data.map { preferences ->
+        try {
+            val json = preferences[HIDDEN_HEALTH_CARDS] ?: "[]"
+            kotlinx.serialization.json.Json.decodeFromString<Set<String>>(json)
+        } catch (e: Exception) {
+            emptySet()
+        }
     }
 
     // Add these state flows:
@@ -78,6 +90,25 @@ class UserPreferences @Inject constructor(private val context: Context) {
     }
 
     val biometricEnabledFlow: Flow<Boolean> = context.dataStore.data.map { it[BIOMETRIC_ENABLED] ?: true }
+
+    suspend fun toggleHealthCardVisibility(cardName: String, isVisible: Boolean) {
+        context.dataStore.edit { preferences ->
+            val currentJson = preferences[HIDDEN_HEALTH_CARDS] ?: "[]"
+            val currentSet = try {
+                kotlinx.serialization.json.Json.decodeFromString<Set<String>>(currentJson).toMutableSet()
+            } catch (e: Exception) {
+                mutableSetOf()
+            }
+
+            if (isVisible) {
+                currentSet.remove(cardName) // Remove from hidden list to show it
+            } else {
+                currentSet.add(cardName) // Add to hidden list
+            }
+
+            preferences[HIDDEN_HEALTH_CARDS] = kotlinx.serialization.json.Json.encodeToString(currentSet)
+        }
+    }
 
     suspend fun saveAppTheme(theme: String) { context.dataStore.edit { it[APP_THEME] = theme } }
 

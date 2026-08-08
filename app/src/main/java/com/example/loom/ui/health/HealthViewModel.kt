@@ -35,6 +35,9 @@ class HealthViewModel @Inject constructor(
     private val userPreferences: UserPreferences
 ) : ViewModel() {
 
+    val hiddenHealthCards: StateFlow<Set<String>> = userPreferences.hiddenHealthCardsFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptySet())
+
     // Fasting StateFlows
     val isFasting: StateFlow<Boolean> = userPreferences.isFastingFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
     val fastingStartTime: StateFlow<Long> = userPreferences.fastingStartTimeFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0L)
@@ -70,6 +73,10 @@ class HealthViewModel @Inject constructor(
     val phaseStartTime: StateFlow<Long> = userPreferences.phaseStartTimeFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), System.currentTimeMillis())
     val phaseWeeks: StateFlow<Int> = userPreferences.phaseWeeksFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 12)
     val calorieCycling: StateFlow<Boolean> = userPreferences.calorieCyclingFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    fun toggleCardVisibility(cardName: String, isVisible: Boolean) = viewModelScope.launch {
+        userPreferences.toggleHealthCardVisibility(cardName, isVisible)
+    }
 
     // FIX: Use .copy() here as well
     fun deleteDailyWeight() = viewModelScope.launch {
