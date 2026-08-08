@@ -170,6 +170,17 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        // BUMP version = 28 at the top of the file!
+
+        // NEW MIGRATION: Injects weight logging
+        private val MIGRATION_27_28 = object : Migration(27, 28) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `daily_records` ADD COLUMN `weightLogKg` REAL NOT NULL DEFAULT 0.0")
+            }
+        }
+
+        // Don't forget to add MIGRATION_27_28 to your .addMigrations() list in getDatabase!
+
         private fun executeMigration(db: SupportSQLiteDatabase) {
             db.execSQL("""
                 CREATE TABLE IF NOT EXISTS `exercises_new` (
@@ -214,7 +225,9 @@ abstract class AppDatabase : RoomDatabase() {
                         MIGRATION_23_24,
                         MIGRATION_24_25,
                         MIGRATION_25_26,
-                        MIGRATION_26_27 // <-- Added new migration here
+                        MIGRATION_26_27, // <-- Added new migration here
+                        MIGRATION_27_28
+
                     )
                     .fallbackToDestructiveMigration()
                     .build().also { INSTANCE = it }

@@ -60,6 +60,18 @@ class HealthViewModel @Inject constructor(
     val waterDailyGoal: StateFlow<Int> = userPreferences.waterDailyGoalFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 3000)
     val isAutoWaterGoal: StateFlow<Boolean> = userPreferences.autoWaterGoalFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
 
+    val bodyFat: StateFlow<Float> = userPreferences.bodyFatFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0f)
+    val dietType: StateFlow<String> = userPreferences.dietTypeFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "Balanced")
+    val phaseStartTime: StateFlow<Long> = userPreferences.phaseStartTimeFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), System.currentTimeMillis())
+    val phaseWeeks: StateFlow<Int> = userPreferences.phaseWeeksFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 12)
+    val calorieCycling: StateFlow<Boolean> = userPreferences.calorieCyclingFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    fun deleteDailyWeight() = viewModelScope.launch {
+        val record = todayRecord.value ?: return@launch
+        record.weightLogKg = 0f
+        repository.updateDailyRecord(record)
+    }
+
     val customWaterContainers: StateFlow<List<com.example.loom.data.local.entity.WaterContainer>> = userPreferences.customWaterContainersFlow
         .map { try { Json.decodeFromString<List<com.example.loom.data.local.entity.WaterContainer>>(it) } catch (e: Exception) { emptyList() } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -125,8 +137,14 @@ class HealthViewModel @Inject constructor(
         }
     }
 
-    fun saveBioMetrics(weight: Float, height: Int, age: Int, gender: String, activity: String, goal: String) = viewModelScope.launch {
-        userPreferences.saveBioMetrics(weight, height, age, gender, activity, goal)
+    fun saveBioMetrics(weight: Float, height: Int, age: Int, gender: String, activity: String, goal: String, bodyFat: Float, dietType: String, phaseWeeks: Int, isCycling: Boolean) = viewModelScope.launch {
+        userPreferences.saveBioMetrics(weight, height, age, gender, activity, goal, bodyFat, dietType, phaseWeeks, isCycling)
+    }
+
+    fun logDailyWeight(weightKg: Float) = viewModelScope.launch {
+        val record = todayRecord.value ?: return@launch
+        record.weightLogKg = weightKg
+        repository.updateDailyRecord(record) // Make sure updateDailyRecord exists in your repository!
     }
 
     fun saveDefaultWaterIncrement(ml: Int) = viewModelScope.launch {

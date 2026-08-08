@@ -289,6 +289,8 @@ class TrackerRepository @Inject constructor(private val dao: TrackerDao) {
         }
     }
 
+    suspend fun updateDailyRecord(record: DailyRecord) = dao.updateDailyRecord(record)
+
     suspend fun deleteSkincareProduct(product: SkincareProduct) = dao.deleteSkincareProduct(product)
 
     fun getExercisesForMonth(monthPrefix: String): Flow<List<Exercise>> = dao.getExercisesForMonth(monthPrefix)
