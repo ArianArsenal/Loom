@@ -12,5 +12,6 @@ data class NoteBlock(
     var isChecked: Boolean = false,
     var width: Float = 250f,
     var height: Float = 250f,
-    var isCropped: Boolean = true
+    var isCropped: Boolean = true,
+    var alignment: String = "Center" // NEW: Remembers horizontal placement
 )

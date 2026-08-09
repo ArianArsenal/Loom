@@ -107,6 +107,7 @@ import com.example.loom.ui.sandbox.blocks.CalendarBlockRenderer
 import com.example.loom.ui.sandbox.blocks.ChartBlockRenderer
 import com.example.loom.ui.sandbox.blocks.CountdownBlockRenderer
 import com.example.loom.ui.sandbox.blocks.FileBlockRenderer
+import com.example.loom.ui.sandbox.blocks.GalleryBlockRenderer
 import com.example.loom.ui.sandbox.blocks.ImageBlockRenderer
 import com.example.loom.ui.sandbox.blocks.KanbanBlockRenderer
 import com.example.loom.ui.sandbox.blocks.LinkBlockRenderer
@@ -232,8 +233,7 @@ fun BlockRenderer(
             newFormats = adjustFormats(oldText, newText, currentBlock.textFormats, newTextState.selection.start)
         }
 
-        val needsZWSP = block.type in listOf(BlockType.TEXT, BlockType.HEADING, BlockType.HEADING_2, BlockType.HEADING_3, BlockType.HEADING_4, BlockType.BULLET, BlockType.NUMBER, BlockType.TODO, BlockType.QUOTE, BlockType.CALLOUT, BlockType.TOGGLE, BlockType.IMAGE, BlockType.AUDIO, BlockType.FILE, BlockType.SPACE, BlockType.LINK, BlockType.PROGRESS, BlockType.MATH, BlockType.VIDEO, BlockType.KANBAN, BlockType.SKETCH)
-
+        val needsZWSP = block.type in listOf(BlockType.TEXT, BlockType.HEADING, BlockType.HEADING_2, BlockType.HEADING_3, BlockType.HEADING_4, BlockType.BULLET, BlockType.NUMBER, BlockType.TODO, BlockType.QUOTE, BlockType.CALLOUT, BlockType.TOGGLE, BlockType.IMAGE, BlockType.AUDIO, BlockType.FILE, BlockType.SPACE, BlockType.LINK, BlockType.PROGRESS, BlockType.MATH, BlockType.VIDEO, BlockType.KANBAN, BlockType.SKETCH, BlockType.GALLERY)
         if (!needsZWSP) {
             textState = newTextState.copy(annotatedString = buildAnnotated(newText, newFormats))
             onUpdate(currentBlock.copy(content = newText, textFormats = newFormats))
@@ -257,7 +257,7 @@ fun BlockRenderer(
                     textState = textState.copy(text = ZWSP, selection = TextRange(1))
                     onUpdate(currentBlock.copy(type = BlockType.TEXT, content = ZWSP, textFormats = emptyList()))
                     keyboardController?.show()
-                } else if (block.type in listOf(BlockType.IMAGE, BlockType.AUDIO, BlockType.FILE, BlockType.SPACE, BlockType.LINK, BlockType.PROGRESS, BlockType.MATH, BlockType.VIDEO, BlockType.KANBAN, BlockType.SKETCH) && remainder.isEmpty()) {
+                } else if (block.type in listOf(BlockType.IMAGE, BlockType.AUDIO, BlockType.FILE, BlockType.SPACE, BlockType.LINK, BlockType.PROGRESS, BlockType.MATH, BlockType.VIDEO, BlockType.KANBAN, BlockType.SKETCH, BlockType.GALLERY) && remainder.isEmpty()) {
                     onDeleteBlock("", true)
                     keyboardController?.show()
                 } else {
@@ -540,6 +540,7 @@ fun BlockRenderer(
                     BlockType.COUNTDOWN -> CountdownBlockRenderer(currentBlock, onUpdate, onDeleteBlock)
                     BlockType.LINK -> LinkBlockRenderer(currentBlock, textState, handleTextChange, commonModifier, placeholderUI, onUpdate, onDeleteBlock)
                     BlockType.BOOKMARK -> BookmarkBlockRenderer(currentBlock, onUpdate, onDeleteBlock)
+                    BlockType.GALLERY -> GalleryBlockRenderer(currentBlock, onUpdate, onDeleteBlock)
                     BlockType.MATH -> {
                         var showMathSymbols by remember { mutableStateOf(false) }
                         Surface(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha=0.3f), shape = RoundedCornerShape(8.dp), border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant), modifier = Modifier.fillMaxWidth()) {
@@ -889,6 +890,7 @@ fun BlockRenderer(
                     BlockType.CODE to ("Code Snippet" to "⌨️"),
                     BlockType.TIMER to ("Pomodoro Timer" to "⏱️"),
                     BlockType.COUNTDOWN to ("Countdown" to "⏳"),
+                    BlockType.GALLERY to ("Photo Gallery" to "📸"),
 
                     "Media & Links" to null,
                     BlockType.IMAGE to ("Image" to "🖼️"),

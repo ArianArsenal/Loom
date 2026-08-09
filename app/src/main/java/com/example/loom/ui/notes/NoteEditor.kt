@@ -20,10 +20,17 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.FormatAlignLeft
+import androidx.compose.material.icons.automirrored.filled.FormatAlignRight
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FormatAlignCenter
+import androidx.compose.material.icons.filled.FormatAlignLeft
+import androidx.compose.material.icons.filled.FormatAlignRight
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
@@ -54,6 +61,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.loom.data.local.entity.DiaryNote
 import com.example.loom.data.local.entity.NoteTag
@@ -292,6 +300,18 @@ fun NoteEditor(initialNote: DiaryNote?, allTags: List<NoteTag>, viewModel: HomeV
                     colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Color.Transparent, unfocusedBorderColor = Color.Transparent)
                 )
 
+                // NEW: Date & Time Metadata inside the Editor
+                if (initialNote != null) {
+                    // Assuming your DiaryNote entity has a 'timestamp' property. Update if yours is named differently!
+                    val dateStr = java.text.SimpleDateFormat("MMMM d, yyyy • h:mm a", java.util.Locale.getDefault()).format(java.util.Date(initialNote.timestamp))
+                    Text(
+                        text = "Last edited: $dateStr",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                        modifier = Modifier.padding(horizontal = 36.dp).padding(bottom = 16.dp)
+                    )
+                }
+
                 Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
                     blocks.forEach { block ->
                         when (block.type) {
@@ -424,48 +444,136 @@ fun NoteEditor(initialNote: DiaryNote?, allTags: List<NoteTag>, viewModel: HomeV
                             }
                             "image" -> {
                                 val isSelected = focusedBlockId == block.id
-                                Box(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), contentAlignment = Alignment.Center) {
-                                    Box(modifier = Modifier.width(block.width.dp).height(block.height.dp).pointerInput(Unit) { detectTapGestures(onTap = { focusedBlockId = block.id; focusManager.clearFocus() }) }) {
+                                var currentWidth by remember(block.id) { mutableFloatStateOf(block.width) }
+                                var currentHeight by remember(block.id) { mutableFloatStateOf(block.height) }
+
+                                // 1. Apply the horizontal alignment to the outer box
+                                val boxAlignment = when (block.alignment) {
+                                    "Start" -> Alignment.CenterStart
+                                    "End" -> Alignment.CenterEnd
+                                    else -> Alignment.Center
+                                }
+
+                                Box(
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                                    contentAlignment = boxAlignment
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .width(currentWidth.dp)
+                                            .height(currentHeight.dp)
+                                    ) {
                                         AsyncImage(
-                                            model = block.content, contentDescription = null, modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(8.dp)),
+                                            model = block.content,
+                                            contentDescription = null,
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .pointerInput(Unit) {
+                                                    detectTapGestures(onTap = {
+                                                        focusedBlockId = block.id
+                                                        focusManager.clearFocus()
+                                                    })
+                                                },
                                             contentScale = if (block.isCropped) ContentScale.Crop else ContentScale.Fit
                                         )
+
                                         if (isSelected) {
-                                            val blue = Color(0xFF4285F4)
-                                            Box(modifier = Modifier.fillMaxSize().border(2.dp, blue, RoundedCornerShape(8.dp)))
-                                            @Composable fun Dot(modifier: Modifier) { Box(modifier = modifier.size(10.dp).background(Color.White, CircleShape).border(2.dp, blue, CircleShape)) }
+                                            val highlightColor = Color(0xFF4285F4)
+                                            Box(modifier = Modifier.fillMaxSize().border(2.dp, highlightColor, RoundedCornerShape(8.dp)))
 
-                                            Dot(Modifier.align(Alignment.TopStart).offset((-5).dp, (-5).dp))
-                                            Dot(Modifier.align(Alignment.TopEnd).offset(5.dp, (-5).dp))
-                                            Dot(Modifier.align(Alignment.BottomStart).offset((-5).dp, 5.dp))
+                                            // 2. The Upgraded Repositioning Control Bar
+                                            Surface(
+                                                shape = RoundedCornerShape(8.dp),
+                                                color = Color.Black.copy(alpha = 0.8f),
+                                                modifier = Modifier.align(Alignment.TopCenter).padding(8.dp).offset(y = (-45).dp)
+                                            ) {
+                                                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 4.dp)) {
 
-                                            Box(modifier = Modifier.align(Alignment.BottomEnd).offset(5.dp, 5.dp).size(30.dp)
-                                                .pointerInput(Unit) {
-                                                    detectDragGestures { change, dragAmount ->
-                                                        change.consume()
-                                                        val currentIndex = blocks.indexOfFirst { it.id == block.id }
-                                                        if (currentIndex >= 0) {
-                                                            val newW = (block.width + dragAmount.x / density.density).coerceIn(100f, 400f)
-                                                            val newH = (block.height + dragAmount.y / density.density).coerceIn(100f, 600f)
-                                                            blocks[currentIndex] = block.copy(width = newW, height = newH)
+                                                    // Move Up
+                                                    IconButton(onClick = {
+                                                        val idx = blocks.indexOfFirst { it.id == block.id }
+                                                        if (idx > 0) {
+                                                            val temp = blocks[idx]
+                                                            blocks[idx] = blocks[idx - 1]
+                                                            blocks[idx - 1] = temp
                                                         }
-                                                    }
+                                                    }, modifier = Modifier.size(32.dp)) { Icon(Icons.Default.KeyboardArrowUp, "Move Up", tint = Color.White, modifier = Modifier.size(18.dp)) }
+
+                                                    // Move Down
+                                                    IconButton(onClick = {
+                                                        val idx = blocks.indexOfFirst { it.id == block.id }
+                                                        if (idx in 0 until blocks.size - 1) {
+                                                            val temp = blocks[idx]
+                                                            blocks[idx] = blocks[idx + 1]
+                                                            blocks[idx + 1] = temp
+                                                        }
+                                                    }, modifier = Modifier.size(32.dp)) { Icon(Icons.Default.KeyboardArrowDown, "Move Down", tint = Color.White, modifier = Modifier.size(18.dp)) }
+
+                                                    Box(modifier = Modifier.width(1.dp).height(16.dp).background(Color.White.copy(alpha = 0.3f)).padding(horizontal = 4.dp))
+
+                                                    // Align Left
+                                                    IconButton(onClick = {
+                                                        val idx = blocks.indexOfFirst { it.id == block.id }
+                                                        if (idx >= 0) blocks[idx] = block.copy(alignment = "Start")
+                                                    }, modifier = Modifier.size(32.dp)) { Icon(Icons.Default.FormatAlignLeft, "Left", tint = if (block.alignment == "Start") highlightColor else Color.White, modifier = Modifier.size(16.dp)) }
+
+                                                    // Align Center
+                                                    IconButton(onClick = {
+                                                        val idx = blocks.indexOfFirst { it.id == block.id }
+                                                        if (idx >= 0) blocks[idx] = block.copy(alignment = "Center")
+                                                    }, modifier = Modifier.size(32.dp)) { Icon(Icons.Default.FormatAlignCenter, "Center", tint = if (block.alignment == "Center") highlightColor else Color.White, modifier = Modifier.size(16.dp)) }
+
+                                                    // Align Right
+                                                    IconButton(onClick = {
+                                                        val idx = blocks.indexOfFirst { it.id == block.id }
+                                                        if (idx >= 0) blocks[idx] = block.copy(alignment = "End")
+                                                    }, modifier = Modifier.size(32.dp)) { Icon(Icons.Default.FormatAlignRight, "Right", tint = if (block.alignment == "End") highlightColor else Color.White, modifier = Modifier.size(16.dp)) }
+
+                                                    Box(modifier = Modifier.width(1.dp).height(16.dp).background(Color.White.copy(alpha = 0.3f)).padding(horizontal = 4.dp))
+
+                                                    // Crop & Delete
+                                                    TextButton(
+                                                        onClick = {
+                                                            val idx = blocks.indexOfFirst { it.id == block.id }
+                                                            if (idx >= 0) blocks[idx] = block.copy(isCropped = !block.isCropped)
+                                                        },
+                                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                                                        modifier = Modifier.height(32.dp)
+                                                    ) { Text(if (block.isCropped) "Fit" else "Crop", color = Color.White, fontSize = 12.sp) }
+
+                                                    TextButton(
+                                                        onClick = {
+                                                            val idx = blocks.indexOfFirst { it.id == block.id }
+                                                            if (idx >= 0) { blocks.removeAt(idx); focusedBlockId = null }
+                                                        },
+                                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                                                        modifier = Modifier.height(32.dp)
+                                                    ) { Text("Delete", color = Color(0xFFE53935), fontSize = 12.sp) }
                                                 }
-                                            ) { Dot(Modifier.align(Alignment.Center)) }
-                                        }
-                                    }
-                                    if (isSelected) {
-                                        Surface(shape = RoundedCornerShape(8.dp), color = Color(0xFF333333), modifier = Modifier.align(Alignment.TopCenter).offset(y = (-40).dp)) {
-                                            Row(modifier = Modifier.padding(horizontal = 4.dp)) {
-                                                TextButton(onClick = {
-                                                    val currentIndex = blocks.indexOfFirst { it.id == block.id }
-                                                    if (currentIndex >= 0) blocks.removeAt(currentIndex)
-                                                    focusedBlockId = null
-                                                }) { Text("Delete", color = Color.White) }
-                                                TextButton(onClick = {
-                                                    val currentIndex = blocks.indexOfFirst { it.id == block.id }
-                                                    if (currentIndex >= 0) blocks[currentIndex] = block.copy(isCropped = !block.isCropped)
-                                                }) { Text(if (block.isCropped) "Fit" else "Crop", color = Color.White) }
+                                            }
+
+                                            // Drag Handle
+                                            Box(
+                                                modifier = Modifier
+                                                    .align(Alignment.BottomEnd)
+                                                    .offset(16.dp, 16.dp)
+                                                    .size(48.dp)
+                                                    .pointerInput(block.id) {
+                                                        detectDragGestures(
+                                                            onDragEnd = {
+                                                                val currentIndex = blocks.indexOfFirst { it.id == block.id }
+                                                                if (currentIndex >= 0) blocks[currentIndex] = block.copy(width = currentWidth, height = currentHeight)
+                                                            }
+                                                        ) { change, dragAmount ->
+                                                            change.consume()
+                                                            currentWidth = (currentWidth + dragAmount.x / density.density).coerceAtLeast(100f)
+                                                            currentHeight = (currentHeight + dragAmount.y / density.density).coerceAtLeast(100f)
+                                                        }
+                                                    },
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Box(modifier = Modifier.size(16.dp).background(Color.White, CircleShape).border(3.dp, highlightColor, CircleShape))
                                             }
                                         }
                                     }

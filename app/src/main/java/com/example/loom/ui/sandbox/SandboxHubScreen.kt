@@ -22,6 +22,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -160,7 +161,23 @@ fun SandboxHubScreen(
                                         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
                                         modifier = Modifier.size(56.dp)
                                     ) {
-                                        Box(contentAlignment = Alignment.Center) { Text(space.icon.ifEmpty { "📄" }, fontSize = 28.sp) }
+                                        val iconParts = space.icon.split("|")
+                                        val isCustomIcon = iconParts.size == 2
+                                        Box(contentAlignment = Alignment.Center) {
+                                            if (isCustomIcon) {
+                                                val iconName = iconParts[0]
+                                                val iconColorHex = iconParts[1]
+                                                val iconTint = try { Color(android.graphics.Color.parseColor(iconColorHex)) } catch (e: Exception) { MaterialTheme.colorScheme.onSurface }
+                                                val resId = context.resources.getIdentifier(iconName, "drawable", context.packageName)
+                                                if (resId != 0) {
+                                                    Icon(painterResource(resId), contentDescription = null, tint = iconTint, modifier = Modifier.size(28.dp))
+                                                } else {
+                                                    Text("❓", fontSize = 24.sp)
+                                                }
+                                            } else {
+                                                Text(space.icon.ifEmpty { "📄" }, fontSize = 28.sp)
+                                            }
+                                        }
                                     }
                                     Spacer(modifier = Modifier.width(16.dp))
 
@@ -252,7 +269,22 @@ fun SandboxHubScreen(
                         items(appTemplates) { template ->
                             ListItem(
                                 headlineContent = { Text(template.name, fontWeight = FontWeight.SemiBold) },
-                                leadingContent = { Text(template.icon, fontSize = 24.sp) },
+                                leadingContent = {
+                                    val iconParts = template.icon.split("|")
+                                    if (iconParts.size == 2) {
+                                        val iconName = iconParts[0]
+                                        val iconColorHex = iconParts[1]
+                                        val iconTint = try { Color(android.graphics.Color.parseColor(iconColorHex)) } catch (e: Exception) { MaterialTheme.colorScheme.onSurface }
+                                        val resId = context.resources.getIdentifier(iconName, "drawable", context.packageName)
+                                        if (resId != 0) {
+                                            Icon(painterResource(resId), contentDescription = null, tint = iconTint, modifier = Modifier.size(24.dp))
+                                        } else {
+                                            Text("❓", fontSize = 24.sp)
+                                        }
+                                    } else {
+                                        Text(template.icon.ifEmpty { "📄" }, fontSize = 24.sp)
+                                    }
+                                },
                                 modifier = Modifier.clickable {
                                     val type = object : TypeToken<List<SandboxBlock>>() {}.type
                                     val initialBlocks: List<SandboxBlock> = try {
@@ -276,7 +308,22 @@ fun SandboxHubScreen(
                             items(userTemplates) { template ->
                                 ListItem(
                                     headlineContent = { Text(template.name, fontWeight = FontWeight.SemiBold) },
-                                    leadingContent = { Text(template.icon, fontSize = 24.sp) },
+                                    leadingContent = {
+                                        val iconParts = template.icon.split("|")
+                                        if (iconParts.size == 2) {
+                                            val iconName = iconParts[0]
+                                            val iconColorHex = iconParts[1]
+                                            val iconTint = try { Color(android.graphics.Color.parseColor(iconColorHex)) } catch (e: Exception) { MaterialTheme.colorScheme.onSurface }
+                                            val resId = context.resources.getIdentifier(iconName, "drawable", context.packageName)
+                                            if (resId != 0) {
+                                                Icon(painterResource(resId), contentDescription = null, tint = iconTint, modifier = Modifier.size(24.dp))
+                                            } else {
+                                                Text("❓", fontSize = 24.sp)
+                                            }
+                                        } else {
+                                            Text(template.icon.ifEmpty { "📄" }, fontSize = 24.sp)
+                                        }
+                                    },
                                     modifier = Modifier.clickable {
                                         val type = object : TypeToken<List<SandboxBlock>>() {}.type
                                         val initialBlocks: List<SandboxBlock> = try {

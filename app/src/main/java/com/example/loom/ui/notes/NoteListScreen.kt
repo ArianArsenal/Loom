@@ -312,8 +312,15 @@ fun NoteCard(note: DiaryNote, allTags: List<NoteTag>, height: androidx.compose.u
                 }
 
                 Spacer(modifier = Modifier.weight(1f))
-                Surface(color = containerColor, shape = RoundedCornerShape(8.dp)) {
-                    Text(note.tag, style = MaterialTheme.typography.labelSmall, color = tagColor ?: MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
+
+                // NEW: Date/Time aligned to the right, Tag aligned to the left
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
+                    Surface(color = containerColor, shape = RoundedCornerShape(8.dp)) {
+                        Text(note.tag, style = MaterialTheme.typography.labelSmall, color = tagColor ?: MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
+                    }
+
+                    val timeStr = java.text.SimpleDateFormat("MMM d • h:mm a", java.util.Locale.getDefault()).format(java.util.Date(note.timestamp))
+                    Text(timeStr, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha=0.6f))
                 }
             }
         }

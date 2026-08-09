@@ -8,7 +8,7 @@ enum class BlockType {
     TEXT, HEADING, HEADING_2, HEADING_3, HEADING_4, BULLET, NUMBER, TODO, TOGGLE, CALLOUT, QUOTE, TABLE, DIVIDER, CALENDAR,
     IMAGE, AUDIO, FILE, CODE, SPACE, LINK,
     SKETCH, KANBAN, VIDEO, PROGRESS, MATH,
-    TOC, CHART, TIMER, BOOKMARK, COUNTDOWN // NEW: Table of Contents Block
+    TOC, CHART, TIMER, BOOKMARK, COUNTDOWN, GALLERY // NEW: Table of Contents Block
 }
 
 @Serializable
@@ -27,6 +27,16 @@ data class CalendarEvent(
     var checklist: List<CalendarChecklistItem> = emptyList(), // <-- MUST BE CalendarChecklistItem
     var imageUrl: String = "",
     var frequency: String = "Once"
+)
+
+// NEW: Data class for individual gallery images
+@Serializable
+data class GalleryItem(
+    val id: String = UUID.randomUUID().toString(),
+    var url: String = "",
+    var title: String = "",
+    var comment: String = "",
+    var timestamp: Long = System.currentTimeMillis()
 )
 
 @Serializable
@@ -82,7 +92,8 @@ data class SandboxBlock(
     var calendarEvents: Map<String, List<CalendarEvent>> = emptyMap(),
     var kanbanColumns: List<KanbanColumn> = emptyList(),
     var sketchStrokes: List<SketchStroke> = emptyList(),
-    var children: List<SandboxBlock> = emptyList()
+    var children: List<SandboxBlock> = emptyList(),
+    var galleryItems: List<GalleryItem> = emptyList() // <-- NEW: Holds the gallery data
 )
 
 @Serializable
