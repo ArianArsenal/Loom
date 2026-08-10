@@ -151,7 +151,7 @@ class HomeViewModel @Inject constructor(
                     skincareProducts = trackerDao.getAllSkincareProducts().first(),
                     skincareRoutines = trackerDao.getAllSkincareRoutines().first(),
                     foodItems = trackerDao.getUserCreatedFoodItems().first(),
-                    notionSpaces = sandboxDao.getAllSpaces().first(),
+                    notionSpaces = sandboxDao.getActiveSpaces().first(),
                     targetCalories = targetCalories.value,
                     targetProtein = targetProtein.value,
                     targetCarbs = targetCarbs.value,

@@ -18,9 +18,9 @@ data class SpaceTemplate(
 object TemplateManager {
     private const val PREFS_NAME = "loom_templates"
     private const val KEY_CUSTOM_TEMPLATES = "custom_templates"
+    private const val KEY_TRASHED_CUSTOM_TEMPLATES = "trashed_custom_templates"
     private val gson = Gson()
 
-    // 1. PREDEFINED APP LAYOUTS
     val appTemplates = listOf(
         SpaceTemplate(
             id = "empty",
@@ -75,22 +75,60 @@ object TemplateManager {
         )
     )
 
-    // 2. GET USER LAYOUTS
+    // --- APP TEMPLATES LOGIC ---
+    fun getActiveAppTemplates(context: Context): List<SpaceTemplate> {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val deletedIds = prefs.getStringSet("deleted_app_templates", emptySet()) ?: emptySet()
+        val permDeletedIds = prefs.getStringSet("perm_deleted_app_templates", emptySet()) ?: emptySet()
+        // ALWAYS keep "empty" safe!
+        return appTemplates.filter { it.id == "empty" || (it.id !in deletedIds && it.id !in permDeletedIds) }
+    }
+
+    fun getTrashedAppTemplates(context: Context): List<SpaceTemplate> {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val deletedIds = prefs.getStringSet("deleted_app_templates", emptySet()) ?: emptySet()
+        val permDeletedIds = prefs.getStringSet("perm_deleted_app_templates", emptySet()) ?: emptySet()
+        return appTemplates.filter { it.id in deletedIds && it.id !in permDeletedIds }
+    }
+
+    fun deleteAppTemplate(context: Context, templateId: String) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val deletedIds = prefs.getStringSet("deleted_app_templates", emptySet())?.toMutableSet() ?: mutableSetOf()
+        deletedIds.add(templateId)
+        prefs.edit().putStringSet("deleted_app_templates", deletedIds).apply()
+    }
+
+    fun restoreAppTemplate(context: Context, templateId: String) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val deletedIds = prefs.getStringSet("deleted_app_templates", emptySet())?.toMutableSet() ?: mutableSetOf()
+        deletedIds.remove(templateId)
+        prefs.edit().putStringSet("deleted_app_templates", deletedIds).apply()
+    }
+
+    fun permanentlyDeleteAppTemplate(context: Context, templateId: String) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val permDeletedIds = prefs.getStringSet("perm_deleted_app_templates", emptySet())?.toMutableSet() ?: mutableSetOf()
+        permDeletedIds.add(templateId)
+        prefs.edit().putStringSet("perm_deleted_app_templates", permDeletedIds).apply()
+    }
+
+    // --- CUSTOM TEMPLATES LOGIC ---
     fun getCustomTemplates(context: Context): List<SpaceTemplate> {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val jsonStr = prefs.getString(KEY_CUSTOM_TEMPLATES, "[]") ?: "[]"
         val type = object : TypeToken<List<SpaceTemplate>>() {}.type
-        return try {
-            gson.fromJson(jsonStr, type) ?: emptyList()
-        } catch (e: Exception) {
-            emptyList()
-        }
+        return try { gson.fromJson(jsonStr, type) ?: emptyList() } catch (e: Exception) { emptyList() }
     }
 
-    // 3. SAVE A NEW USER LAYOUT
+    fun getTrashedCustomTemplates(context: Context): List<SpaceTemplate> {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val jsonStr = prefs.getString(KEY_TRASHED_CUSTOM_TEMPLATES, "[]") ?: "[]"
+        val type = object : TypeToken<List<SpaceTemplate>>() {}.type
+        return try { gson.fromJson(jsonStr, type) ?: emptyList() } catch (e: Exception) { emptyList() }
+    }
+
     fun saveCustomTemplate(context: Context, name: String, icon: String, blocks: List<SandboxBlock>) {
         val current = getCustomTemplates(context).toMutableList()
-        // We assign fresh UUIDs to the blocks so they don't conflict when the template is used
         val cleanBlocks = blocks.map { it.copy(id = UUID.randomUUID().toString()) }
 
         val newTemplate = SpaceTemplate(
@@ -100,11 +138,57 @@ object TemplateManager {
             blocksJson = gson.toJson(cleanBlocks),
             isAppDefault = false
         )
-
         current.add(newTemplate)
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .edit()
-            .putString(KEY_CUSTOM_TEMPLATES, gson.toJson(current))
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit().putString(KEY_CUSTOM_TEMPLATES, gson.toJson(current)).apply()
+    }
+
+    fun deleteCustomTemplate(context: Context, templateName: String) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+
+        val currentActive = getCustomTemplates(context).toMutableList()
+        val toTrash = currentActive.find { it.name == templateName } ?: return
+
+        currentActive.remove(toTrash)
+        prefs.edit().putString(KEY_CUSTOM_TEMPLATES, gson.toJson(currentActive)).apply()
+
+        val currentTrashed = getTrashedCustomTemplates(context).toMutableList()
+        currentTrashed.add(toTrash)
+        prefs.edit().putString(KEY_TRASHED_CUSTOM_TEMPLATES, gson.toJson(currentTrashed)).apply()
+    }
+
+    fun restoreCustomTemplate(context: Context, templateName: String) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+
+        val currentTrashed = getTrashedCustomTemplates(context).toMutableList()
+        val toRestore = currentTrashed.find { it.name == templateName } ?: return
+
+        currentTrashed.remove(toRestore)
+        prefs.edit().putString(KEY_TRASHED_CUSTOM_TEMPLATES, gson.toJson(currentTrashed)).apply()
+
+        val currentActive = getCustomTemplates(context).toMutableList()
+        currentActive.add(toRestore)
+        prefs.edit().putString(KEY_CUSTOM_TEMPLATES, gson.toJson(currentActive)).apply()
+    }
+
+    fun permanentlyDeleteCustomTemplate(context: Context, templateName: String) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val currentTrashed = getTrashedCustomTemplates(context).toMutableList()
+        currentTrashed.removeAll { it.name == templateName }
+        prefs.edit().putString(KEY_TRASHED_CUSTOM_TEMPLATES, gson.toJson(currentTrashed)).apply()
+    }
+
+    // --- EMPTY ALL TEMPLATE TRASH ---
+    fun emptyTemplateTrash(context: Context) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+
+        val deletedIds = prefs.getStringSet("deleted_app_templates", emptySet()) ?: emptySet()
+        val permDeletedIds = prefs.getStringSet("perm_deleted_app_templates", emptySet())?.toMutableSet() ?: mutableSetOf()
+        permDeletedIds.addAll(deletedIds)
+
+        prefs.edit()
+            .putStringSet("perm_deleted_app_templates", permDeletedIds) // Lock out app defaults forever
+            .putStringSet("deleted_app_templates", emptySet()) // Clear soft delete
+            .putString(KEY_TRASHED_CUSTOM_TEMPLATES, "[]") // Wipe custom trash
             .apply()
     }
 }

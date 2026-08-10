@@ -15,14 +15,19 @@ import kotlinx.coroutines.launch
 
 class SandboxViewModel(
     private val sandboxDao: SandboxDao,
-    private val userPreferences: UserPreferences // <-- NEW: Injected to read security state
+    private val userPreferences: UserPreferences
 ) : ViewModel() {
 
-    // NEW: Expose biometric state to the Sandbox UI
     val isBiometricEnabled: StateFlow<Boolean> = userPreferences.biometricEnabledFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
 
-    val allSpaces: StateFlow<List<SandboxSpace>> = sandboxDao.getAllSpaces()
+    // Now uses getActiveSpaces()
+    val allSpaces: StateFlow<List<SandboxSpace>> = sandboxDao.getActiveSpaces()
+        .map { entities -> entities.map { it.toDomainModel() } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    // NEW: Trashed Spaces state
+    val trashedSpaces: StateFlow<List<SandboxSpace>> = sandboxDao.getTrashedSpaces()
         .map { entities -> entities.map { it.toDomainModel() } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -30,14 +35,29 @@ class SandboxViewModel(
         viewModelScope.launch { sandboxDao.saveSpace(NotionSpaceEntity.fromDomainModel(space)) }
     }
 
-    fun deleteSpace(space: SandboxSpace) {
-        viewModelScope.launch { sandboxDao.deleteSpace(NotionSpaceEntity.fromDomainModel(space)) }
+    // NEW: Soft Delete
+    fun moveToTrash(space: SandboxSpace) {
+        saveSpace(space.copy(isDeleted = true, updatedAt = System.currentTimeMillis()))
+    }
+
+    // NEW: Restore
+    fun restoreSpace(space: SandboxSpace) {
+        saveSpace(space.copy(isDeleted = false, updatedAt = System.currentTimeMillis()))
+    }
+
+    // UPDATE: Hard Delete
+    fun permanentlyDeleteSpace(space: SandboxSpace) {
+        viewModelScope.launch { sandboxDao.permanentlyDeleteSpace(NotionSpaceEntity.fromDomainModel(space)) }
+    }
+
+    fun emptyTrash() {
+        viewModelScope.launch { sandboxDao.emptyTrash() }
     }
 }
 
 class SandboxViewModelFactory(
     private val sandboxDao: SandboxDao,
-    private val userPreferences: UserPreferences // <-- NEW: Update your MainActivity/NavGraph to pass this!
+    private val userPreferences: UserPreferences
 ) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T {

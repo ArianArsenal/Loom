@@ -31,7 +31,7 @@ import com.example.loom.data.local.entity.NotionSpaceEntity
         FoodItem::class,
         NotionSpaceEntity::class
     ],
-    version = 30, // <-- BUMPED TO 30
+    version = 31, // <-- BUMPED TO 31 FOR THE TRASH SYSTEM
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -163,23 +163,18 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
-        // NEW MIGRATION: Injects the Hydration logs JSON field into the database!
         private val MIGRATION_26_27 = object : Migration(26, 27) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE `daily_records` ADD COLUMN `waterLogsJson` TEXT NOT NULL DEFAULT '[]'")
             }
         }
 
-        // BUMP version = 28 at the top of the file!
-
-        // NEW MIGRATION: Injects weight logging
         private val MIGRATION_27_28 = object : Migration(27, 28) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE `daily_records` ADD COLUMN `weightLogKg` REAL NOT NULL DEFAULT 0.0")
             }
         }
 
-        // NEW MIGRATION: Sleep and Measurements
         private val MIGRATION_28_29 = object : Migration(28, 29) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE `daily_records` ADD COLUMN `sleepHours` REAL NOT NULL DEFAULT 0.0")
@@ -191,6 +186,13 @@ abstract class AppDatabase : RoomDatabase() {
         private val MIGRATION_29_30 = object : Migration(29, 30) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE `daily_records` ADD COLUMN `completedSupplementsJson` TEXT NOT NULL DEFAULT '[]'")
+            }
+        }
+
+        // NEW MIGRATION: Injects the Trash system flag
+        private val MIGRATION_30_31 = object : Migration(30, 31) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `notion_spaces` ADD COLUMN `isDeleted` INTEGER NOT NULL DEFAULT 0")
             }
         }
 
@@ -238,11 +240,11 @@ abstract class AppDatabase : RoomDatabase() {
                         MIGRATION_23_24,
                         MIGRATION_24_25,
                         MIGRATION_25_26,
-                        MIGRATION_26_27, // <-- Added new migration here
+                        MIGRATION_26_27,
                         MIGRATION_27_28,
                         MIGRATION_28_29,
-                        MIGRATION_29_30
-
+                        MIGRATION_29_30,
+                        MIGRATION_30_31 // <-- Added new migration here
                     )
                     .fallbackToDestructiveMigration()
                     .build().also { INSTANCE = it }

@@ -61,11 +61,15 @@ fun GalleryBlockRenderer(
         }
     }
 
+    // --- THE NEW OUTER CARD WRAPPER ---
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color.Transparent)
             .padding(vertical = 8.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f))
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f), RoundedCornerShape(16.dp))
+            .padding(12.dp) // Inner padding so items don't touch the card edges
     ) {
         // --- 1. EDITABLE HEADER & OPTIONS ---
         Row(
@@ -82,7 +86,7 @@ fun GalleryBlockRenderer(
                     fontWeight = FontWeight.Bold
                 ),
                 cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(1f).padding(start = 4.dp),
                 decorationBox = { inner ->
                     if (cleanTitle.isEmpty()) {
                         Text("Gallery Title...", color = Color.Gray, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
@@ -114,12 +118,11 @@ fun GalleryBlockRenderer(
         val gridItems = block.galleryItems + null
         val chunks = gridItems.chunked(2)
 
-        // Removed the outer border/background wrapper to let the images float independently with gaps
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) { // 4dp vertical gap
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             chunks.forEach { rowItems ->
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp) // 4dp horizontal gap
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     for (item in rowItems) {
                         if (item == null) {
@@ -129,7 +132,7 @@ fun GalleryBlockRenderer(
                                     .weight(1f)
                                     .aspectRatio(1f)
                                     .clip(RoundedCornerShape(12.dp))
-                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
+                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
                                     .clickable {
                                         galleryLauncher.launch(androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
                                     },
@@ -176,8 +179,7 @@ fun GalleryBlockRenderer(
                                     Text(dateStr, color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                                 }
 
-                                // FIXED: SMALLER 'X' BUTTON (Top Right)
-                                // Bypassing IconButton to prevent the 48dp minimum touch target from expanding the background
+                                // SMALLER DELETE BUTTON (Top Right)
                                 Box(
                                     modifier = Modifier
                                         .align(Alignment.TopEnd)
@@ -255,7 +257,6 @@ fun GalleryBlockRenderer(
                         }
                     }
 
-                    // Filler block for odd numbers to maintain perfectly square grid geometry
                     if (rowItems.size == 1) {
                         Spacer(modifier = Modifier.weight(1f).aspectRatio(1f))
                     }

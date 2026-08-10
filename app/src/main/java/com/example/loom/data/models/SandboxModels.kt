@@ -106,5 +106,6 @@ data class SandboxSpace(
     var tags: List<String> = emptyList(),
     var updatedAt: Long = System.currentTimeMillis(),
     var blocks: List<SandboxBlock> = listOf(SandboxBlock(content = "\u200B")),
-    var isPrivate: Boolean = false
+    var isPrivate: Boolean = false,
+    var isDeleted: Boolean = false
 )

@@ -1,19 +1,9 @@
 package com.example.loom.ui.sandbox
 
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.ui.window.Dialog
 import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.ui.platform.LocalContext
-import java.io.InputStreamReader
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInParent
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -21,9 +11,11 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.items as lazyRowItems
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -52,18 +44,24 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import com.example.loom.data.models.BlockType
 import com.example.loom.data.models.SandboxBlock
 import com.example.loom.data.models.SandboxSpace
 import kotlinx.coroutines.launch
+import java.io.InputStreamReader
 import java.util.UUID
+
+import androidx.compose.material.icons.filled.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -111,6 +109,22 @@ fun NotionCanvasScreen(
     var showSaveTemplateDialog by remember { mutableStateOf(false) }
     var templateNameInput by remember { mutableStateOf("") }
 
+    var showSpaceMenu by remember { mutableStateOf(false) }
+    var showPasteMarkdownDialog by remember { mutableStateOf(false) }
+    var pastedMarkdownText by remember { mutableStateOf("") }
+
+    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        uri?.let {
+            try {
+                val stream = context.contentResolver.openInputStream(it)
+                val text = InputStreamReader(stream!!).readText()
+                val importedBlocks = parseMarkdownToBlocks(text)
+                blocks.clear()
+                blocks.addAll(importedBlocks)
+            } catch(e: Exception){}
+        }
+    }
+
     val currentBlocks = blocks.toList()
     LaunchedEffect(title, spaceIcon, bannerUrl, isPrivate, currentBlocks) {
         if (title != space.title || spaceIcon != space.icon || bannerUrl != space.bannerUrl || isPrivate != space.isPrivate || cleanBlocksForDB(currentBlocks) != space.blocks) {
@@ -118,18 +132,22 @@ fun NotionCanvasScreen(
         }
     }
 
-    // Dynamic Icon Parsing
     val iconParts = spaceIcon.split("|")
     val isCustomIcon = iconParts.size == 2
     val iconName = if (isCustomIcon) iconParts[0] else ""
     val iconColorHex = if (isCustomIcon) iconParts[1] else ""
     val iconTint = try { Color(android.graphics.Color.parseColor(iconColorHex)) } catch (e: Exception) { MaterialTheme.colorScheme.onSurface }
 
+    // MAIN CONTAINER
     Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+
+        // SCROLLABLE CANVAS
         Column(modifier = Modifier.fillMaxSize().verticalScroll(canvasScrollState)) {
+
+            // HEADER AREA (Contains Parallax Banner + Buttons)
             Box(modifier = Modifier.fillMaxWidth()) {
 
-                // SMOOTH PARALLAX COVER IMAGE
+                // Parallax Banner
                 if (bannerUrl.isNotEmpty()) {
                     val bannerColor = try { Color(android.graphics.Color.parseColor(bannerUrl)) } catch(e:Exception){ Color.LightGray }
                     val scrollOffset = canvasScrollState.value.toFloat()
@@ -139,173 +157,266 @@ fun NotionCanvasScreen(
                             .fillMaxWidth()
                             .height(220.dp)
                             .graphicsLayer {
-                                translationY = scrollOffset * 0.5f // Creates the depth/parallax effect
-                                alpha = (1f - (scrollOffset / 500f)).coerceIn(0f, 1f) // Fades out as you scroll down
+                                translationY = scrollOffset * 0.5f
+                                alpha = (1f - (scrollOffset / 500f)).coerceIn(0f, 1f)
                             }
                             .background(bannerColor)
                     )
                 }
 
-                Column(
+                // --- INLINE HEADER BUTTONS (These now scroll away with the page) ---
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = if (bannerUrl.isNotEmpty()) 180.dp else 72.dp)
-                        .padding(horizontal = 24.dp)
+                        .statusBarsPadding()
+                        .padding(horizontal = 16.dp, vertical = 12.dp), // Increased this padding!
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // NEW ICON BUTTON (Replaces Keyboard TextField)
-                    Box(
-                        modifier = Modifier
-                            .size(88.dp)
-                            .background(MaterialTheme.colorScheme.background, RoundedCornerShape(24.dp))
-                            .border(4.dp, MaterialTheme.colorScheme.background, RoundedCornerShape(24.dp))
-                            .shadow(if (bannerUrl.isNotEmpty()) 8.dp else 0.dp, RoundedCornerShape(24.dp), spotColor = Color.Black.copy(alpha = 0.1f))
-                            .clip(RoundedCornerShape(24.dp))
-                            .clickable { showIconPicker = true },
-                        contentAlignment = Alignment.Center
+                    // Back Button
+                    IconButton(
+                        onClick = onBack,
+                        modifier = Modifier.background(if (bannerUrl.isNotEmpty()) Color.Black.copy(alpha = 0.4f) else Color.Transparent, CircleShape).size(40.dp)
                     ) {
-                        AnimatedContent(targetState = isCustomIcon, label = "IconTransition") { custom ->
-                            if (custom) {
-                                val resId = context.resources.getIdentifier(iconName, "drawable", context.packageName)
-                                if (resId != 0) {
-                                    Icon(painterResource(resId), contentDescription = "Space Icon", tint = iconTint, modifier = Modifier.size(48.dp))
-                                } else {
-                                    Text("❓", fontSize = 42.sp) // Fallback if drawable isn't found
-                                }
-                            } else {
-                                Text(spaceIcon.ifEmpty { "📄" }, fontSize = 42.sp, textAlign = TextAlign.Center)
-                            }
-                        }
+                        Icon(Icons.Default.ArrowBack, "Back", tint = if (bannerUrl.isNotEmpty()) Color.White else MaterialTheme.colorScheme.onSurface)
                     }
 
-                    Spacer(Modifier.height(16.dp))
-
-                    if (bannerUrl.isEmpty()) {
-                        TextButton(
-                            onClick = { showBannerPicker = true },
-                            contentPadding = PaddingValues(0.dp),
-                            modifier = Modifier.height(32.dp).padding(bottom = 8.dp)
-                        ) {
-                            Icon(Icons.Default.Palette, null, tint = Color.Gray, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(4.dp))
-                            Text("Add Cover", color = Color.Gray, fontSize = 14.sp)
+                    // Right Side Buttons
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (bannerUrl.isNotEmpty()) {
+                            TextButton(
+                                onClick = { showBannerPicker = true },
+                                modifier = Modifier.background(Color.Black.copy(alpha = 0.4f), RoundedCornerShape(50)).height(40.dp),
+                                contentPadding = PaddingValues(horizontal = 16.dp)
+                            ) {
+                                Icon(Icons.Default.Palette, null, tint = Color.White, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text("Change Cover", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                            }
+                            Spacer(Modifier.width(12.dp)) // Spacing between 'Change Cover' and the 3 dots
                         }
-                    }
 
-                    BasicTextField(
-                        value = title,
-                        onValueChange = { title = it },
-                        textStyle = MaterialTheme.typography.headlineLarge.copy(fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onBackground, fontSize = 42.sp, letterSpacing = (-1).sp),
-                        modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
-                        decorationBox = { innerTextField ->
-                            Box {
-                                if (title.isEmpty()) Text("Untitled", style = MaterialTheme.typography.headlineLarge.copy(color = Color.LightGray, fontSize = 42.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = (-1).sp))
-                                innerTextField()
+                        Box {
+                            IconButton(
+                                onClick = { showSpaceMenu = true },
+                                modifier = Modifier.background(if (bannerUrl.isNotEmpty()) Color.Black.copy(alpha = 0.4f) else Color.Transparent, CircleShape).size(40.dp)
+                            ) {
+                                Icon(Icons.Default.MoreVert, "Options", tint = if (bannerUrl.isNotEmpty()) Color.White else MaterialTheme.colorScheme.onSurface)
                             }
-                        },
-                        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary)
-                    )
 
-                    HorizontalDivider(
-                        modifier = Modifier.padding(bottom = 24.dp),
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-                    )
-
-                    // ... [YOUR EXISTING BLOCKS FOREACH LOOP REMAINS UNCHANGED] ...
-                    blocks.forEachIndexed { index, block ->
-                        val currentNumberedIndex = if (block.type == BlockType.NUMBER) {
-                            var count = 1
-                            for (i in index - 1 downTo 0) {
-                                if (blocks[i].type == BlockType.NUMBER) count++ else break
-                            }
-                            count
-                        } else 1
-
-                        key(block.id) {
-                            Box(modifier = Modifier.onGloballyPositioned { coords ->
-                                blockPositions[block.id] = coords.positionInParent().y
-                            }) {
-                                BlockRenderer(
-                                    block = block,
-                                    numberIndex = currentNumberedIndex,
-                                    allSpaces = allSpaces,
-                                    currentSpaceId = currentSpaceId,
-                                    recentTableColors = recentTableColors,
-                                    focusRequesters = focusRequesters,
-                                    focusTargetId = focusedBlockId,
-                                    allBlocks = blocks,
-                                    onScrollToBlock = { targetId ->
-                                        scope.launch {
-                                            blockPositions[targetId]?.let { yPos ->
-                                                canvasScrollState.animateScrollTo(yPos.toInt())
-                                            }
+                            DropdownMenu(expanded = showSpaceMenu, onDismissRequest = { showSpaceMenu = false }) {
+                                DropdownMenuItem(
+                                    text = { Text(if (isPrivate) "Unlock Space" else "Lock Space") },
+                                    leadingIcon = { Icon(if (isPrivate) Icons.Default.LockOpen else Icons.Default.Lock, null) },
+                                    onClick = {
+                                        isPrivate = !isPrivate
+                                        showSpaceMenu = false
+                                    }
+                                )
+                                HorizontalDivider() // Separates locking from file actions
+                                DropdownMenuItem(
+                                    text = { Text("Export Markdown") },
+                                    leadingIcon = { Icon(Icons.Default.FileUpload, null) },
+                                    onClick = {
+                                        val mdStr = exportSpaceToMarkdown(title, blocks.toList())
+                                        val sendIntent = Intent().apply {
+                                            action = Intent.ACTION_SEND
+                                            putExtra(Intent.EXTRA_TEXT, mdStr)
+                                            type = "text/plain"
                                         }
-                                    },
-                                    onMove = { offset ->
-                                        val currentIndex = blocks.indexOfFirst { it.id == block.id }
-                                        if (currentIndex != -1) {
-                                            val newIndex = currentIndex + offset
-                                            if (newIndex in 0 until blocks.size) {
-                                                val temp = blocks[currentIndex]
-                                                blocks[currentIndex] = blocks[newIndex]
-                                                blocks[newIndex] = temp
-                                            }
-                                        }
-                                    },
-                                    onFocusRequest = { focusedBlockId = it },
-                                    onScrollToTop = { scope.launch { canvasScrollState.animateScrollTo(0) } },
-                                    onNavigateToSpace = onNavigateToSpace,
-                                    onCreateLinkedSpace = onCreateLinkedSpace,
-                                    onUpdate = { updatedBlock ->
-                                        val safeIndex = blocks.indexOfFirst { it.id == updatedBlock.id }
-                                        if (safeIndex != -1) blocks[safeIndex] = updatedBlock
-                                    },
-                                    onSplitBlock = { currentContent, nextType, nextContent ->
-                                        val safeIndex = blocks.indexOfFirst { it.id == block.id }
-                                        if (safeIndex != -1) {
-                                            blocks[safeIndex] = blocks[safeIndex].copy(content = currentContent)
-                                            val newBlockId = UUID.randomUUID().toString()
-                                            blocks.add(safeIndex + 1, SandboxBlock(id = newBlockId, type = nextType, content = nextContent))
-                                            focusedBlockId = newBlockId
-                                        }
-                                    },
-                                    onDeleteBlock = { remainder, deleteEntirely ->
-                                        val safeIndex = blocks.indexOfFirst { it.id == block.id }
-                                        if (safeIndex != -1 && safeIndex < blocks.size) {
-                                            if (deleteEntirely) {
-                                                val prevId = if (safeIndex > 0) blocks[safeIndex - 1].id else null
-                                                blocks.removeAt(safeIndex)
-                                                if (blocks.isEmpty()) {
-                                                    val newId = UUID.randomUUID().toString()
-                                                    blocks.add(SandboxBlock(id = newId, type = BlockType.TEXT, content = "\u200B"))
-                                                    focusedBlockId = newId
-                                                } else {
-                                                    prevId?.let {
-                                                        focusedBlockId = it
-                                                        try { focusRequesters[it]?.requestFocus() } catch(e:Exception){}
-                                                    }
-                                                }
-                                            } else if (safeIndex > 0) {
-                                                val prevBlock = blocks[safeIndex - 1]
-                                                val isPrevTextBased = prevBlock.type in listOf(BlockType.TEXT, BlockType.HEADING, BlockType.HEADING_2, BlockType.HEADING_3, BlockType.HEADING_4, BlockType.BULLET, BlockType.NUMBER, BlockType.TODO, BlockType.QUOTE, BlockType.CALLOUT, BlockType.TOGGLE)
-                                                if (isPrevTextBased) {
-                                                    val prevId = prevBlock.id
-                                                    blocks[safeIndex - 1] = prevBlock.copy(content = prevBlock.content + remainder)
-                                                    blocks.removeAt(safeIndex)
-                                                    focusedBlockId = prevId
-                                                    try { focusRequesters[prevId]?.requestFocus() } catch(e:Exception){}
-                                                } else {
-                                                    blocks.removeAt(safeIndex - 1)
-                                                }
-                                            } else if (safeIndex == 0 && blocks.size == 1) {
-                                                blocks[0] = blocks[0].copy(type = BlockType.TEXT, content = "\u200B" + remainder)
-                                            }
-                                        }
+                                        context.startActivity(Intent.createChooser(sendIntent, "Export Space"))
+                                        showSpaceMenu = false
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Import Markdown") },
+                                    leadingIcon = { Icon(Icons.Default.FileDownload, null) },
+                                    onClick = {
+                                        importLauncher.launch("*/*")
+                                        showSpaceMenu = false
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Paste Markdown") },
+                                    leadingIcon = { Icon(Icons.Default.ContentPaste, null) },
+                                    onClick = {
+                                        showPasteMarkdownDialog = true
+                                        showSpaceMenu = false
+                                    }
+                                )
+                                HorizontalDivider() // Separates file actions from templates
+                                DropdownMenuItem(
+                                    text = { Text("Save Space Layout") },
+                                    leadingIcon = { Icon(Icons.Default.Save, null) },
+                                    onClick = {
+                                        showSaveTemplateDialog = true
+                                        showSpaceMenu = false
                                     }
                                 )
                             }
                         }
-                        Spacer(modifier = Modifier.height(4.dp))
                     }
+                }
+            }
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp)
+            ) {
+                // ICON BOX
+                Box(
+                    modifier = Modifier
+                        .offset(y = if (bannerUrl.isNotEmpty()) (-44).dp else 24.dp)
+                        .size(88.dp)
+                        .background(MaterialTheme.colorScheme.background, RoundedCornerShape(24.dp))
+                        .border(4.dp, MaterialTheme.colorScheme.background, RoundedCornerShape(24.dp))
+                        .shadow(if (bannerUrl.isNotEmpty()) 8.dp else 0.dp, RoundedCornerShape(24.dp), spotColor = Color.Black.copy(alpha = 0.1f))
+                        .clip(RoundedCornerShape(24.dp))
+                        .clickable { showIconPicker = true },
+                    contentAlignment = Alignment.Center
+                ) {
+                    AnimatedContent(targetState = isCustomIcon, label = "IconTransition") { custom ->
+                        if (custom) {
+                            val resId = context.resources.getIdentifier(iconName, "drawable", context.packageName)
+                            if (resId != 0) {
+                                Icon(painterResource(resId), contentDescription = "Space Icon", tint = iconTint, modifier = Modifier.size(48.dp))
+                            } else {
+                                Text("❓", fontSize = 42.sp)
+                            }
+                        } else {
+                            Text(spaceIcon.ifEmpty { "📄" }, fontSize = 42.sp, textAlign = TextAlign.Center)
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(if (bannerUrl.isNotEmpty()) 0.dp else 48.dp))
+
+                if (bannerUrl.isEmpty()) {
+                    TextButton(
+                        onClick = { showBannerPicker = true },
+                        contentPadding = PaddingValues(0.dp),
+                        modifier = Modifier.height(32.dp).padding(bottom = 8.dp)
+                    ) {
+                        Icon(Icons.Default.Palette, null, tint = Color.Gray, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Add Cover", color = Color.Gray, fontSize = 14.sp)
+                    }
+                }
+
+                BasicTextField(
+                    value = title,
+                    onValueChange = { title = it },
+                    textStyle = MaterialTheme.typography.headlineLarge.copy(fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onBackground, fontSize = 42.sp, letterSpacing = (-1).sp),
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                    decorationBox = { innerTextField ->
+                        Box {
+                            if (title.isEmpty()) Text("Untitled", style = MaterialTheme.typography.headlineLarge.copy(color = Color.LightGray, fontSize = 42.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = (-1).sp))
+                            innerTextField()
+                        }
+                    },
+                    cursorBrush = SolidColor(MaterialTheme.colorScheme.primary)
+                )
+
+                HorizontalDivider(
+                    modifier = Modifier.padding(bottom = 24.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                )
+
+                blocks.forEachIndexed { index, block ->
+                    val currentNumberedIndex = if (block.type == BlockType.NUMBER) {
+                        var count = 1
+                        for (i in index - 1 downTo 0) {
+                            if (blocks[i].type == BlockType.NUMBER) count++ else break
+                        }
+                        count
+                    } else 1
+
+                    key(block.id) {
+                        Box(modifier = Modifier.onGloballyPositioned { coords ->
+                            blockPositions[block.id] = coords.positionInParent().y
+                        }) {
+                            BlockRenderer(
+                                block = block,
+                                numberIndex = currentNumberedIndex,
+                                allSpaces = allSpaces,
+                                currentSpaceId = currentSpaceId,
+                                recentTableColors = recentTableColors,
+                                focusRequesters = focusRequesters,
+                                focusTargetId = focusedBlockId,
+                                allBlocks = blocks,
+                                onScrollToBlock = { targetId ->
+                                    scope.launch {
+                                        blockPositions[targetId]?.let { yPos ->
+                                            canvasScrollState.animateScrollTo(yPos.toInt())
+                                        }
+                                    }
+                                },
+                                onMove = { offset ->
+                                    val currentIndex = blocks.indexOfFirst { it.id == block.id }
+                                    if (currentIndex != -1) {
+                                        val newIndex = currentIndex + offset
+                                        if (newIndex in 0 until blocks.size) {
+                                            val temp = blocks[currentIndex]
+                                            blocks[currentIndex] = blocks[newIndex]
+                                            blocks[newIndex] = temp
+                                        }
+                                    }
+                                },
+                                onFocusRequest = { focusedBlockId = it },
+                                onScrollToTop = { scope.launch { canvasScrollState.animateScrollTo(0) } },
+                                onNavigateToSpace = onNavigateToSpace,
+                                onCreateLinkedSpace = onCreateLinkedSpace,
+                                onUpdate = { updatedBlock ->
+                                    val safeIndex = blocks.indexOfFirst { it.id == updatedBlock.id }
+                                    if (safeIndex != -1) blocks[safeIndex] = updatedBlock
+                                },
+                                onSplitBlock = { currentContent, nextType, nextContent ->
+                                    val safeIndex = blocks.indexOfFirst { it.id == block.id }
+                                    if (safeIndex != -1) {
+                                        blocks[safeIndex] = blocks[safeIndex].copy(content = currentContent)
+                                        val newBlockId = UUID.randomUUID().toString()
+                                        blocks.add(safeIndex + 1, SandboxBlock(id = newBlockId, type = nextType, content = nextContent))
+                                        focusedBlockId = newBlockId
+                                    }
+                                },
+                                onDeleteBlock = { remainder, deleteEntirely ->
+                                    val safeIndex = blocks.indexOfFirst { it.id == block.id }
+                                    if (safeIndex != -1 && safeIndex < blocks.size) {
+                                        if (deleteEntirely) {
+                                            val prevId = if (safeIndex > 0) blocks[safeIndex - 1].id else null
+                                            blocks.removeAt(safeIndex)
+                                            if (blocks.isEmpty()) {
+                                                val newId = UUID.randomUUID().toString()
+                                                blocks.add(SandboxBlock(id = newId, type = BlockType.TEXT, content = "\u200B"))
+                                                focusedBlockId = newId
+                                            } else {
+                                                prevId?.let {
+                                                    focusedBlockId = it
+                                                    try { focusRequesters[it]?.requestFocus() } catch(e:Exception){}
+                                                }
+                                            }
+                                        } else if (safeIndex > 0) {
+                                            val prevBlock = blocks[safeIndex - 1]
+                                            val isPrevTextBased = prevBlock.type in listOf(BlockType.TEXT, BlockType.HEADING, BlockType.HEADING_2, BlockType.HEADING_3, BlockType.HEADING_4, BlockType.BULLET, BlockType.NUMBER, BlockType.TODO, BlockType.QUOTE, BlockType.CALLOUT, BlockType.TOGGLE)
+                                            if (isPrevTextBased) {
+                                                val prevId = prevBlock.id
+                                                blocks[safeIndex - 1] = prevBlock.copy(content = prevBlock.content + remainder)
+                                                blocks.removeAt(safeIndex)
+                                                focusedBlockId = prevId
+                                                try { focusRequesters[prevId]?.requestFocus() } catch(e:Exception){}
+                                            } else {
+                                                blocks.removeAt(safeIndex - 1)
+                                            }
+                                        } else if (safeIndex == 0 && blocks.size == 1) {
+                                            blocks[0] = blocks[0].copy(type = BlockType.TEXT, content = "\u200B" + remainder)
+                                        }
+                                    }
+                                }
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
                 }
             }
 
@@ -325,126 +436,36 @@ fun NotionCanvasScreen(
                 }
             )
         }
+    }
 
-        // Floating Back Button
-        IconButton(
-            onClick = onBack,
-            modifier = Modifier.align(Alignment.TopStart).padding(top = 16.dp, start = 16.dp).background(if (bannerUrl.isNotEmpty()) Color.Black.copy(alpha=0.3f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha=0.5f), CircleShape).size(40.dp)
-        ) {
-            Icon(Icons.Default.ArrowBack, "Back", tint = if (bannerUrl.isNotEmpty()) Color.White else MaterialTheme.colorScheme.onSurface)
-        }
-
-        // Floating Options Menu & Cover Button
-        var showSpaceMenu by remember { mutableStateOf(false) }
-        var showPasteMarkdownDialog by remember { mutableStateOf(false) }
-        var pastedMarkdownText by remember { mutableStateOf("") }
-
-        val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-            uri?.let {
-                try {
-                    val stream = context.contentResolver.openInputStream(it)
-                    val text = InputStreamReader(stream!!).readText()
-                    val importedBlocks = parseMarkdownToBlocks(text)
-                    blocks.clear()
-                    blocks.addAll(importedBlocks)
-                } catch(e: Exception){}
-            }
-        }
-
-        Row(
-            modifier = Modifier.align(Alignment.TopEnd).padding(top = 16.dp, end = 16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            if (bannerUrl.isNotEmpty()) {
-                IconButton(
-                    onClick = { showBannerPicker = true },
-                    modifier = Modifier.background(Color.Black.copy(alpha=0.3f), RoundedCornerShape(8.dp)).height(32.dp).width(100.dp)
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Palette, null, tint = Color.White, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text("Change", color = Color.White, fontSize = 12.sp)
+    // DIALOGS
+    if (showPasteMarkdownDialog) {
+        AlertDialog(
+            onDismissRequest = { showPasteMarkdownDialog = false },
+            title = { Text("Paste Markdown") },
+            text = {
+                OutlinedTextField(
+                    value = pastedMarkdownText,
+                    onValueChange = { pastedMarkdownText = it },
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 150.dp, max = 300.dp),
+                    placeholder = { Text("Paste your markdown here...") }
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (pastedMarkdownText.isNotBlank()) {
+                        val importedBlocks = parseMarkdownToBlocks(pastedMarkdownText)
+                        blocks.clear()
+                        blocks.addAll(importedBlocks)
                     }
-                }
-                Spacer(Modifier.width(12.dp))
+                    pastedMarkdownText = ""
+                    showPasteMarkdownDialog = false
+                }) { Text("Import") }
+            },
+            dismissButton = {
+                TextButton(onClick = { pastedMarkdownText = ""; showPasteMarkdownDialog = false }) { Text("Cancel") }
             }
-
-            Box {
-                IconButton(
-                    onClick = { showSpaceMenu = true },
-                    modifier = Modifier.background(if (bannerUrl.isNotEmpty()) Color.Black.copy(alpha=0.3f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha=0.5f), CircleShape).size(40.dp)
-                ) {
-                    Icon(Icons.Default.MoreVert, "Options", tint = if (bannerUrl.isNotEmpty()) Color.White else MaterialTheme.colorScheme.onSurface)
-                }
-
-                DropdownMenu(expanded = showSpaceMenu, onDismissRequest = { showSpaceMenu = false }) {
-                    DropdownMenuItem(
-                        text = { Text(if (isPrivate) "Unlock Space" else "Lock Space") },
-                        leadingIcon = { Icon(if (isPrivate) Icons.Default.LockOpen else Icons.Default.Lock, null) },
-                        onClick = {
-                            isPrivate = !isPrivate
-                            showSpaceMenu = false
-                        }
-                    )
-                    DropdownMenuItem(text = { Text("Export to Markdown") }, onClick = {
-                        val mdStr = exportSpaceToMarkdown(title, blocks.toList())
-                        val sendIntent = Intent().apply {
-                            action = Intent.ACTION_SEND
-                            putExtra(Intent.EXTRA_TEXT, mdStr)
-                            type = "text/plain"
-                        }
-                        context.startActivity(Intent.createChooser(sendIntent, "Export Space"))
-                        showSpaceMenu = false
-                    })
-                    DropdownMenuItem(text = { Text("Import .md File") }, onClick = {
-                        importLauncher.launch("*/*")
-                        showSpaceMenu = false
-                    })
-                    DropdownMenuItem(text = { Text("Paste Markdown") }, onClick = {
-                        showPasteMarkdownDialog = true
-                        showSpaceMenu = false
-                    })
-                    DropdownMenuItem(
-                        text = { Text("Save Space Layout") },
-                        leadingIcon = { Icon(Icons.Default.Save, null) },
-                        onClick = {
-                            showSaveTemplateDialog = true
-                            showSpaceMenu = false
-                        }
-                    )
-                }
-            }
-        }
-
-        // Paste Markdown Dialog
-        if (showPasteMarkdownDialog) {
-            AlertDialog(
-                onDismissRequest = { showPasteMarkdownDialog = false },
-                title = { Text("Paste Markdown") },
-                text = {
-                    OutlinedTextField(
-                        value = pastedMarkdownText,
-                        onValueChange = { pastedMarkdownText = it },
-                        modifier = Modifier.fillMaxWidth().heightIn(min = 150.dp, max = 300.dp),
-                        placeholder = { Text("Paste your markdown here...") }
-                    )
-                },
-                confirmButton = {
-                    TextButton(onClick = {
-                        if (pastedMarkdownText.isNotBlank()) {
-                            val importedBlocks = parseMarkdownToBlocks(pastedMarkdownText)
-                            blocks.clear()
-                            blocks.addAll(importedBlocks)
-                        }
-                        pastedMarkdownText = ""
-                        showPasteMarkdownDialog = false
-                    }) { Text("Import") }
-                },
-                dismissButton = {
-                    TextButton(onClick = { pastedMarkdownText = ""; showPasteMarkdownDialog = false }) { Text("Cancel") }
-                }
-            )
-        }
+        )
     }
 
     if (showSaveTemplateDialog) {
@@ -477,7 +498,6 @@ fun NotionCanvasScreen(
         )
     }
 
-    // ORIGINAL BANNER PICKER
     if (showBannerPicker) {
         var hue by remember { mutableFloatStateOf(210f) }
         var saturation by remember { mutableFloatStateOf(0.9f) }
@@ -489,6 +509,12 @@ fun NotionCanvasScreen(
             text = {
                 Column {
                     Box(modifier = Modifier.fillMaxWidth().height(120.dp).clip(RoundedCornerShape(8.dp)).background(Color.hsv(hue, 1f, 1f))
+                        .pointerInput(Unit) {
+                            detectTapGestures { offset ->
+                                saturation = (offset.x / size.width.toFloat()).coerceIn(0f, 1f)
+                                value = 1f - (offset.y / size.height.toFloat()).coerceIn(0f, 1f)
+                            }
+                        }
                         .pointerInput(Unit) {
                             detectDragGestures { change, _ ->
                                 change.consume()
@@ -503,13 +529,26 @@ fun NotionCanvasScreen(
                             drawCircle(Color.White, 6.dp.toPx(), Offset(saturation * size.width, (1f - value) * size.height), style = Stroke(2.dp.toPx()))
                         }
                     }
+
                     Spacer(Modifier.height(16.dp))
+
                     Canvas(modifier = Modifier.fillMaxWidth().height(30.dp).clip(RoundedCornerShape(50))
-                        .pointerInput(Unit) { detectDragGestures { change, _ -> change.consume(); hue = (change.position.x / size.width.toFloat()).coerceIn(0f, 1f) * 360f } }
+                        .pointerInput(Unit) {
+                            detectTapGestures { offset ->
+                                hue = (offset.x / size.width.toFloat()).coerceIn(0f, 1f) * 360f
+                            }
+                        }
+                        .pointerInput(Unit) {
+                            detectDragGestures { change, _ ->
+                                change.consume()
+                                hue = (change.position.x / size.width.toFloat()).coerceIn(0f, 1f) * 360f
+                            }
+                        }
                     ) {
                         drawRect(Brush.horizontalGradient(listOf(Color.Red, Color.Yellow, Color.Green, Color.Cyan, Color.Blue, Color.Magenta, Color.Red)))
                         drawCircle(Color.White, 12.dp.toPx(), Offset((hue / 360f) * size.width, size.height / 2), style = Stroke(3.dp.toPx()))
                     }
+
                     Spacer(Modifier.height(16.dp))
                     Button(modifier = Modifier.fillMaxWidth(), onClick = {
                         val pickedColor = Color.hsv(hue, saturation, value)
@@ -525,7 +564,6 @@ fun NotionCanvasScreen(
         )
     }
 
-    // NEW ICON PICKER DIALOG
     if (showIconPicker) {
         SpaceIconPicker(
             initialIcon = spaceIcon,
@@ -537,6 +575,7 @@ fun NotionCanvasScreen(
         )
     }
 }
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SpaceIconPicker(
@@ -557,7 +596,6 @@ fun SpaceIconPicker(
 
     var selectedCategory by remember { mutableStateOf("All") }
 
-    // EXACT MAP OF YOUR DRAWABLES TO PREVENT MISSING DOTS
     val iconLibrary = remember {
         mapOf(
             "Arrows" to listOf("arrow", "arrow_circle_down", "arrow_circle_left", "arrow_circle_right", "arrow_circle_up", "arrow_down", "arrow_left", "arrow_right", "arrow_single_down", "arrow_single_left", "arrow_single_right", "arrow_single_up", "arrow_square_down", "arrow_square_left", "arrow_square_right", "arrow_square_up", "backward", "chevrons", "chevrons_down", "chevrons_left", "chevrons_right", "forward"),
@@ -588,7 +626,6 @@ fun SpaceIconPicker(
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
 
-                // HEADER
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -605,22 +642,19 @@ fun SpaceIconPicker(
                 }
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // HSV PICKER - SATURATION & VALUE
                 Box(
                     modifier = Modifier.fillMaxWidth().height(100.dp).clip(RoundedCornerShape(8.dp)).background(Color.hsv(hue, 1f, 1f))
                         .pointerInput(Unit) {
-                            awaitEachGesture {
-                                val down = awaitFirstDown()
-                                saturation = (down.position.x / size.width.toFloat()).coerceIn(0f, 1f)
-                                value = 1f - (down.position.y / size.height.toFloat()).coerceIn(0f, 1f)
-                                do {
-                                    val event = awaitPointerEvent()
-                                    event.changes.forEach { change ->
-                                        saturation = (change.position.x / size.width.toFloat()).coerceIn(0f, 1f)
-                                        value = 1f - (change.position.y / size.height.toFloat()).coerceIn(0f, 1f)
-                                        change.consume()
-                                    }
-                                } while (event.changes.any { it.pressed })
+                            detectTapGestures { offset ->
+                                saturation = (offset.x / size.width.toFloat()).coerceIn(0f, 1f)
+                                value = 1f - (offset.y / size.height.toFloat()).coerceIn(0f, 1f)
+                            }
+                        }
+                        .pointerInput(Unit) {
+                            detectDragGestures { change, _ ->
+                                change.consume()
+                                saturation = (change.position.x / size.width.toFloat()).coerceIn(0f, 1f)
+                                value = 1f - (change.position.y / size.height.toFloat()).coerceIn(0f, 1f)
                             }
                         }
                 ) {
@@ -633,20 +667,17 @@ fun SpaceIconPicker(
 
                 Spacer(Modifier.height(12.dp))
 
-                // HSV PICKER - HUE SLIDER
                 Canvas(
                     modifier = Modifier.fillMaxWidth().height(24.dp).clip(RoundedCornerShape(50))
                         .pointerInput(Unit) {
-                            awaitEachGesture {
-                                val down = awaitFirstDown()
-                                hue = (down.position.x / size.width.toFloat()).coerceIn(0f, 1f) * 360f
-                                do {
-                                    val event = awaitPointerEvent()
-                                    event.changes.forEach { change ->
-                                        hue = (change.position.x / size.width.toFloat()).coerceIn(0f, 1f) * 360f
-                                        change.consume()
-                                    }
-                                } while (event.changes.any { it.pressed })
+                            detectTapGestures { offset ->
+                                hue = (offset.x / size.width.toFloat()).coerceIn(0f, 1f) * 360f
+                            }
+                        }
+                        .pointerInput(Unit) {
+                            detectDragGestures { change, _ ->
+                                change.consume()
+                                hue = (change.position.x / size.width.toFloat()).coerceIn(0f, 1f) * 360f
                             }
                         }
                 ) {
@@ -656,12 +687,11 @@ fun SpaceIconPicker(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // MODERNIZED CATEGORY FILTERS (Sleek monochrome look, no purple)
                 LazyRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    items(categoriesList) { category ->
+                    lazyRowItems(categoriesList) { category ->
                         FilterChip(
                             selected = selectedCategory == category,
                             onClick = { selectedCategory = category },
@@ -673,7 +703,7 @@ fun SpaceIconPicker(
                                 containerColor = Color.Transparent,
                                 labelColor = MaterialTheme.colorScheme.onSurfaceVariant
                             ),
-                            border = null // Removes the default border for a much cleaner look
+                            border = null
                         )
                     }
                 }
