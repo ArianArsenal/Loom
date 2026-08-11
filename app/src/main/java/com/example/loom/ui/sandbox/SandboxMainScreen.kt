@@ -29,16 +29,26 @@ import com.example.loom.data.models.SandboxSpace
 import com.example.loom.utils.SecurityManager
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import androidx.activity.compose.BackHandler
+import androidx.compose.runtime.LaunchedEffect
 
 enum class SandboxRoute { HUB, CANVAS }
 
 
 
 @Composable
-fun SandboxMainScreen(viewModel: SandboxViewModel) {
+fun SandboxMainScreen(
+    viewModel: SandboxViewModel,
+    onCanvasVisibilityChanged: (Boolean) -> Unit
+) {
     val context = LocalContext.current
     var currentRoute by remember { mutableStateOf(SandboxRoute.HUB) }
     var spaceBackstack by remember { mutableStateOf(emptyList<String>()) }
+
+    // --- NEW: Broadcast to LoomMainScreen whenever the route changes! ---
+    LaunchedEffect(currentRoute) {
+        onCanvasVisibilityChanged(currentRoute == SandboxRoute.CANVAS)
+    }
 
     val allSpaces by viewModel.allSpaces.collectAsState()
     val isBiometricEnabled by viewModel.isBiometricEnabled.collectAsState()
@@ -190,6 +200,16 @@ fun SandboxMainScreen(viewModel: SandboxViewModel) {
         )
     } else {
         activeSpace?.let { space ->
+            // --- NEW: HARDWARE BACK BUTTON INTERCEPTOR ---
+            BackHandler {
+                if (spaceBackstack.size > 1) {
+                    spaceBackstack = spaceBackstack.dropLast(1)
+                } else {
+                    spaceBackstack = emptyList()
+                    currentRoute = SandboxRoute.HUB
+                }
+            }
+
             NotionCanvasScreen(
                 space = space,
                 allSpaces = allSpaces,
@@ -201,17 +221,14 @@ fun SandboxMainScreen(viewModel: SandboxViewModel) {
                         currentRoute = SandboxRoute.HUB
                     }
                 },
-                onNavigateToSpace = { spaceId ->
-                    attemptNavigateToSpace(spaceId, true)
-                },
+                // ... rest of parameters stay the same ...
+                onNavigateToSpace = { spaceId -> attemptNavigateToSpace(spaceId, true) },
                 onCreateLinkedSpace = {
                     val newSpace = SandboxSpace(title = "", blocks = listOf(SandboxBlock(content = ZWSP)))
                     viewModel.saveSpace(newSpace)
                     newSpace.id
                 },
-                onSave = { updatedSpace ->
-                    viewModel.saveSpace(updatedSpace)
-                }
+                onSave = { updatedSpace -> viewModel.saveSpace(updatedSpace) }
             )
         } ?: run {
             currentRoute = SandboxRoute.HUB

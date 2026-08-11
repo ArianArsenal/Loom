@@ -8,7 +8,7 @@ enum class BlockType {
     TEXT, HEADING, HEADING_2, HEADING_3, HEADING_4, BULLET, NUMBER, TODO, TOGGLE, CALLOUT, QUOTE, TABLE, DIVIDER, CALENDAR,
     IMAGE, AUDIO, FILE, CODE, SPACE, LINK,
     SKETCH, KANBAN, VIDEO, PROGRESS, MATH,
-    TOC, CHART, TIMER, BOOKMARK, COUNTDOWN, GALLERY // NEW: Table of Contents Block
+    TOC, CHART, TIMER, BOOKMARK, COUNTDOWN, GALLERY, CARD // NEW: Table of Contents Block
 }
 
 @Serializable
@@ -93,7 +93,9 @@ data class SandboxBlock(
     var kanbanColumns: List<KanbanColumn> = emptyList(),
     var sketchStrokes: List<SketchStroke> = emptyList(),
     var children: List<SandboxBlock> = emptyList(),
-    var galleryItems: List<GalleryItem> = emptyList() // <-- NEW: Holds the gallery data
+    var galleryItems: List<GalleryItem> = emptyList(),
+    var pinnedTab: String = "",
+    var isLocked: Boolean = false
 )
 
 @Serializable

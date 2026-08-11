@@ -13,6 +13,8 @@ import com.example.loom.util.DateUtils
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.serialization.encodeToString
@@ -22,6 +24,39 @@ import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 import javax.inject.Inject
+
+// --- THE FIX: Universal Backup Adapter (Supports Old & New Backups) ---
+data class SpaceBackupDto(
+    val id: String,
+    val title: String,
+    val icon: String,
+    val bannerUrl: String = "",
+    val updatedAt: Long = 0L,
+    val isPinned: Boolean = false,
+    val tagsJson: String = "[]",
+    val isPrivate: Boolean = false,
+    val isDeleted: Boolean = false,
+    val blocksJson: String? = null, // CATCHES OLD BACKUPS
+    val blocks: List<com.example.loom.data.models.SandboxBlock>? = null // CATCHES NEW BACKUPS
+) {
+    fun toDomainModel(): com.example.loom.data.models.SandboxSpace {
+        // Smart fallback: If 'blocks' exists use it, otherwise decode the old 'blocksJson'
+        val finalBlocks = if (blocks != null && blocks.isNotEmpty()) {
+            blocks
+        } else if (!blocksJson.isNullOrBlank()) {
+            try { Json.decodeFromString<List<com.example.loom.data.models.SandboxBlock>>(blocksJson) } catch (e: Exception) { emptyList() }
+        } else {
+            emptyList()
+        }
+
+        return com.example.loom.data.models.SandboxSpace(
+            id = id, title = title, icon = icon, bannerUrl = bannerUrl,
+            updatedAt = updatedAt, isPinned = isPinned,
+            tags = try { Json.decodeFromString(tagsJson) } catch (e: Exception) { emptyList() },
+            isPrivate = isPrivate, isDeleted = isDeleted, blocks = finalBlocks
+        )
+    }
+}
 
 data class LoomBackup(
     val dailyRecords: List<DailyRecord> = emptyList(),
@@ -35,7 +70,7 @@ data class LoomBackup(
     val skincareProducts: List<SkincareProduct> = emptyList(),
     val skincareRoutines: List<SkincareRoutine> = emptyList(),
     val foodItems: List<FoodItem> = emptyList(),
-    val notionSpaces: List<NotionSpaceEntity> = emptyList(),
+    val notionSpaces: List<SpaceBackupDto> = emptyList(), // Uses the new Bridge Adapter
 
     val targetCalories: Int = 2800,
     val targetProtein: Int = 140,
@@ -73,6 +108,37 @@ class HomeViewModel @Inject constructor(
     val consumedFoods: StateFlow<List<ConsumedFoodLog>> = todayRecord
         .map { try { Json.decodeFromString<List<ConsumedFoodLog>>(it?.consumedFoodsJson ?: "[]") } catch (e: Exception) { emptyList() } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    // --- UPDATED: Pinned Home Cards Pipeline ---
+    val allSpaces: StateFlow<List<com.example.loom.data.models.SandboxSpace>> = sandboxDao.getActiveSpaces()
+        .onEach { android.util.Log.e("LoomSync", "PULSE CHECK: Database just emitted new data! Total Spaces: ${it.size}") }
+        .map { entities -> entities.map { it.toDomainModel() } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val pinnedHomeCards: StateFlow<List<Pair<com.example.loom.data.models.SandboxSpace, com.example.loom.data.models.SandboxBlock>>> = allSpaces.map { spaces ->
+        val cards = mutableListOf<Pair<com.example.loom.data.models.SandboxSpace, com.example.loom.data.models.SandboxBlock>>()
+        // Filter strictly for non-deleted spaces
+        spaces.filter { !it.isDeleted }.forEach { space ->
+            val foundCards = com.example.loom.ui.sandbox.findPinnedCards(space.blocks, "Home")
+            foundCards.forEach { card -> cards.add(Pair(space, card)) }
+        }
+        cards
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    fun updateSpaceFromWidget(space: com.example.loom.data.models.SandboxSpace) {
+        @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
+        // THE FIX: NonCancellable ensures that typing in the widget saves even if you switch tabs 0.1 seconds later!
+        GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO + kotlinx.coroutines.NonCancellable) {
+            try {
+                val spaceToSave = space.copy(updatedAt = System.currentTimeMillis())
+                val spaceEntity = NotionSpaceEntity.fromDomainModel(spaceToSave)
+                val blockEntities = com.example.loom.ui.sandbox.flattenTree(spaceToSave.blocks, spaceToSave.id)
+                sandboxDao.saveSpaceWithBlocks(spaceEntity, blockEntities)
+            } catch (e: Exception) {
+                android.util.Log.e("LoomDatabase", "Fatal error updating space from widget", e)
+            }
+        }
+    }
 
     val completedSkincareRoutines: StateFlow<List<String>> = todayRecord
         .map { try { Json.decodeFromString<List<String>>(it?.completedSkincareRoutinesJson ?: "[]") } catch (e: Exception) { emptyList() } }
@@ -139,6 +205,20 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             _isLoading.value = true
             try {
+                // Stitch the SQL rows into nested Domain Models for JSON Export
+                val activeSpaces = sandboxDao.getActiveSpaces().first().map { it.toDomainModel() }
+
+                // Map to DTO for safe exporting
+                val backupSpaces = activeSpaces.map { space ->
+                    SpaceBackupDto(
+                        id = space.id, title = space.title, icon = space.icon, bannerUrl = space.bannerUrl,
+                        updatedAt = space.updatedAt, isPinned = space.isPinned,
+                        tagsJson = Json.encodeToString(space.tags),
+                        isPrivate = space.isPrivate, isDeleted = space.isDeleted,
+                        blocks = space.blocks
+                    )
+                }
+
                 val backup = LoomBackup(
                     dailyRecords = trackerDao.getAllDailyRecords().first(),
                     tasks = trackerDao.getAllTasks().first(),
@@ -151,7 +231,7 @@ class HomeViewModel @Inject constructor(
                     skincareProducts = trackerDao.getAllSkincareProducts().first(),
                     skincareRoutines = trackerDao.getAllSkincareRoutines().first(),
                     foodItems = trackerDao.getUserCreatedFoodItems().first(),
-                    notionSpaces = sandboxDao.getActiveSpaces().first(),
+                    notionSpaces = backupSpaces, // Uses the mapped list here
                     targetCalories = targetCalories.value,
                     targetProtein = targetProtein.value,
                     targetCarbs = targetCarbs.value,
@@ -196,7 +276,14 @@ class HomeViewModel @Inject constructor(
                     backup.skincareProducts.forEach { trackerDao.insertSkincareProductReplace(it) }
                     backup.skincareRoutines.forEach { trackerDao.insertSkincareRoutine(it) }
                     backup.foodItems.forEach { trackerDao.insertFoodItem(it) }
-                    backup.notionSpaces.forEach { sandboxDao.saveSpace(it) }
+
+                    // Maps the bridge adapter into Domain models, then safely slices them into SQL
+                    backup.notionSpaces.forEach { dto ->
+                        val domainSpace = dto.toDomainModel()
+                        val spaceEntity = NotionSpaceEntity.fromDomainModel(domainSpace)
+                        val blockEntities = com.example.loom.ui.sandbox.flattenTree(domainSpace.blocks, domainSpace.id)
+                        sandboxDao.saveSpaceWithBlocks(spaceEntity, blockEntities)
+                    }
 
                     userPreferences.saveTargets(backup.targetCalories, backup.targetProtein, backup.targetCarbs, backup.targetFats)
                     userPreferences.saveDefaultWaterIncrement(backup.defaultWaterIncrement)
@@ -257,7 +344,6 @@ class HomeViewModel @Inject constructor(
     }
 
     fun addFoodItemToPantry(food: FoodItem) = viewModelScope.launch {
-        // Automatically tags any manually added food as user-created
         repository.insertFoodItem(food.copy(isUserCreated = true))
     }
 
@@ -274,7 +360,7 @@ class HomeViewModel @Inject constructor(
             foodName = food.name,
             emoji = getMealEmojiForTime(currentTime),
             servings = servings,
-            servingUnit = food.servingUnit, // Added Unit Save
+            servingUnit = food.servingUnit,
             calories = totalCals, protein = totalPro, carbs = totalCarbs, fats = totalFats,
             timestamp = currentTime
         )
@@ -304,7 +390,6 @@ class HomeViewModel @Inject constructor(
         repository.deleteSkincareProduct(product)
     }
 
-    // Syncs with the Master Checkbox logic from the Health Tab
     fun toggleAllSkincareSteps(routineName: String, products: List<String>, isCompleted: Boolean) = viewModelScope.launch {
         val record = todayRecord.value ?: return@launch
         val currentSteps = try { Json.decodeFromString<List<String>>(record.completedSkincareStepsJson) } catch (e: Exception) { emptyList() }.toMutableList()

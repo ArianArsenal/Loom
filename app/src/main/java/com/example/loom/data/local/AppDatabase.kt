@@ -21,7 +21,7 @@ import com.example.loom.data.local.entity.SkincareProduct
 import com.example.loom.data.local.entity.SkincareRoutine
 import com.example.loom.data.local.entity.FoodItem
 import com.example.loom.data.local.entity.NotionSpaceEntity
-
+import com.example.loom.data.local.entity.SandboxBlockEntity
 @Database(
     entities = [
         DailyRecord::class, Task::class, TaskSection::class, Exercise::class,
@@ -29,9 +29,10 @@ import com.example.loom.data.local.entity.NotionSpaceEntity
         DiaryNote::class, NoteTag::class,
         SkincareProduct::class, SkincareRoutine::class,
         FoodItem::class,
-        NotionSpaceEntity::class
+        NotionSpaceEntity::class,
+        SandboxBlockEntity::class
     ],
-    version = 31, // <-- BUMPED TO 31 FOR THE TRASH SYSTEM
+    version = 32, // <-- BUMPED TO 32
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -196,6 +197,68 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_31_32 = object : Migration(31, 32) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // 1. Create the new blocks table
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `notion_blocks` (
+                        `id` TEXT NOT NULL, `spaceId` TEXT NOT NULL, `parentId` TEXT, `orderIndex` INTEGER NOT NULL, 
+                        `type` TEXT NOT NULL, `content` TEXT NOT NULL, `textFormatsJson` TEXT NOT NULL, 
+                        `secondaryContent` TEXT NOT NULL, `icon` TEXT NOT NULL, `url` TEXT NOT NULL, 
+                        `isChecked` INTEGER NOT NULL, `isExpanded` INTEGER NOT NULL, `progress` REAL NOT NULL, 
+                        `tableDataJson` TEXT NOT NULL, `colWidthsJson` TEXT NOT NULL, `rowHeightsJson` TEXT NOT NULL, 
+                        `calendarEventsJson` TEXT NOT NULL, `kanbanColumnsJson` TEXT NOT NULL, 
+                        `sketchStrokesJson` TEXT NOT NULL, `galleryItemsJson` TEXT NOT NULL, 
+                        `pinnedTab` TEXT NOT NULL, `isLocked` INTEGER NOT NULL, 
+                        PRIMARY KEY(`id`), FOREIGN KEY(`spaceId`) REFERENCES `notion_spaces`(`id`) ON DELETE CASCADE
+                    )
+                """.trimIndent())
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_notion_blocks_spaceId` ON `notion_blocks` (`spaceId`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_notion_blocks_parentId` ON `notion_blocks` (`parentId`)")
+
+                // 2. Extract the old JSON strings, parse them, and insert into the new blocks table
+                val cursor = db.query("SELECT id, blocksJson FROM notion_spaces")
+                while (cursor.moveToNext()) {
+                    val spaceId = cursor.getString(0)
+                    val blocksJson = cursor.getString(1)
+                    try {
+                        val blocks = kotlinx.serialization.json.Json.decodeFromString<List<com.example.loom.data.models.SandboxBlock>>(blocksJson)
+                        val flatEntities = com.example.loom.ui.sandbox.flattenTree(blocks, spaceId)
+                        flatEntities.forEach { b ->
+                            val values = android.content.ContentValues().apply {
+                                put("id", b.id); put("spaceId", b.spaceId); put("parentId", b.parentId); put("orderIndex", b.orderIndex)
+                                put("type", b.type); put("content", b.content); put("textFormatsJson", b.textFormatsJson)
+                                put("secondaryContent", b.secondaryContent); put("icon", b.icon); put("url", b.url)
+                                put("isChecked", if (b.isChecked) 1 else 0); put("isExpanded", if (b.isExpanded) 1 else 0)
+                                put("progress", b.progress); put("tableDataJson", b.tableDataJson); put("colWidthsJson", b.colWidthsJson)
+                                put("rowHeightsJson", b.rowHeightsJson); put("calendarEventsJson", b.calendarEventsJson)
+                                put("kanbanColumnsJson", b.kanbanColumnsJson); put("sketchStrokesJson", b.sketchStrokesJson)
+                                put("galleryItemsJson", b.galleryItemsJson); put("pinnedTab", b.pinnedTab); put("isLocked", if (b.isLocked) 1 else 0)
+                            }
+                            db.insert("notion_blocks", android.database.sqlite.SQLiteDatabase.CONFLICT_REPLACE, values)
+                        }
+                    } catch (e: Exception) { android.util.Log.e("Migration", "Failed parsing block for $spaceId") }
+                }
+                cursor.close()
+
+                // 3. Create the clean Space table WITHOUT the blocksJson column
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `notion_spaces_new` (
+                        `id` TEXT NOT NULL, `title` TEXT NOT NULL, `icon` TEXT NOT NULL, `bannerUrl` TEXT NOT NULL, 
+                        `updatedAt` INTEGER NOT NULL, `isPinned` INTEGER NOT NULL, `tagsJson` TEXT NOT NULL, 
+                        `isPrivate` INTEGER NOT NULL, `isDeleted` INTEGER NOT NULL, PRIMARY KEY(`id`)
+                    )
+                """.trimIndent())
+
+                // Copy data over
+                db.execSQL("INSERT INTO notion_spaces_new (id, title, icon, bannerUrl, updatedAt, isPinned, tagsJson, isPrivate, isDeleted) SELECT id, title, icon, bannerUrl, updatedAt, isPinned, tagsJson, isPrivate, isDeleted FROM notion_spaces")
+
+                // Swap tables
+                db.execSQL("DROP TABLE notion_spaces")
+                db.execSQL("ALTER TABLE notion_spaces_new RENAME TO notion_spaces")
+            }
+        }
+
         private fun executeMigration(db: SupportSQLiteDatabase) {
             db.execSQL("""
                 CREATE TABLE IF NOT EXISTS `exercises_new` (
@@ -244,7 +307,8 @@ abstract class AppDatabase : RoomDatabase() {
                         MIGRATION_27_28,
                         MIGRATION_28_29,
                         MIGRATION_29_30,
-                        MIGRATION_30_31 // <-- Added new migration here
+                        MIGRATION_30_31,
+                        MIGRATION_31_32
                     )
                     .fallbackToDestructiveMigration()
                     .build().also { INSTANCE = it }

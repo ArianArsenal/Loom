@@ -1,5 +1,9 @@
 package com.example.loom.ui
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Book
@@ -28,7 +32,7 @@ import com.example.loom.ui.settings.SettingsScreen
 import com.example.loom.ui.health.HealthViewModel
 import com.example.loom.ui.sandbox.SandboxMainScreen
 import com.example.loom.ui.sandbox.SandboxViewModel
-import com.example.loom.ui.sandbox.SandboxViewModelFactory
+
 
 sealed class BottomNavItem(val route: String, val title: String, val icon: ImageVector) {
     object Home : BottomNavItem("home", "Home", Icons.Default.Home)
@@ -41,6 +45,9 @@ sealed class BottomNavItem(val route: String, val title: String, val icon: Image
 @Composable
 fun LoomMainScreen(viewModel: HomeViewModel) {
     val navController = rememberNavController()
+
+    // --- NEW: Dynamic Bottom Bar Visibility State ---
+    var isBottomBarVisible by remember { mutableStateOf(true) }
 
     val items = listOf(
         BottomNavItem.Home,
@@ -55,39 +62,44 @@ fun LoomMainScreen(viewModel: HomeViewModel) {
             val navBackStackEntry by navController.currentBackStackEntryAsState()
             val currentRoute = navBackStackEntry?.destination?.route
 
-            NavigationBar(
-                containerColor = MaterialTheme.colorScheme.surface,
-                tonalElevation = 8.dp
+            // --- NEW: Smoothly animate the bar in and out! ---
+            AnimatedVisibility(
+                visible = isBottomBarVisible,
+                enter = slideInVertically(animationSpec = tween(300)) { height -> height },
+                exit = slideOutVertically(animationSpec = tween(300)) { height -> height }
             ) {
-                items.forEach { item ->
-                    // FIX 1: Ensure the Home tab stays highlighted even when deep in the Settings screen
-                    val isSelected = currentRoute == item.route ||
-                            (item.route == BottomNavItem.Home.route && currentRoute == "settings")
+                NavigationBar(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    tonalElevation = 8.dp
+                ) {
+                    items.forEach { item ->
+                        val isSelected = currentRoute == item.route ||
+                                (item.route == BottomNavItem.Home.route && currentRoute == "settings")
 
-                    NavigationBarItem(
-                        icon = { Icon(item.icon, contentDescription = item.title) },
-                        label = { Text(item.title) },
-                        selected = isSelected,
-                        colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = MaterialTheme.colorScheme.onPrimary,
-                            selectedTextColor = MaterialTheme.colorScheme.primary,
-                            indicatorColor = MaterialTheme.colorScheme.primary
-                        ),
-                        onClick = {
-                            // FIX 2: Intercept the click. If on Settings and Home is clicked, pop back to the root!
-                            if (item.route == BottomNavItem.Home.route && currentRoute == "settings") {
-                                navController.popBackStack(BottomNavItem.Home.route, inclusive = false)
-                            } else {
-                                navController.navigate(item.route) {
-                                    popUpTo(navController.graph.findStartDestination().id) {
-                                        saveState = true
+                        NavigationBarItem(
+                            icon = { Icon(item.icon, contentDescription = item.title) },
+                            label = { Text(item.title) },
+                            selected = isSelected,
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = MaterialTheme.colorScheme.onPrimary,
+                                selectedTextColor = MaterialTheme.colorScheme.primary,
+                                indicatorColor = MaterialTheme.colorScheme.primary
+                            ),
+                            onClick = {
+                                if (item.route == BottomNavItem.Home.route && currentRoute == "settings") {
+                                    navController.popBackStack(BottomNavItem.Home.route, inclusive = false)
+                                } else {
+                                    navController.navigate(item.route) {
+                                        popUpTo(navController.graph.findStartDestination().id) {
+                                            saveState = true
+                                        }
+                                        launchSingleTop = true
+                                        restoreState = true
                                     }
-                                    launchSingleTop = true
-                                    restoreState = true
                                 }
                             }
-                        }
-                    )
+                        )
+                    }
                 }
             }
         }
@@ -95,48 +107,58 @@ fun LoomMainScreen(viewModel: HomeViewModel) {
         NavHost(
             navController = navController,
             startDestination = BottomNavItem.Home.route,
-            modifier = Modifier.padding(bottom = innerPadding.calculateBottomPadding())
+            // Only apply bottom padding if the bar is visible so the canvas can take the full screen
+            modifier = Modifier.padding(bottom = if (isBottomBarVisible) innerPadding.calculateBottomPadding() else 0.dp)
         ) {
             // Home Route
             composable(BottomNavItem.Home.route) {
+                isBottomBarVisible = true
                 HomeScreen(
                     viewModel = viewModel,
-                    onNavigateToSettings = { navController.navigate("settings") }
+                    onNavigateToSettings = { navController.navigate("settings")},
+                    onNavigateToSpace = { spaceId ->
+                        // Note: If you ever implement deep linking to spaces from Home, handle visibility here
+                        navController.navigate("spaces")
+                    }
                 )
             }
 
             // Health Route
             composable(BottomNavItem.Health.route) {
+                isBottomBarVisible = true
                 val healthViewModel: HealthViewModel = androidx.hilt.navigation.compose.hiltViewModel()
                 HealthScreen(viewModel = healthViewModel)
             }
 
             // Calendar Route
             composable(BottomNavItem.Calendar.route) {
+                isBottomBarVisible = true
                 val calendarViewModel: com.example.loom.ui.calendar.CalendarViewModel = androidx.hilt.navigation.compose.hiltViewModel()
                 com.example.loom.ui.calendar.CalendarScreen(viewModel = calendarViewModel)
             }
 
             // Diary Route
             composable(BottomNavItem.Diary.route) {
+                isBottomBarVisible = true
                 DiaryScreen(viewModel = viewModel)
             }
 
             // Spaces Route
             composable(BottomNavItem.Spaces.route) {
-                val context = LocalContext.current
-                val database = remember { AppDatabase.getDatabase(context) }
-                val userPreferences = remember { com.example.loom.data.local.preferences.UserPreferences(context) }
+                // THE FIX: Uses Hilt to grab the shared Unified Database Instance
+                val sandboxViewModel: SandboxViewModel = androidx.hilt.navigation.compose.hiltViewModel()
 
-                val sandboxViewModel: SandboxViewModel = viewModel(
-                    factory = SandboxViewModelFactory(database.sandboxDao, userPreferences)
+                SandboxMainScreen(
+                    viewModel = sandboxViewModel,
+                    onCanvasVisibilityChanged = { isCanvasOpen ->
+                        isBottomBarVisible = !isCanvasOpen
+                    }
                 )
-
-                SandboxMainScreen(viewModel = sandboxViewModel)
             }
 
             // Settings Route
             composable("settings") {
+                isBottomBarVisible = true
                 SettingsScreen(
                     viewModel = viewModel,
                     onNavigateBack = { navController.popBackStack() }

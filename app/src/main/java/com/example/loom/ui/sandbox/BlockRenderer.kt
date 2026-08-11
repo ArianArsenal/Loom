@@ -34,6 +34,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Delete
@@ -42,8 +43,12 @@ import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.FormatClear
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.LockOpen
+import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material.icons.outlined.RadioButtonUnchecked
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -78,6 +83,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Color.Companion.Transparent
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.toArgb
@@ -142,6 +148,8 @@ fun BlockRenderer(
     focusRequesters: MutableMap<String, FocusRequester>,
     focusTargetId: String?,
     allBlocks: List<SandboxBlock>,
+    isWidgetMode: Boolean = false,
+    isReadOnly: Boolean = false,
     onScrollToBlock: (String) -> Unit,
     onMove: (Int) -> Unit,
     onFocusRequest: (String) -> Unit,
@@ -192,12 +200,10 @@ fun BlockRenderer(
         }
     }
 
-    val audioLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
-        // Used primarily by AudioBlockRenderer
-    }
+    val audioLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
     LaunchedEffect(isFocused, block.type) {
-        if (isFocused) {
+        if (isFocused && !isReadOnly) {
             try {
                 focusRequester.requestFocus()
                 keyboardController?.show()
@@ -225,6 +231,8 @@ fun BlockRenderer(
     }
 
     val handleTextChange: (TextFieldValue) -> Unit = handleTextChange@{ newTextState ->
+        if (isReadOnly) return@handleTextChange
+
         val newText = newTextState.text
         val oldText = textState.text
         var newFormats = currentBlock.textFormats
@@ -233,7 +241,7 @@ fun BlockRenderer(
             newFormats = adjustFormats(oldText, newText, currentBlock.textFormats, newTextState.selection.start)
         }
 
-        val needsZWSP = block.type in listOf(BlockType.TEXT, BlockType.HEADING, BlockType.HEADING_2, BlockType.HEADING_3, BlockType.HEADING_4, BlockType.BULLET, BlockType.NUMBER, BlockType.TODO, BlockType.QUOTE, BlockType.CALLOUT, BlockType.TOGGLE, BlockType.IMAGE, BlockType.AUDIO, BlockType.FILE, BlockType.SPACE, BlockType.LINK, BlockType.PROGRESS, BlockType.MATH, BlockType.VIDEO, BlockType.KANBAN, BlockType.SKETCH, BlockType.GALLERY)
+        val needsZWSP = block.type in listOf(BlockType.TEXT, BlockType.HEADING, BlockType.HEADING_2, BlockType.HEADING_3, BlockType.HEADING_4, BlockType.BULLET, BlockType.NUMBER, BlockType.TODO, BlockType.QUOTE, BlockType.CALLOUT, BlockType.TOGGLE, BlockType.IMAGE, BlockType.AUDIO, BlockType.FILE, BlockType.SPACE, BlockType.LINK, BlockType.PROGRESS, BlockType.MATH, BlockType.VIDEO, BlockType.KANBAN, BlockType.SKETCH, BlockType.GALLERY, BlockType.CARD)
         if (!needsZWSP) {
             textState = newTextState.copy(annotatedString = buildAnnotated(newText, newFormats))
             onUpdate(currentBlock.copy(content = newText, textFormats = newFormats))
@@ -257,12 +265,16 @@ fun BlockRenderer(
                     textState = textState.copy(text = ZWSP, selection = TextRange(1))
                     onUpdate(currentBlock.copy(type = BlockType.TEXT, content = ZWSP, textFormats = emptyList()))
                     keyboardController?.show()
-                } else if (block.type in listOf(BlockType.IMAGE, BlockType.AUDIO, BlockType.FILE, BlockType.SPACE, BlockType.LINK, BlockType.PROGRESS, BlockType.MATH, BlockType.VIDEO, BlockType.KANBAN, BlockType.SKETCH, BlockType.GALLERY) && remainder.isEmpty()) {
+                } else if (block.type in listOf(BlockType.IMAGE, BlockType.AUDIO, BlockType.FILE, BlockType.SPACE, BlockType.LINK, BlockType.PROGRESS, BlockType.MATH, BlockType.VIDEO, BlockType.KANBAN, BlockType.SKETCH, BlockType.GALLERY, BlockType.CARD) && remainder.isEmpty()) {
+                    android.util.Log.e("LoomDeleteTrace", "Backspace triggered deletion for block ${block.id}")
                     onDeleteBlock("", true)
                     keyboardController?.show()
+                    return@handleTextChange // FIX: Force stop to prevent ghost updates during deletion
                 } else {
+                    android.util.Log.e("LoomDeleteTrace", "Backspace triggered remainder merge for block ${block.id}")
                     onDeleteBlock(remainder, false)
                     keyboardController?.show()
+                    return@handleTextChange // FIX: Force stop
                 }
             }
             else if (newText.contains('\n')) {
@@ -273,7 +285,7 @@ fun BlockRenderer(
                 val currentLine = parts[0]
                 val nextContent = ZWSP + (parts.getOrNull(1) ?: "")
 
-                if (currentLine.isEmpty() && block.type != BlockType.TEXT && block.type != BlockType.TOGGLE) {
+                if (currentLine.isEmpty() && block.type != BlockType.TEXT && block.type != BlockType.TOGGLE && block.type != BlockType.CARD) {
                     textState = newTextState.copy(text = ZWSP, selection = TextRange(1))
                     onUpdate(currentBlock.copy(type = BlockType.TEXT, content = ZWSP, textFormats = emptyList()))
                     scope.launch { delay(50); isProcessingEnter = false }
@@ -310,7 +322,7 @@ fun BlockRenderer(
 
     val placeholderUI: @Composable (innerTextField: @Composable () -> Unit) -> Unit = { inner ->
         Box {
-            if (textState.text.replace(ZWSP, "").isEmpty() && isFocused) {
+            if (textState.text.replace(ZWSP, "").isEmpty() && isFocused && !isReadOnly) {
                 val hint = when(block.type) {
                     BlockType.HEADING -> "Heading 1"
                     BlockType.HEADING_2 -> "Heading 2"
@@ -324,6 +336,7 @@ fun BlockRenderer(
                     BlockType.MATH -> "E = mc^2"
                     BlockType.SKETCH -> "Canvas Notes"
                     BlockType.KANBAN -> "Board Name"
+                    BlockType.CARD -> "Widget Name"
                     else -> "Type '/' for commands"
                 }
                 Text(hint, color = Color.LightGray, fontStyle = if (block.type == BlockType.MATH) FontStyle.Italic else FontStyle.Normal)
@@ -336,7 +349,9 @@ fun BlockRenderer(
     var isDragging by remember { mutableStateOf(false) }
 
     val isEmptyText = block.type == BlockType.TEXT && textState.text.replace(ZWSP, "").trim().isEmpty()
-    val showHandle = if (isTextBased) { !isEmptyText && (isFocused || isDragging) } else { true }
+
+    val hideDragHandle = isWidgetMode && block.type == BlockType.CARD
+    val showHandle = if (hideDragHandle) false else if (isTextBased) { !isEmptyText && (isFocused || isDragging) && !isReadOnly } else { !isReadOnly }
 
     val elevation by animateDpAsState(if (isDragging) 6.dp else 0.dp, label = "drag_elevation")
     val bgColor = if (isDragging) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f) else Color.Transparent
@@ -352,32 +367,37 @@ fun BlockRenderer(
             BlockType.HEADING_2 -> 16.dp
             BlockType.HEADING_3 -> 12.dp
             BlockType.HEADING_4 -> 10.dp
-            BlockType.IMAGE, BlockType.VIDEO, BlockType.AUDIO, BlockType.FILE, BlockType.SPACE, BlockType.LINK -> 22.dp
+            BlockType.IMAGE, BlockType.VIDEO, BlockType.AUDIO, BlockType.FILE, BlockType.SPACE, BlockType.LINK, BlockType.CARD -> 22.dp
             BlockType.SKETCH, BlockType.KANBAN, BlockType.CALENDAR, BlockType.TABLE -> 16.dp
             BlockType.DIVIDER -> 6.dp
             else -> 6.dp
         }
 
         var dragOffset by remember { mutableFloatStateOf(0f) }
-        Box(
-            modifier = Modifier
-                .width(28.dp)
-                .padding(top = handleTopPadding)
-                .pointerInput(block.id) {
-                    detectVerticalDragGestures(
-                        onDragStart = { isDragging = true },
-                        onDragEnd = { isDragging = false; dragOffset = 0f },
-                        onDragCancel = { isDragging = false; dragOffset = 0f }
-                    ) { change, dragAmount ->
-                        change.consume()
-                        dragOffset += dragAmount
-                        if (dragOffset > 50f) { onMove(1); dragOffset -= 50f }
-                        else if (dragOffset < -50f) { onMove(-1); dragOffset += 50f }
-                    }
-                },
-            contentAlignment = Alignment.TopStart
-        ) {
-            if (showHandle) { Icon(Icons.Default.DragIndicator, "Drag to reorder", tint = Color.LightGray, modifier = Modifier.size(20.dp)) }
+
+        if (!hideDragHandle) {
+            Box(
+                modifier = Modifier
+                    .width(28.dp)
+                    .padding(top = handleTopPadding)
+                    .pointerInput(block.id) {
+                        if (!isReadOnly) {
+                            detectVerticalDragGestures(
+                                onDragStart = { isDragging = true },
+                                onDragEnd = { isDragging = false; dragOffset = 0f },
+                                onDragCancel = { isDragging = false; dragOffset = 0f }
+                            ) { change, dragAmount ->
+                                change.consume()
+                                dragOffset += dragAmount
+                                if (dragOffset > 40f) { onMove(1); dragOffset = 0f }
+                                else if (dragOffset < -40f) { onMove(-1); dragOffset = 0f }
+                            }
+                        }
+                    },
+                contentAlignment = Alignment.TopStart
+            ) {
+                if (showHandle) { Icon(Icons.Default.DragIndicator, "Drag to reorder", tint = Color.LightGray, modifier = Modifier.size(20.dp)) }
+            }
         }
 
         Box(modifier = Modifier.weight(1f)) {
@@ -416,7 +436,7 @@ fun BlockRenderer(
                             } else if (block.type == BlockType.TODO) {
                                 Icon(imageVector = if (block.isChecked) Icons.Outlined.CheckCircle else Icons.Outlined.RadioButtonUnchecked, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp).padding(end = 8.dp).clickable { onUpdate(currentBlock.copy(isChecked = !block.isChecked)) })
                             } else if (block.type == BlockType.CALLOUT) {
-                                BasicTextField(value = block.icon, onValueChange = { if (it.length <= 4) onUpdate(currentBlock.copy(icon = it)) }, textStyle = MaterialTheme.typography.titleMedium, modifier = Modifier.width(32.dp).padding(end = 8.dp))
+                                BasicTextField(value = block.icon, onValueChange = { if (it.length <= 4 && !isReadOnly) onUpdate(currentBlock.copy(icon = it)) }, textStyle = MaterialTheme.typography.titleMedium, modifier = Modifier.width(32.dp).padding(end = 8.dp), readOnly = isReadOnly)
                             } else if (block.type == BlockType.TOGGLE) {
                                 Icon(imageVector = if (block.isExpanded) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowRight, contentDescription = null, modifier = Modifier.size(24.dp).clickable { onUpdate(currentBlock.copy(isExpanded = !block.isExpanded)) })
                             }
@@ -425,15 +445,17 @@ fun BlockRenderer(
                                 BasicTextField(
                                     value = textState, onValueChange = handleTextChange, textStyle = textStyle,
                                     modifier = commonModifier.padding(start = if (block.type == BlockType.TOGGLE) 4.dp else 0.dp),
-                                    cursorBrush = SolidColor(MaterialTheme.colorScheme.primary), decorationBox = placeholderUI
+                                    cursorBrush = SolidColor(MaterialTheme.colorScheme.primary), decorationBox = placeholderUI,
+                                    readOnly = isReadOnly
                                 )
                                 if (block.type == BlockType.QUOTE) {
                                     Spacer(modifier = Modifier.height(8.dp))
                                     BasicTextField(
-                                        value = block.secondaryContent, onValueChange = { onUpdate(currentBlock.copy(secondaryContent = it)) },
+                                        value = block.secondaryContent, onValueChange = { if (!isReadOnly) onUpdate(currentBlock.copy(secondaryContent = it)) },
                                         textStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.SemiBold),
                                         modifier = Modifier.align(Alignment.End), cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                                        decorationBox = { inner -> Box { if (block.secondaryContent.isEmpty()) Text("- Author", color = Color.LightGray) else Row{ Text("- "); inner() } } }
+                                        decorationBox = { inner -> Box { if (block.secondaryContent.isEmpty()) Text("- Author", color = Color.LightGray) else Row{ Text("- "); inner() } } },
+                                        readOnly = isReadOnly
                                     )
                                 }
                             }
@@ -453,13 +475,14 @@ fun BlockRenderer(
                                     BlockRenderer(
                                         block = childBlock, numberIndex = cNumberedIndex, allSpaces = allSpaces, currentSpaceId = currentSpaceId, recentTableColors = recentTableColors,
                                         focusRequesters = focusRequesters, focusTargetId = focusTargetId, allBlocks = allBlocks,
+                                        isWidgetMode = isWidgetMode, isReadOnly = isReadOnly,
                                         onScrollToBlock = onScrollToBlock,
                                         onMove = { offset ->
-                                            val currentIndex = block.children.indexOfFirst { it.id == childBlock.id }
+                                            val currentIndex = currentBlock.children.indexOfFirst { it.id == childBlock.id }
                                             if (currentIndex != -1) {
                                                 val newIndex = currentIndex + offset
-                                                if (newIndex in 0 until block.children.size) {
-                                                    val newChildren = block.children.toMutableList()
+                                                if (newIndex in 0 until currentBlock.children.size) {
+                                                    val newChildren = currentBlock.children.toMutableList()
                                                     val temp = newChildren[currentIndex]
                                                     newChildren[currentIndex] = newChildren[newIndex]
                                                     newChildren[newIndex] = temp
@@ -469,12 +492,12 @@ fun BlockRenderer(
                                         },
                                         onFocusRequest = onFocusRequest, onScrollToTop = onScrollToTop, onNavigateToSpace = onNavigateToSpace, onCreateLinkedSpace = onCreateLinkedSpace,
                                         onUpdate = { updatedChild ->
-                                            val newChildren = block.children.toMutableList()
+                                            val newChildren = currentBlock.children.toMutableList()
                                             val safeIndex = newChildren.indexOfFirst { it.id == updatedChild.id }
                                             if (safeIndex != -1) { newChildren[safeIndex] = updatedChild; onUpdate(currentBlock.copy(children = newChildren)) }
                                         },
                                         onSplitBlock = { currentContent, nextType, nextContent ->
-                                            val newChildren = block.children.toMutableList()
+                                            val newChildren = currentBlock.children.toMutableList()
                                             val safeIndex = newChildren.indexOfFirst { it.id == childBlock.id }
                                             if (safeIndex != -1) {
                                                 newChildren[safeIndex] = newChildren[safeIndex].copy(content = currentContent)
@@ -485,7 +508,7 @@ fun BlockRenderer(
                                             }
                                         },
                                         onDeleteBlock = { remainder, deleteEntirely ->
-                                            val newChildren = block.children.toMutableList()
+                                            val newChildren = currentBlock.children.toMutableList()
                                             val safeIndex = newChildren.indexOfFirst { it.id == childBlock.id }
                                             if (safeIndex != -1 && safeIndex < newChildren.size) {
                                                 if (deleteEntirely) {
@@ -518,7 +541,7 @@ fun BlockRenderer(
                                     Spacer(modifier = Modifier.height(4.dp))
                                 }
                             }
-                            if (block.children.isEmpty()) {
+                            if (!isReadOnly && block.children.isEmpty()) {
                                 TextButton(onClick = { onUpdate(currentBlock.copy(children = listOf(SandboxBlock(content = ZWSP)))) }) { Text("+ Add inside toggle", color = Color.Gray) }
                             }
                         }
@@ -541,12 +564,185 @@ fun BlockRenderer(
                     BlockType.LINK -> LinkBlockRenderer(currentBlock, textState, handleTextChange, commonModifier, placeholderUI, onUpdate, onDeleteBlock)
                     BlockType.BOOKMARK -> BookmarkBlockRenderer(currentBlock, onUpdate, onDeleteBlock)
                     BlockType.GALLERY -> GalleryBlockRenderer(currentBlock, onUpdate, onDeleteBlock)
+                    BlockType.CARD -> {
+                        // --- UI UPGRADE: Solid Color Matching ---
+                        // We use a pure, solid surfaceVariant without alpha for the Home widgets to perfectly match M3 Cards
+                        val cardBgColor = if (isWidgetMode) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                        val cardShape = if (isWidgetMode) RoundedCornerShape(24.dp) else RoundedCornerShape(16.dp)
+                        val cardBorder = if (isWidgetMode) null else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+
+                        Surface(color = cardBgColor, shape = cardShape, border = cardBorder, modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    BasicTextField(
+                                        value = textState, onValueChange = handleTextChange,
+                                        textStyle = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground),
+                                        modifier = commonModifier.weight(1f), cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                                        decorationBox = placeholderUI,
+                                        readOnly = isReadOnly
+                                    )
+
+                                    if (!isWidgetMode) {
+                                        IconButton(onClick = { onUpdate(currentBlock.copy(isLocked = !currentBlock.isLocked)) }, modifier = Modifier.size(32.dp)) {
+                                            Icon(if (block.isLocked) Icons.Default.Lock else Icons.Outlined.LockOpen, "Lock", tint = if (block.isLocked) MaterialTheme.colorScheme.primary else Color.Gray, modifier = Modifier.size(20.dp))
+                                        }
+
+                                        var showPinMenu by remember { mutableStateOf(false) }
+                                        IconButton(onClick = { showPinMenu = true }, modifier = Modifier.size(32.dp)) {
+                                            Icon(if (block.pinnedTab.isNotBlank()) Icons.Default.PushPin else Icons.Outlined.PushPin, "Pin", tint = if (block.pinnedTab.isNotBlank()) MaterialTheme.colorScheme.primary else Color.Gray, modifier = Modifier.size(20.dp))
+                                        }
+                                        DropdownMenu(expanded = showPinMenu, onDismissRequest = { showPinMenu = false }) {
+                                            val tabsList = block.pinnedTab.split(",").filter { it.isNotBlank() }.toMutableSet()
+                                            val isHome = tabsList.contains("Home")
+                                            val isHealth = tabsList.contains("Health")
+
+                                            DropdownMenuItem(
+                                                text = { Text("Home") },
+                                                trailingIcon = { if (isHome) Icon(Icons.Default.Check, null) },
+                                                onClick = {
+                                                    if (isHome) tabsList.remove("Home") else tabsList.add("Home")
+                                                    val newPins = tabsList.joinToString(",")
+                                                    onUpdate(currentBlock.copy(pinnedTab = newPins))
+                                                    showPinMenu = false
+                                                }
+                                            )
+                                            DropdownMenuItem(
+                                                text = { Text("Health") },
+                                                trailingIcon = { if (isHealth) Icon(Icons.Default.Check, null) },
+                                                onClick = {
+                                                    if (isHealth) tabsList.remove("Health") else tabsList.add("Health")
+                                                    val newPins = tabsList.joinToString(",")
+                                                    onUpdate(currentBlock.copy(pinnedTab = newPins))
+                                                    showPinMenu = false
+                                                }
+                                            )
+                                        }
+
+                                        Spacer(Modifier.width(4.dp))
+                                        IconButton(onClick = {
+                                            val prefs = context.getSharedPreferences("loom_prefs", android.content.Context.MODE_PRIVATE)
+                                            prefs.edit().putBoolean("deleted_card_${currentBlock.id}", true).apply()
+                                            onDeleteBlock("", true)
+                                        }, modifier = Modifier.size(32.dp)) {
+                                            Icon(Icons.Default.Delete, "Delete", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp))
+                                        }
+                                    } else if (block.isLocked) {
+                                        Icon(Icons.Default.Lock, "Locked", tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f), modifier = Modifier.size(16.dp))
+                                    }
+                                }
+
+                                val dividerColor = if (isWidgetMode) MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f) else MaterialTheme.colorScheme.outlineVariant
+                                HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = dividerColor)
+
+                                Column(modifier = Modifier.fillMaxWidth().padding(start = 4.dp)) {
+                                    block.children.forEachIndexed { childIndex, childBlock ->
+                                        val cNumberedIndex = if (childBlock.type == BlockType.NUMBER) {
+                                            var cCount = 1
+                                            for (i in childIndex - 1 downTo 0) { if (block.children[i].type == BlockType.NUMBER) cCount++ else break }
+                                            cCount
+                                        } else 1
+
+                                        key(childBlock.id) {
+                                            BlockRenderer(
+                                                block = childBlock, numberIndex = cNumberedIndex, allSpaces = allSpaces, currentSpaceId = currentSpaceId, recentTableColors = recentTableColors,
+                                                focusRequesters = focusRequesters, focusTargetId = focusTargetId, allBlocks = allBlocks,
+                                                isWidgetMode = isWidgetMode,
+                                                isReadOnly = isReadOnly || block.isLocked,
+                                                onScrollToBlock = onScrollToBlock,
+                                                onMove = { offset ->
+                                                    val currentIndex = currentBlock.children.indexOfFirst { it.id == childBlock.id }
+                                                    if (currentIndex != -1) {
+                                                        val newIndex = currentIndex + offset
+                                                        if (newIndex in 0 until currentBlock.children.size) {
+                                                            val newChildren = currentBlock.children.toMutableList()
+                                                            val temp = newChildren[currentIndex]
+                                                            newChildren[currentIndex] = newChildren[newIndex]
+                                                            newChildren[newIndex] = temp
+                                                            onUpdate(currentBlock.copy(children = newChildren))
+                                                        }
+                                                    }
+                                                },
+                                                onFocusRequest = onFocusRequest, onScrollToTop = onScrollToTop, onNavigateToSpace = onNavigateToSpace, onCreateLinkedSpace = onCreateLinkedSpace,
+                                                onUpdate = { updatedChild ->
+                                                    val newChildren = currentBlock.children.toMutableList()
+                                                    val safeIndex = newChildren.indexOfFirst { it.id == updatedChild.id }
+                                                    if (safeIndex != -1) { newChildren[safeIndex] = updatedChild; onUpdate(currentBlock.copy(children = newChildren)) }
+                                                },
+                                                onSplitBlock = { currentContent, nextType, nextContent ->
+                                                    val newChildren = currentBlock.children.toMutableList()
+                                                    val safeIndex = newChildren.indexOfFirst { it.id == childBlock.id }
+                                                    if (safeIndex != -1) {
+                                                        newChildren[safeIndex] = newChildren[safeIndex].copy(content = currentContent)
+                                                        val newBlockId = java.util.UUID.randomUUID().toString()
+                                                        newChildren.add(safeIndex + 1, SandboxBlock(id = newBlockId, type = nextType, content = nextContent))
+                                                        onUpdate(currentBlock.copy(children = newChildren))
+                                                        onFocusRequest(newBlockId)
+                                                    }
+                                                },
+                                                onDeleteBlock = { remainder, deleteEntirely ->
+                                                    val newChildren = currentBlock.children.toMutableList()
+                                                    val safeIndex = newChildren.indexOfFirst { it.id == childBlock.id }
+                                                    if (safeIndex != -1 && safeIndex < newChildren.size) {
+                                                        if (deleteEntirely) {
+                                                            val prevId = if (safeIndex > 0) newChildren[safeIndex - 1].id else block.id
+                                                            newChildren.removeAt(safeIndex)
+                                                            onUpdate(currentBlock.copy(children = newChildren))
+                                                            onFocusRequest(prevId)
+                                                            try { focusRequesters[prevId]?.requestFocus() } catch(e:Exception){}
+                                                        } else if (safeIndex > 0) {
+                                                            val prevChild = newChildren[safeIndex - 1]
+                                                            val isPrevTextBased = prevChild.type in listOf(BlockType.TEXT, BlockType.HEADING, BlockType.HEADING_2, BlockType.HEADING_3, BlockType.HEADING_4, BlockType.BULLET, BlockType.NUMBER, BlockType.TODO, BlockType.QUOTE, BlockType.CALLOUT, BlockType.TOGGLE)
+                                                            if (isPrevTextBased) {
+                                                                val prevId = prevChild.id
+                                                                newChildren[safeIndex - 1] = prevChild.copy(content = prevChild.content + remainder)
+                                                                newChildren.removeAt(safeIndex)
+                                                                onUpdate(currentBlock.copy(children = newChildren))
+                                                                onFocusRequest(prevId)
+                                                                try { focusRequesters[prevId]?.requestFocus() } catch(e:Exception){}
+                                                            } else {
+                                                                newChildren.removeAt(safeIndex - 1)
+                                                                onUpdate(currentBlock.copy(children = newChildren))
+                                                            }
+                                                        } else if (safeIndex == 0) {
+                                                            if (deleteEntirely || remainder.trim().replace("\u200B","").isEmpty()) {
+                                                                newChildren.removeAt(0)
+                                                                onUpdate(currentBlock.copy(children = newChildren))
+                                                                onFocusRequest(block.id)
+                                                            } else {
+                                                                newChildren[0] = newChildren[0].copy(content = "\u200B" + remainder)
+                                                                onUpdate(currentBlock.copy(children = newChildren))
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            )
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                        }
+                                    }
+
+                                    val lastChild = block.children.lastOrNull()
+                                    val showAddBtn = lastChild == null || lastChild.type != BlockType.TEXT || lastChild.content.replace("\u200B", "").isNotEmpty()
+
+                                    // Hides the "Add Block" button if it's on the Home screen to reduce clutter
+                                    if (!isReadOnly && !block.isLocked && showAddBtn && !isWidgetMode) {
+                                        TextButton(onClick = {
+                                            val newChildren = block.children.toMutableList()
+                                            val newId = java.util.UUID.randomUUID().toString()
+                                            newChildren.add(SandboxBlock(id = newId, content = "\u200B"))
+                                            onUpdate(currentBlock.copy(children = newChildren))
+                                            onFocusRequest(newId)
+                                        }) { Text("+ Add Block", color = Color.Gray) }
+                                    }
+                                }
+                            }
+                        }
+                    }
                     BlockType.MATH -> {
                         var showMathSymbols by remember { mutableStateOf(false) }
                         Surface(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha=0.3f), shape = RoundedCornerShape(8.dp), border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant), modifier = Modifier.fillMaxWidth()) {
                             Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Box {
-                                    Text("∑", fontSize = 24.sp, fontFamily = FontFamily.Serif, color = MaterialTheme.colorScheme.primary, modifier = Modifier.clickable { showMathSymbols = true })
+                                    Text("∑", fontSize = 24.sp, fontFamily = FontFamily.Serif, color = MaterialTheme.colorScheme.primary, modifier = Modifier.clickable { if (!isReadOnly) showMathSymbols = true })
                                     DropdownMenu(expanded = showMathSymbols, onDismissRequest = { showMathSymbols = false }, modifier = Modifier.width(280.dp).background(MaterialTheme.colorScheme.surface)) {
                                         val symbols = listOf("∫", "∬", "√", "∞", "≈", "≠", "≤", "≥", "±", "×", "÷", "π", "θ", "α", "β", "Δ", "λ", "μ", "σ", "°")
                                         Column(modifier = Modifier.padding(8.dp)) {
@@ -573,7 +769,8 @@ fun BlockRenderer(
                                     textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onBackground, fontFamily = FontFamily.Serif, fontStyle = FontStyle.Italic, fontSize = 20.sp),
                                     modifier = commonModifier.weight(1f), cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                                     visualTransformation = MathVisualTransformation(),
-                                    decorationBox = placeholderUI
+                                    decorationBox = placeholderUI,
+                                    readOnly = isReadOnly
                                 )
                             }
                         }
@@ -588,13 +785,16 @@ fun BlockRenderer(
                                     textStyle = MaterialTheme.typography.bodyMedium.copy(color = Color(0xFFD4D4D4), fontFamily = FontFamily.Monospace),
                                     modifier = commonModifier.padding(16.dp).padding(end = 24.dp),
                                     cursorBrush = SolidColor(Color.White),
+                                    readOnly = isReadOnly,
                                     decorationBox = { inner -> Box{ if (textState.text.isEmpty()) Text("// write code here", color = Color.Gray, fontFamily = FontFamily.Monospace); inner() } }
                                 )
-                                IconButton(
-                                    onClick = { onDeleteBlock("", true) },
-                                    modifier = Modifier.align(Alignment.TopEnd).padding(4.dp).size(24.dp)
-                                ) {
-                                    Icon(Icons.Default.Close, "Delete Code", tint = Color.Gray, modifier = Modifier.size(16.dp))
+                                if (!isReadOnly) {
+                                    IconButton(
+                                        onClick = { onDeleteBlock("", true) },
+                                        modifier = Modifier.align(Alignment.TopEnd).padding(4.dp).size(24.dp)
+                                    ) {
+                                        Icon(Icons.Default.Close, "Delete Code", tint = Color.Gray, modifier = Modifier.size(16.dp))
+                                    }
                                 }
                             }
                         }
@@ -603,8 +803,10 @@ fun BlockRenderer(
                         Column(modifier = Modifier.fillMaxWidth()) {
                             if (block.url.isEmpty()) {
                                 var showSpacePicker by remember { mutableStateOf(false) }
-                                Button(onClick = { showSpacePicker = true }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant, contentColor = MaterialTheme.colorScheme.onSurface)) {
-                                    Icon(Icons.Default.Dashboard, null); Spacer(Modifier.width(8.dp)); Text("Select or Create a Space to Link")
+                                if (!isReadOnly) {
+                                    Button(onClick = { showSpacePicker = true }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant, contentColor = MaterialTheme.colorScheme.onSurface)) {
+                                        Icon(Icons.Default.Dashboard, null); Spacer(Modifier.width(8.dp)); Text("Select or Create a Space to Link")
+                                    }
                                 }
 
                                 if (showSpacePicker) {
@@ -656,10 +858,12 @@ fun BlockRenderer(
                                                 Text("(Current)", color = Color.Gray, fontSize = 12.sp, modifier = Modifier.padding(end = 8.dp))
                                             }
                                             Icon(Icons.AutoMirrored.Filled.ArrowForwardIos, null, tint = Color.Gray, modifier = Modifier.size(16.dp))
-                                            IconButton(onClick = { showBlockMenu = true }) { Icon(Icons.Default.MoreVert, "Options", tint = Color.Gray) }
-                                            DropdownMenu(expanded = showBlockMenu, onDismissRequest = { showBlockMenu = false }) {
-                                                DropdownMenuItem(text = { Text("Delete Block", color = MaterialTheme.colorScheme.error) }, onClick = { onDeleteBlock("", true) })
-                                                DropdownMenuItem(text = { Text("Change Space") }, onClick = { onUpdate(currentBlock.copy(url = "")); showBlockMenu = false })
+                                            if (!isReadOnly) {
+                                                IconButton(onClick = { showBlockMenu = true }) { Icon(Icons.Default.MoreVert, "Options", tint = Color.Gray) }
+                                                DropdownMenu(expanded = showBlockMenu, onDismissRequest = { showBlockMenu = false }) {
+                                                    DropdownMenuItem(text = { Text("Delete Block", color = MaterialTheme.colorScheme.error) }, onClick = { onDeleteBlock("", true) })
+                                                    DropdownMenuItem(text = { Text("Change Space") }, onClick = { onUpdate(currentBlock.copy(url = "")); showBlockMenu = false })
+                                                }
                                             }
                                         }
                                     }
@@ -668,7 +872,9 @@ fun BlockRenderer(
                                         Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                                             Icon(Icons.Default.ErrorOutline, null, tint = MaterialTheme.colorScheme.error); Spacer(Modifier.width(12.dp))
                                             Text("Space not found or deleted.", color = MaterialTheme.colorScheme.error, modifier = Modifier.weight(1f))
-                                            IconButton(onClick = { onDeleteBlock("", true) }) { Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error) }
+                                            if (!isReadOnly) {
+                                                IconButton(onClick = { onDeleteBlock("", true) }) { Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error) }
+                                            }
                                         }
                                     }
                                 }
@@ -678,11 +884,13 @@ fun BlockRenderer(
                     BlockType.DIVIDER -> {
                         Box(modifier = Modifier.fillMaxWidth().height(32.dp), contentAlignment = Alignment.Center) {
                             HorizontalDivider(modifier = Modifier.padding(end = 40.dp), color = Color.LightGray)
-                            IconButton(onClick = { showBlockMenu = true }, modifier = Modifier.align(Alignment.CenterEnd).size(32.dp)) {
-                                Icon(Icons.Default.MoreVert, "Options", tint = Color.LightGray, modifier = Modifier.size(18.dp))
-                            }
-                            DropdownMenu(expanded = showBlockMenu, onDismissRequest = { showBlockMenu = false }) {
-                                DropdownMenuItem(text = { Text("Delete Divider", color = MaterialTheme.colorScheme.error) }, onClick = { onDeleteBlock("", true) })
+                            if (!isReadOnly) {
+                                IconButton(onClick = { showBlockMenu = true }, modifier = Modifier.align(Alignment.CenterEnd).size(32.dp)) {
+                                    Icon(Icons.Default.MoreVert, "Options", tint = Color.LightGray, modifier = Modifier.size(18.dp))
+                                }
+                                DropdownMenu(expanded = showBlockMenu, onDismissRequest = { showBlockMenu = false }) {
+                                    DropdownMenuItem(text = { Text("Delete Divider", color = MaterialTheme.colorScheme.error) }, onClick = { onDeleteBlock("", true) })
+                                }
                             }
                         }
                     }
@@ -690,7 +898,9 @@ fun BlockRenderer(
                         Column(modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), RoundedCornerShape(8.dp)).padding(16.dp)) {
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                                 Text("Table of Contents", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
-                                IconButton(onClick = { showBlockMenu = true }, modifier = Modifier.size(24.dp)) { Icon(Icons.Default.MoreVert, "Options", tint = Color.Gray) }
+                                if (!isReadOnly) {
+                                    IconButton(onClick = { showBlockMenu = true }, modifier = Modifier.size(24.dp)) { Icon(Icons.Default.MoreVert, "Options", tint = Color.Gray) }
+                                }
                             }
                             DropdownMenu(expanded = showBlockMenu, onDismissRequest = { showBlockMenu = false }) {
                                 DropdownMenuItem(text = { Text("Delete TOC", color = MaterialTheme.colorScheme.error) }, onClick = { onDeleteBlock("", true) })
@@ -728,7 +938,8 @@ fun BlockRenderer(
                                 value = textState, onValueChange = handleTextChange,
                                 textStyle = MaterialTheme.typography.bodySmall.copy(color = Color.Transparent, fontSize = 1.sp),
                                 modifier = commonModifier.height(1.dp), cursorBrush = SolidColor(Color.Transparent),
-                                decorationBox = placeholderUI
+                                decorationBox = placeholderUI,
+                                readOnly = isReadOnly
                             )
                         }
                     }
@@ -736,7 +947,6 @@ fun BlockRenderer(
                 }
             }
 
-            // --- FLOATING RICH TEXT TOOLBAR ---
             if (isFocused && textState.selection.length > 0) {
                 Popup(alignment = Alignment.TopCenter, offset = IntOffset(0, -220)) {
                     Surface(shape = RoundedCornerShape(8.dp), shadowElevation = 8.dp, color = MaterialTheme.colorScheme.surface) {
@@ -815,7 +1025,7 @@ fun BlockRenderer(
                                     Box(
                                         modifier = Modifier.size(32.dp).background(color, CircleShape).border(1.dp, Color.LightGray, CircleShape)
                                             .clickable {
-                                                if (color == Color.Transparent) {
+                                                if (color == Transparent) {
                                                     applyFormat(if (isHighlight) "HIGHLIGHT" else "COLOR", "")
                                                 } else {
                                                     val hex = String.format("#%06X", (0xFFFFFF and color.toArgb()))
@@ -878,6 +1088,7 @@ fun BlockRenderer(
                     BlockType.DIVIDER to ("Divider" to "—"),
 
                     "Advanced Blocks" to null,
+                    BlockType.CARD to ("Widget Card" to "🗂️"),
                     BlockType.TOC to ("Table of Contents" to "📑"),
                     BlockType.CHART to ("Chart" to "📈"),
                     BlockType.CALLOUT to ("Callout" to "💡"),

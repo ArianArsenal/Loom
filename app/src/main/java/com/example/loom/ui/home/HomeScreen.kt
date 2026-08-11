@@ -38,6 +38,7 @@ import com.example.loom.data.local.entity.SubTask
 import com.example.loom.data.local.entity.Task
 import com.example.loom.data.local.entity.TaskSection
 import com.example.loom.ui.home.components.*
+import kotlinx.coroutines.launch
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.text.SimpleDateFormat
@@ -51,8 +52,13 @@ import java.util.UUID
 @Composable
 fun HomeScreen(
     viewModel: HomeViewModel,
-    onNavigateToSettings: () -> Unit
+    onNavigateToSettings: () -> Unit,
+    onNavigateToSpace: (String) -> Unit
 ) {
+
+    val pinnedCards by viewModel.pinnedHomeCards.collectAsState()
+    val allSpaces by viewModel.allSpaces.collectAsState()
+
     val todayRecord by viewModel.todayRecord.collectAsState()
     val allTasks by viewModel.allTasks.collectAsState()
     val sections by viewModel.allTaskSections.collectAsState()
@@ -353,6 +359,21 @@ fun HomeScreen(
             contentPadding = PaddingValues(top = 12.dp, bottom = 80.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+
+            // --- NEW: RENDER PINNED CARDS AT THE VERY TOP ---
+            if (pinnedCards.isNotEmpty()) {
+                items(pinnedCards, key = { it.second.id }) { (space, card) ->
+                    PinnedCardWidget(
+                        space = space,
+                        cardBlock = card,
+                        allSpaces = allSpaces,
+                        tabName = "Home",
+                        onUpdateSpace = { viewModel.updateSpaceFromWidget(it) },
+                        onNavigateToSpace = onNavigateToSpace
+                    )
+                }
+            }
+
             item {
                 NutritionLogCard(
                     todayRecord = todayRecord, targetCaloriesInt = targetCaloriesInt, targetProteinInt = targetProteinInt, targetCarbsInt = targetCarbsInt, targetFatsInt = targetFatsInt,
@@ -750,6 +771,88 @@ fun CreateTaskDialog(
                         onSave(task)
                     }
                 }) { Text("Save") }
+            }
+        }
+    )
+}
+// --- NEW: STRICT DATABASE-MIRRORING WIDGET ---
+@Composable
+fun PinnedCardWidget(
+    space: com.example.loom.data.models.SandboxSpace,
+    cardBlock: com.example.loom.data.models.SandboxBlock,
+    allSpaces: List<com.example.loom.data.models.SandboxSpace>,
+    tabName: String = "Home",
+    onUpdateSpace: (com.example.loom.data.models.SandboxSpace) -> Unit,
+    onNavigateToSpace: (String) -> Unit
+) {
+    val focusRequesters = remember { androidx.compose.runtime.mutableStateMapOf<String, androidx.compose.ui.focus.FocusRequester>() }
+    val recentTableColors = remember { androidx.compose.runtime.mutableStateListOf<androidx.compose.ui.graphics.Color>() }
+    var focusedBlockId by remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
+
+    // 1. Initialize the state buffer
+    var localCard by remember {
+        androidx.compose.runtime.mutableStateOf(
+            com.example.loom.ui.sandbox.prepareBlocksForUI(listOf(cardBlock)).first()
+        )
+    }
+
+    // 2. THE ULTIMATE SYNC: Key explicitly to space.updatedAt!
+    // Whenever the database saves, the timestamp changes. This guarantees the LaunchedEffect runs.
+    androidx.compose.runtime.LaunchedEffect(space.updatedAt) {
+        // Find the fresh block directly from the newly emitted space to ensure we have the latest data
+        val freshCardBlock = com.example.loom.ui.sandbox.findPinnedCards(space.blocks, tabName).find { it.id == cardBlock.id }
+
+        if (freshCardBlock != null) {
+            if (focusedBlockId == null || localCard.isLocked != freshCardBlock.isLocked) {
+                localCard = com.example.loom.ui.sandbox.prepareBlocksForUI(listOf(freshCardBlock)).first()
+                if (freshCardBlock.isLocked) {
+                    focusedBlockId = null // Forcefully hide the keyboard if locked from another tab!
+                }
+            }
+        }
+    }
+
+    val coroutineScope = androidx.compose.runtime.rememberCoroutineScope()
+    var debounceJob by remember { androidx.compose.runtime.mutableStateOf<kotlinx.coroutines.Job?>(null) }
+
+    com.example.loom.ui.sandbox.BlockRenderer(
+        block = localCard,
+        numberIndex = 1,
+        allSpaces = allSpaces,
+        currentSpaceId = space.id,
+        recentTableColors = recentTableColors,
+        focusRequesters = focusRequesters,
+        focusTargetId = focusedBlockId,
+        allBlocks = listOf(localCard),
+        isWidgetMode = true,
+        isReadOnly = localCard.isLocked, // Use localCard for immediate UI reflection
+        onScrollToBlock = {},
+        onMove = {},
+        onFocusRequest = { focusedBlockId = it },
+        onScrollToTop = {},
+        onNavigateToSpace = onNavigateToSpace,
+        onCreateLinkedSpace = { java.util.UUID.randomUUID().toString() },
+        onUpdate = { updatedCard ->
+            // Fast UI typing update
+            localCard = updatedCard
+
+            // Push to DB
+            debounceJob?.cancel()
+            @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
+            debounceJob = kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO + kotlinx.coroutines.NonCancellable) {
+                kotlinx.coroutines.delay(500)
+                val cleanCard = com.example.loom.ui.sandbox.cleanBlocksForDB(listOf(updatedCard)).first()
+                val newBlocks = com.example.loom.ui.sandbox.replaceBlockRecursively(space.blocks, cleanCard)
+                // Bump the timestamp here to trigger the LaunchedEffect for all other widgets!
+                onUpdateSpace(space.copy(blocks = newBlocks, updatedAt = System.currentTimeMillis()))
+            }
+        },
+        onSplitBlock = { _, _, _ -> },
+        onDeleteBlock = { _, deleteEntirely ->
+            if (deleteEntirely) {
+                debounceJob?.cancel()
+                val newBlocks = com.example.loom.ui.sandbox.removeBlockRecursively(space.blocks, localCard.id)
+                onUpdateSpace(space.copy(blocks = newBlocks, updatedAt = System.currentTimeMillis()))
             }
         }
     )
