@@ -565,24 +565,136 @@ fun BlockRenderer(
                     BlockType.BOOKMARK -> BookmarkBlockRenderer(currentBlock, onUpdate, onDeleteBlock)
                     BlockType.GALLERY -> GalleryBlockRenderer(currentBlock, onUpdate, onDeleteBlock)
                     BlockType.CARD -> {
-                        // --- UI UPGRADE: Solid Color Matching ---
-                        // We use a pure, solid surfaceVariant without alpha for the Home widgets to perfectly match M3 Cards
-                        val cardBgColor = if (isWidgetMode) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
-                        val cardShape = if (isWidgetMode) RoundedCornerShape(24.dp) else RoundedCornerShape(16.dp)
-                        val cardBorder = if (isWidgetMode) null else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                        // --- UI UPGRADE: Perfect Home-Tab Replication ---
+                        val isWidget = isWidgetMode
 
-                        Surface(color = cardBgColor, shape = cardShape, border = cardBorder, modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-                            Column(modifier = Modifier.padding(16.dp)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    BasicTextField(
-                                        value = textState, onValueChange = handleTextChange,
-                                        textStyle = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground),
-                                        modifier = commonModifier.weight(1f), cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                                        decorationBox = placeholderUI,
-                                        readOnly = isReadOnly
-                                    )
+                        // When in Widget mode, we perfectly mimic the ElevatedCard from NutritionLogCard
+                        if (isWidget) {
+                            androidx.compose.material3.ElevatedCard(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                shape = RoundedCornerShape(24.dp), // Exact corner radius from your Home components
+                                colors = androidx.compose.material3.CardDefaults.elevatedCardColors(
+                                    containerColor = MaterialTheme.colorScheme.surface
+                                )
+                            ) {
+                                Column(modifier = Modifier.padding(20.dp)) { // Exact padding from your Home components
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        BasicTextField(
+                                            value = textState, onValueChange = handleTextChange,
+                                            textStyle = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant),
+                                            modifier = commonModifier.weight(1f), cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                                            decorationBox = placeholderUI,
+                                            readOnly = isReadOnly
+                                        )
 
-                                    if (!isWidgetMode) {
+                                        if (block.isLocked) {
+                                            Icon(Icons.Default.Lock, "Locked", tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f), modifier = Modifier.size(16.dp))
+                                        }
+                                    }
+
+                                    HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = MaterialTheme.colorScheme.surfaceVariant)
+
+                                    Column(modifier = Modifier.fillMaxWidth()) {
+                                        block.children.forEachIndexed { childIndex, childBlock ->
+                                            val cNumberedIndex = if (childBlock.type == BlockType.NUMBER) {
+                                                var cCount = 1
+                                                for (i in childIndex - 1 downTo 0) { if (block.children[i].type == BlockType.NUMBER) cCount++ else break }
+                                                cCount
+                                            } else 1
+
+                                            key(childBlock.id) {
+                                                BlockRenderer(
+                                                    block = childBlock, numberIndex = cNumberedIndex, allSpaces = allSpaces, currentSpaceId = currentSpaceId, recentTableColors = recentTableColors,
+                                                    focusRequesters = focusRequesters, focusTargetId = focusTargetId, allBlocks = allBlocks,
+                                                    isWidgetMode = isWidgetMode,
+                                                    isReadOnly = isReadOnly || block.isLocked,
+                                                    onScrollToBlock = onScrollToBlock,
+                                                    onMove = { offset ->
+                                                        val currentIndex = currentBlock.children.indexOfFirst { it.id == childBlock.id }
+                                                        if (currentIndex != -1) {
+                                                            val newIndex = currentIndex + offset
+                                                            if (newIndex in 0 until currentBlock.children.size) {
+                                                                val newChildren = currentBlock.children.toMutableList()
+                                                                val temp = newChildren[currentIndex]
+                                                                newChildren[currentIndex] = newChildren[newIndex]
+                                                                newChildren[newIndex] = temp
+                                                                onUpdate(currentBlock.copy(children = newChildren))
+                                                            }
+                                                        }
+                                                    },
+                                                    onFocusRequest = onFocusRequest, onScrollToTop = onScrollToTop, onNavigateToSpace = onNavigateToSpace, onCreateLinkedSpace = onCreateLinkedSpace,
+                                                    onUpdate = { updatedChild ->
+                                                        val newChildren = currentBlock.children.toMutableList()
+                                                        val safeIndex = newChildren.indexOfFirst { it.id == updatedChild.id }
+                                                        if (safeIndex != -1) { newChildren[safeIndex] = updatedChild; onUpdate(currentBlock.copy(children = newChildren)) }
+                                                    },
+                                                    onSplitBlock = { currentContent, nextType, nextContent ->
+                                                        val newChildren = currentBlock.children.toMutableList()
+                                                        val safeIndex = newChildren.indexOfFirst { it.id == childBlock.id }
+                                                        if (safeIndex != -1) {
+                                                            newChildren[safeIndex] = newChildren[safeIndex].copy(content = currentContent)
+                                                            val newBlockId = java.util.UUID.randomUUID().toString()
+                                                            newChildren.add(safeIndex + 1, SandboxBlock(id = newBlockId, type = nextType, content = nextContent))
+                                                            onUpdate(currentBlock.copy(children = newChildren))
+                                                            onFocusRequest(newBlockId)
+                                                        }
+                                                    },
+                                                    onDeleteBlock = { remainder, deleteEntirely ->
+                                                        val newChildren = currentBlock.children.toMutableList()
+                                                        val safeIndex = newChildren.indexOfFirst { it.id == childBlock.id }
+                                                        if (safeIndex != -1 && safeIndex < newChildren.size) {
+                                                            if (deleteEntirely) {
+                                                                val prevId = if (safeIndex > 0) newChildren[safeIndex - 1].id else block.id
+                                                                newChildren.removeAt(safeIndex)
+                                                                onUpdate(currentBlock.copy(children = newChildren))
+                                                                onFocusRequest(prevId)
+                                                                try { focusRequesters[prevId]?.requestFocus() } catch(e:Exception){}
+                                                            } else if (safeIndex > 0) {
+                                                                val prevChild = newChildren[safeIndex - 1]
+                                                                val isPrevTextBased = prevChild.type in listOf(BlockType.TEXT, BlockType.HEADING, BlockType.HEADING_2, BlockType.HEADING_3, BlockType.HEADING_4, BlockType.BULLET, BlockType.NUMBER, BlockType.TODO, BlockType.QUOTE, BlockType.CALLOUT, BlockType.TOGGLE)
+                                                                if (isPrevTextBased) {
+                                                                    val prevId = prevChild.id
+                                                                    newChildren[safeIndex - 1] = prevChild.copy(content = prevChild.content + remainder)
+                                                                    newChildren.removeAt(safeIndex)
+                                                                    onUpdate(currentBlock.copy(children = newChildren))
+                                                                    onFocusRequest(prevId)
+                                                                    try { focusRequesters[prevId]?.requestFocus() } catch(e:Exception){}
+                                                                } else {
+                                                                    newChildren.removeAt(safeIndex - 1)
+                                                                    onUpdate(currentBlock.copy(children = newChildren))
+                                                                }
+                                                            } else if (safeIndex == 0) {
+                                                                if (deleteEntirely || remainder.trim().replace("\u200B","").isEmpty()) {
+                                                                    newChildren.removeAt(0)
+                                                                    onUpdate(currentBlock.copy(children = newChildren))
+                                                                    onFocusRequest(block.id)
+                                                                } else {
+                                                                    newChildren[0] = newChildren[0].copy(content = "\u200B" + remainder)
+                                                                    onUpdate(currentBlock.copy(children = newChildren))
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                )
+                                                Spacer(modifier = Modifier.height(4.dp))
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        } else {
+                            // --- ORIGINAL SANDBOX STYLING ---
+                            Surface(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), shape = RoundedCornerShape(16.dp), border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant), modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                                Column(modifier = Modifier.padding(16.dp)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        BasicTextField(
+                                            value = textState, onValueChange = handleTextChange,
+                                            textStyle = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground),
+                                            modifier = commonModifier.weight(1f), cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                                            decorationBox = placeholderUI,
+                                            readOnly = isReadOnly
+                                        )
+
                                         IconButton(onClick = { onUpdate(currentBlock.copy(isLocked = !currentBlock.isLocked)) }, modifier = Modifier.size(32.dp)) {
                                             Icon(if (block.isLocked) Icons.Default.Lock else Icons.Outlined.LockOpen, "Lock", tint = if (block.isLocked) MaterialTheme.colorScheme.primary else Color.Gray, modifier = Modifier.size(20.dp))
                                         }
@@ -626,112 +738,108 @@ fun BlockRenderer(
                                         }, modifier = Modifier.size(32.dp)) {
                                             Icon(Icons.Default.Delete, "Delete", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp))
                                         }
-                                    } else if (block.isLocked) {
-                                        Icon(Icons.Default.Lock, "Locked", tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f), modifier = Modifier.size(16.dp))
                                     }
-                                }
 
-                                val dividerColor = if (isWidgetMode) MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f) else MaterialTheme.colorScheme.outlineVariant
-                                HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = dividerColor)
+                                    HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = MaterialTheme.colorScheme.outlineVariant)
 
-                                Column(modifier = Modifier.fillMaxWidth().padding(start = 4.dp)) {
-                                    block.children.forEachIndexed { childIndex, childBlock ->
-                                        val cNumberedIndex = if (childBlock.type == BlockType.NUMBER) {
-                                            var cCount = 1
-                                            for (i in childIndex - 1 downTo 0) { if (block.children[i].type == BlockType.NUMBER) cCount++ else break }
-                                            cCount
-                                        } else 1
+                                    Column(modifier = Modifier.fillMaxWidth().padding(start = 4.dp)) {
+                                        block.children.forEachIndexed { childIndex, childBlock ->
+                                            val cNumberedIndex = if (childBlock.type == BlockType.NUMBER) {
+                                                var cCount = 1
+                                                for (i in childIndex - 1 downTo 0) { if (block.children[i].type == BlockType.NUMBER) cCount++ else break }
+                                                cCount
+                                            } else 1
 
-                                        key(childBlock.id) {
-                                            BlockRenderer(
-                                                block = childBlock, numberIndex = cNumberedIndex, allSpaces = allSpaces, currentSpaceId = currentSpaceId, recentTableColors = recentTableColors,
-                                                focusRequesters = focusRequesters, focusTargetId = focusTargetId, allBlocks = allBlocks,
-                                                isWidgetMode = isWidgetMode,
-                                                isReadOnly = isReadOnly || block.isLocked,
-                                                onScrollToBlock = onScrollToBlock,
-                                                onMove = { offset ->
-                                                    val currentIndex = currentBlock.children.indexOfFirst { it.id == childBlock.id }
-                                                    if (currentIndex != -1) {
-                                                        val newIndex = currentIndex + offset
-                                                        if (newIndex in 0 until currentBlock.children.size) {
-                                                            val newChildren = currentBlock.children.toMutableList()
-                                                            val temp = newChildren[currentIndex]
-                                                            newChildren[currentIndex] = newChildren[newIndex]
-                                                            newChildren[newIndex] = temp
-                                                            onUpdate(currentBlock.copy(children = newChildren))
+                                            key(childBlock.id) {
+                                                BlockRenderer(
+                                                    block = childBlock, numberIndex = cNumberedIndex, allSpaces = allSpaces, currentSpaceId = currentSpaceId, recentTableColors = recentTableColors,
+                                                    focusRequesters = focusRequesters, focusTargetId = focusTargetId, allBlocks = allBlocks,
+                                                    isWidgetMode = isWidgetMode,
+                                                    isReadOnly = isReadOnly || block.isLocked,
+                                                    onScrollToBlock = onScrollToBlock,
+                                                    onMove = { offset ->
+                                                        val currentIndex = currentBlock.children.indexOfFirst { it.id == childBlock.id }
+                                                        if (currentIndex != -1) {
+                                                            val newIndex = currentIndex + offset
+                                                            if (newIndex in 0 until currentBlock.children.size) {
+                                                                val newChildren = currentBlock.children.toMutableList()
+                                                                val temp = newChildren[currentIndex]
+                                                                newChildren[currentIndex] = newChildren[newIndex]
+                                                                newChildren[newIndex] = temp
+                                                                onUpdate(currentBlock.copy(children = newChildren))
+                                                            }
                                                         }
-                                                    }
-                                                },
-                                                onFocusRequest = onFocusRequest, onScrollToTop = onScrollToTop, onNavigateToSpace = onNavigateToSpace, onCreateLinkedSpace = onCreateLinkedSpace,
-                                                onUpdate = { updatedChild ->
-                                                    val newChildren = currentBlock.children.toMutableList()
-                                                    val safeIndex = newChildren.indexOfFirst { it.id == updatedChild.id }
-                                                    if (safeIndex != -1) { newChildren[safeIndex] = updatedChild; onUpdate(currentBlock.copy(children = newChildren)) }
-                                                },
-                                                onSplitBlock = { currentContent, nextType, nextContent ->
-                                                    val newChildren = currentBlock.children.toMutableList()
-                                                    val safeIndex = newChildren.indexOfFirst { it.id == childBlock.id }
-                                                    if (safeIndex != -1) {
-                                                        newChildren[safeIndex] = newChildren[safeIndex].copy(content = currentContent)
-                                                        val newBlockId = java.util.UUID.randomUUID().toString()
-                                                        newChildren.add(safeIndex + 1, SandboxBlock(id = newBlockId, type = nextType, content = nextContent))
-                                                        onUpdate(currentBlock.copy(children = newChildren))
-                                                        onFocusRequest(newBlockId)
-                                                    }
-                                                },
-                                                onDeleteBlock = { remainder, deleteEntirely ->
-                                                    val newChildren = currentBlock.children.toMutableList()
-                                                    val safeIndex = newChildren.indexOfFirst { it.id == childBlock.id }
-                                                    if (safeIndex != -1 && safeIndex < newChildren.size) {
-                                                        if (deleteEntirely) {
-                                                            val prevId = if (safeIndex > 0) newChildren[safeIndex - 1].id else block.id
-                                                            newChildren.removeAt(safeIndex)
+                                                    },
+                                                    onFocusRequest = onFocusRequest, onScrollToTop = onScrollToTop, onNavigateToSpace = onNavigateToSpace, onCreateLinkedSpace = onCreateLinkedSpace,
+                                                    onUpdate = { updatedChild ->
+                                                        val newChildren = currentBlock.children.toMutableList()
+                                                        val safeIndex = newChildren.indexOfFirst { it.id == updatedChild.id }
+                                                        if (safeIndex != -1) { newChildren[safeIndex] = updatedChild; onUpdate(currentBlock.copy(children = newChildren)) }
+                                                    },
+                                                    onSplitBlock = { currentContent, nextType, nextContent ->
+                                                        val newChildren = currentBlock.children.toMutableList()
+                                                        val safeIndex = newChildren.indexOfFirst { it.id == childBlock.id }
+                                                        if (safeIndex != -1) {
+                                                            newChildren[safeIndex] = newChildren[safeIndex].copy(content = currentContent)
+                                                            val newBlockId = java.util.UUID.randomUUID().toString()
+                                                            newChildren.add(safeIndex + 1, SandboxBlock(id = newBlockId, type = nextType, content = nextContent))
                                                             onUpdate(currentBlock.copy(children = newChildren))
-                                                            onFocusRequest(prevId)
-                                                            try { focusRequesters[prevId]?.requestFocus() } catch(e:Exception){}
-                                                        } else if (safeIndex > 0) {
-                                                            val prevChild = newChildren[safeIndex - 1]
-                                                            val isPrevTextBased = prevChild.type in listOf(BlockType.TEXT, BlockType.HEADING, BlockType.HEADING_2, BlockType.HEADING_3, BlockType.HEADING_4, BlockType.BULLET, BlockType.NUMBER, BlockType.TODO, BlockType.QUOTE, BlockType.CALLOUT, BlockType.TOGGLE)
-                                                            if (isPrevTextBased) {
-                                                                val prevId = prevChild.id
-                                                                newChildren[safeIndex - 1] = prevChild.copy(content = prevChild.content + remainder)
+                                                            onFocusRequest(newBlockId)
+                                                        }
+                                                    },
+                                                    onDeleteBlock = { remainder, deleteEntirely ->
+                                                        val newChildren = currentBlock.children.toMutableList()
+                                                        val safeIndex = newChildren.indexOfFirst { it.id == childBlock.id }
+                                                        if (safeIndex != -1 && safeIndex < newChildren.size) {
+                                                            if (deleteEntirely) {
+                                                                val prevId = if (safeIndex > 0) newChildren[safeIndex - 1].id else block.id
                                                                 newChildren.removeAt(safeIndex)
                                                                 onUpdate(currentBlock.copy(children = newChildren))
                                                                 onFocusRequest(prevId)
                                                                 try { focusRequesters[prevId]?.requestFocus() } catch(e:Exception){}
-                                                            } else {
-                                                                newChildren.removeAt(safeIndex - 1)
-                                                                onUpdate(currentBlock.copy(children = newChildren))
-                                                            }
-                                                        } else if (safeIndex == 0) {
-                                                            if (deleteEntirely || remainder.trim().replace("\u200B","").isEmpty()) {
-                                                                newChildren.removeAt(0)
-                                                                onUpdate(currentBlock.copy(children = newChildren))
-                                                                onFocusRequest(block.id)
-                                                            } else {
-                                                                newChildren[0] = newChildren[0].copy(content = "\u200B" + remainder)
-                                                                onUpdate(currentBlock.copy(children = newChildren))
+                                                            } else if (safeIndex > 0) {
+                                                                val prevChild = newChildren[safeIndex - 1]
+                                                                val isPrevTextBased = prevChild.type in listOf(BlockType.TEXT, BlockType.HEADING, BlockType.HEADING_2, BlockType.HEADING_3, BlockType.HEADING_4, BlockType.BULLET, BlockType.NUMBER, BlockType.TODO, BlockType.QUOTE, BlockType.CALLOUT, BlockType.TOGGLE)
+                                                                if (isPrevTextBased) {
+                                                                    val prevId = prevChild.id
+                                                                    newChildren[safeIndex - 1] = prevChild.copy(content = prevChild.content + remainder)
+                                                                    newChildren.removeAt(safeIndex)
+                                                                    onUpdate(currentBlock.copy(children = newChildren))
+                                                                    onFocusRequest(prevId)
+                                                                    try { focusRequesters[prevId]?.requestFocus() } catch(e:Exception){}
+                                                                } else {
+                                                                    newChildren.removeAt(safeIndex - 1)
+                                                                    onUpdate(currentBlock.copy(children = newChildren))
+                                                                }
+                                                            } else if (safeIndex == 0) {
+                                                                if (deleteEntirely || remainder.trim().replace("\u200B","").isEmpty()) {
+                                                                    newChildren.removeAt(0)
+                                                                    onUpdate(currentBlock.copy(children = newChildren))
+                                                                    onFocusRequest(block.id)
+                                                                } else {
+                                                                    newChildren[0] = newChildren[0].copy(content = "\u200B" + remainder)
+                                                                    onUpdate(currentBlock.copy(children = newChildren))
+                                                                }
                                                             }
                                                         }
                                                     }
-                                                }
-                                            )
-                                            Spacer(modifier = Modifier.height(4.dp))
+                                                )
+                                                Spacer(modifier = Modifier.height(4.dp))
+                                            }
                                         }
-                                    }
 
-                                    val lastChild = block.children.lastOrNull()
-                                    val showAddBtn = lastChild == null || lastChild.type != BlockType.TEXT || lastChild.content.replace("\u200B", "").isNotEmpty()
+                                        val lastChild = block.children.lastOrNull()
+                                        val showAddBtn = lastChild == null || lastChild.type != BlockType.TEXT || lastChild.content.replace("\u200B", "").isNotEmpty()
 
-                                    // Hides the "Add Block" button if it's on the Home screen to reduce clutter
-                                    if (!isReadOnly && !block.isLocked && showAddBtn && !isWidgetMode) {
-                                        TextButton(onClick = {
-                                            val newChildren = block.children.toMutableList()
-                                            val newId = java.util.UUID.randomUUID().toString()
-                                            newChildren.add(SandboxBlock(id = newId, content = "\u200B"))
-                                            onUpdate(currentBlock.copy(children = newChildren))
-                                            onFocusRequest(newId)
-                                        }) { Text("+ Add Block", color = Color.Gray) }
+                                        if (!isReadOnly && !block.isLocked && showAddBtn) {
+                                            TextButton(onClick = {
+                                                val newChildren = block.children.toMutableList()
+                                                val newId = java.util.UUID.randomUUID().toString()
+                                                newChildren.add(SandboxBlock(id = newId, content = "\u200B"))
+                                                onUpdate(currentBlock.copy(children = newChildren))
+                                                onFocusRequest(newId)
+                                            }) { Text("+ Add Block", color = Color.Gray) }
+                                        }
                                     }
                                 }
                             }
