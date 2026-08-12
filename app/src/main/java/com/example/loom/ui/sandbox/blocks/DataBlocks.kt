@@ -16,6 +16,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -149,30 +150,64 @@ fun ChartBlockRenderer(
                     Box(modifier = Modifier.size(12.dp).background(chartColors[index % chartColors.size], CircleShape))
                     Spacer(Modifier.width(8.dp))
 
+                    // --- BULLETPROOF FIX FOR NAME FIELD ---
+                    var nameState by remember { mutableStateOf(TextFieldValue(data.first)) }
+                    var isNameFocused by remember { mutableStateOf(false) }
+
+                    // Only listen to the parent if the user is NOT actively typing
+                    LaunchedEffect(data.first) {
+                        if (!isNameFocused && nameState.text != data.first) {
+                            nameState = nameState.copy(text = data.first)
+                        }
+                    }
+
                     BasicTextField(
-                        value = data.first,
-                        onValueChange = { newName ->
+                        value = nameState,
+                        onValueChange = { newNameState ->
+                            nameState = newNameState
                             val newLines = chartData.toMutableList()
-                            newLines[index] = newName to data.second
+                            newLines[index] = newNameState.text to data.second
                             val newText = newLines.joinToString("\n") { "${it.first}: ${if (it.second % 1 == 0f) it.second.toInt() else it.second}" }
                             onUpdate(block.copy(content = ZWSP + newText))
                         },
                         textStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onBackground),
-                        modifier = Modifier.weight(1f).background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha=0.3f), RoundedCornerShape(4.dp)).padding(8.dp)
+                        modifier = Modifier
+                            .weight(1f)
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha=0.3f), RoundedCornerShape(4.dp))
+                            .onFocusChanged { isNameFocused = it.isFocused } // Track focus!
+                            .padding(8.dp),
+                        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary)
                     )
                     Spacer(Modifier.width(8.dp))
 
+                    // --- BULLETPROOF FIX FOR VALUE FIELD ---
+                    val expectedValStr = if (data.second % 1 == 0f) data.second.toInt().toString() else data.second.toString()
+                    var valState by remember { mutableStateOf(TextFieldValue(expectedValStr)) }
+                    var isValFocused by remember { mutableStateOf(false) }
+
+                    LaunchedEffect(expectedValStr) {
+                        if (!isValFocused && valState.text != expectedValStr) {
+                            valState = valState.copy(text = expectedValStr)
+                        }
+                    }
+
                     BasicTextField(
-                        value = if (data.second % 1 == 0f) data.second.toInt().toString() else data.second.toString(),
-                        onValueChange = { newVal ->
-                            val parsed = newVal.toFloatOrNull() ?: 0f
+                        value = valState,
+                        onValueChange = { newValState ->
+                            valState = newValState
+                            val parsed = newValState.text.toFloatOrNull() ?: 0f
                             val newLines = chartData.toMutableList()
                             newLines[index] = data.first to parsed
                             val newText = newLines.joinToString("\n") { "${it.first}: ${if (it.second % 1 == 0f) it.second.toInt() else it.second}" }
                             onUpdate(block.copy(content = ZWSP + newText))
                         },
                         textStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onBackground, textAlign = TextAlign.Center),
-                        modifier = Modifier.width(60.dp).background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha=0.3f), RoundedCornerShape(4.dp)).padding(8.dp)
+                        modifier = Modifier
+                            .width(60.dp)
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha=0.3f), RoundedCornerShape(4.dp))
+                            .onFocusChanged { isValFocused = it.isFocused } // Track focus!
+                            .padding(8.dp),
+                        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary)
                     )
 
                     IconButton(onClick = {

@@ -2,12 +2,15 @@ package com.example.loom.ui.health
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.loom.data.local.dao.SandboxDao
 import com.example.loom.data.local.entity.*
 import com.example.loom.data.local.preferences.UserPreferences
 import com.example.loom.data.repository.TrackerRepository
 import com.example.loom.util.DateUtils
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.serialization.encodeToString
@@ -31,13 +34,45 @@ data class SupplementItem(
 @HiltViewModel
 class HealthViewModel @Inject constructor(
     private val repository: TrackerRepository,
-    private val userPreferences: UserPreferences
+    private val userPreferences: UserPreferences,
+    private val sandboxDao: SandboxDao // --- NEW: Added SandboxDao dependency ---
 ) : ViewModel() {
 
     val hiddenHealthCards: StateFlow<Set<String>> = userPreferences.hiddenHealthCardsFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptySet())
     val isFasting: StateFlow<Boolean> = userPreferences.isFastingFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
     val fastingStartTime: StateFlow<Long> = userPreferences.fastingStartTimeFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0L)
     val fastingGoalHours: StateFlow<Int> = userPreferences.fastingGoalHoursFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 16)
+
+    // --- NEW: Pinned Health Cards Pipeline ---
+    val allSpaces: StateFlow<List<com.example.loom.data.models.SandboxSpace>> = sandboxDao.getActiveSpaces()
+        .map { entities -> entities.map { it.toDomainModel() } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val pinnedHealthCards: StateFlow<List<Pair<com.example.loom.data.models.SandboxSpace, com.example.loom.data.models.SandboxBlock>>> = allSpaces.map { spaces ->
+        val cards = mutableListOf<Pair<com.example.loom.data.models.SandboxSpace, com.example.loom.data.models.SandboxBlock>>()
+        // Filter strictly for non-deleted spaces
+        spaces.filter { !it.isDeleted }.forEach { space ->
+            // Specifically look for cards pinned to "Health"
+            val foundCards = com.example.loom.ui.sandbox.findPinnedCards(space.blocks, "Health")
+            foundCards.forEach { card -> cards.add(Pair(space, card)) }
+        }
+        cards
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    fun updateSpaceFromWidget(space: com.example.loom.data.models.SandboxSpace) {
+        @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
+        GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO + kotlinx.coroutines.NonCancellable) {
+            try {
+                val spaceToSave = space.copy(updatedAt = System.currentTimeMillis())
+                val spaceEntity = NotionSpaceEntity.fromDomainModel(spaceToSave)
+                val blockEntities = com.example.loom.ui.sandbox.flattenTree(spaceToSave.blocks, spaceToSave.id)
+                sandboxDao.saveSpaceWithBlocks(spaceEntity, blockEntities)
+            } catch (e: Exception) {
+                android.util.Log.e("LoomDatabase", "Fatal error updating space from Health widget", e)
+            }
+        }
+    }
+    // ----------------------------------------
 
     val todayRecord: StateFlow<DailyRecord?> = repository.getTodayRecord().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
     val todayExercises: StateFlow<List<Exercise>> = repository.getExercisesForDate(DateUtils.getTodayDateId()).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())

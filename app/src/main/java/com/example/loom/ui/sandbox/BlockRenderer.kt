@@ -3,60 +3,32 @@ package com.example.loom.ui.sandbox
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Dashboard
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DragIndicator
-import androidx.compose.material.icons.filled.ErrorOutline
-import androidx.compose.material.icons.filled.FormatClear
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.outlined.CheckCircle
-import androidx.compose.material.icons.outlined.LockOpen
-import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material.icons.outlined.RadioButtonUnchecked
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -75,69 +47,34 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Color.Companion.Transparent
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.TextRange
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextDecoration
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Popup
-import androidx.compose.ui.window.PopupProperties
 import androidx.compose.ui.zIndex
 import com.example.loom.data.models.BlockType
 import com.example.loom.data.models.SandboxBlock
 import com.example.loom.data.models.SandboxSpace
 import com.example.loom.data.models.TextFormatSpan
-import com.example.loom.ui.sandbox.blocks.AudioBlockRenderer
-import com.example.loom.ui.sandbox.blocks.BookmarkBlockRenderer
-import com.example.loom.ui.sandbox.blocks.CalendarBlockRenderer
-import com.example.loom.ui.sandbox.blocks.ChartBlockRenderer
-import com.example.loom.ui.sandbox.blocks.CountdownBlockRenderer
-import com.example.loom.ui.sandbox.blocks.FileBlockRenderer
-import com.example.loom.ui.sandbox.blocks.GalleryBlockRenderer
-import com.example.loom.ui.sandbox.blocks.ImageBlockRenderer
-import com.example.loom.ui.sandbox.blocks.KanbanBlockRenderer
-import com.example.loom.ui.sandbox.blocks.LinkBlockRenderer
-import com.example.loom.ui.sandbox.blocks.ProgressBlockRenderer
-import com.example.loom.ui.sandbox.blocks.SketchBlockRenderer
-import com.example.loom.ui.sandbox.blocks.TableBlockRenderer
-import com.example.loom.ui.sandbox.blocks.TimerBlockRenderer
-import com.example.loom.ui.sandbox.blocks.VideoBlockRenderer
-import com.example.loom.util.CodeSyntaxTransformation
+import com.example.loom.ui.sandbox.blocks.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.Locale
 import java.util.UUID
 
-fun extractHeadings(blocks: List<SandboxBlock>): List<SandboxBlock> {
-    val result = mutableListOf<SandboxBlock>()
-    for (b in blocks) {
-        if (b.type in listOf(BlockType.HEADING, BlockType.HEADING_2, BlockType.HEADING_3, BlockType.HEADING_4)) result.add(b)
-        if (b.children.isNotEmpty()) result.addAll(extractHeadings(b.children))
-    }
-    return result
-}
-
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun BlockRenderer(
     block: SandboxBlock,
@@ -169,10 +106,6 @@ fun BlockRenderer(
     var textState by remember { mutableStateOf(TextFieldValue(buildAnnotated(block.content, block.textFormats), TextRange(block.content.length))) }
     var showMenu by remember { mutableStateOf(false) }
     var commandQuery by remember { mutableStateOf("") }
-    var showBlockMenu by remember { mutableStateOf(false) }
-    var showTextColorPicker by remember { mutableStateOf(false) }
-    var showHighlightColorPicker by remember { mutableStateOf(false) }
-
     var isProcessingEnter by remember { mutableStateOf(false) }
 
     val isFocused = focusTargetId == block.id
@@ -241,7 +174,7 @@ fun BlockRenderer(
             newFormats = adjustFormats(oldText, newText, currentBlock.textFormats, newTextState.selection.start)
         }
 
-        val needsZWSP = block.type in listOf(BlockType.TEXT, BlockType.HEADING, BlockType.HEADING_2, BlockType.HEADING_3, BlockType.HEADING_4, BlockType.BULLET, BlockType.NUMBER, BlockType.TODO, BlockType.QUOTE, BlockType.CALLOUT, BlockType.TOGGLE, BlockType.IMAGE, BlockType.AUDIO, BlockType.FILE, BlockType.SPACE, BlockType.LINK, BlockType.PROGRESS, BlockType.MATH, BlockType.VIDEO, BlockType.KANBAN, BlockType.SKETCH, BlockType.GALLERY, BlockType.CARD)
+        val needsZWSP = block.type in listOf(BlockType.TEXT, BlockType.HEADING, BlockType.HEADING_2, BlockType.HEADING_3, BlockType.HEADING_4, BlockType.BULLET, BlockType.NUMBER, BlockType.TODO, BlockType.QUOTE, BlockType.CALLOUT, BlockType.TOGGLE, BlockType.IMAGE, BlockType.AUDIO, BlockType.FILE, BlockType.SPACE, BlockType.LINK, BlockType.PROGRESS, BlockType.MATH, BlockType.VIDEO, BlockType.KANBAN, BlockType.SKETCH, BlockType.GALLERY, BlockType.CARD, BlockType.TIMELINE)
         if (!needsZWSP) {
             textState = newTextState.copy(annotatedString = buildAnnotated(newText, newFormats))
             onUpdate(currentBlock.copy(content = newText, textFormats = newFormats))
@@ -261,20 +194,29 @@ fun BlockRenderer(
 
             if (!newText.startsWith(ZWSP) || newText.isEmpty()) {
                 val remainder = newText.replace(ZWSP, "")
+
+                if (block.type == BlockType.CARD || block.type == BlockType.TIMELINE) {
+                    val safeText = ZWSP + remainder
+                    textState = newTextState.copy(
+                        annotatedString = buildAnnotated(safeText, newFormats),
+                        selection = TextRange(1.coerceAtMost(safeText.length))
+                    )
+                    onUpdate(currentBlock.copy(content = safeText, textFormats = newFormats))
+                    return@handleTextChange
+                }
+
                 if (block.type != BlockType.TEXT && remainder.isEmpty()) {
                     textState = textState.copy(text = ZWSP, selection = TextRange(1))
                     onUpdate(currentBlock.copy(type = BlockType.TEXT, content = ZWSP, textFormats = emptyList()))
                     keyboardController?.show()
-                } else if (block.type in listOf(BlockType.IMAGE, BlockType.AUDIO, BlockType.FILE, BlockType.SPACE, BlockType.LINK, BlockType.PROGRESS, BlockType.MATH, BlockType.VIDEO, BlockType.KANBAN, BlockType.SKETCH, BlockType.GALLERY, BlockType.CARD) && remainder.isEmpty()) {
-                    android.util.Log.e("LoomDeleteTrace", "Backspace triggered deletion for block ${block.id}")
+                } else if (block.type in listOf(BlockType.IMAGE, BlockType.AUDIO, BlockType.FILE, BlockType.SPACE, BlockType.LINK, BlockType.PROGRESS, BlockType.MATH, BlockType.VIDEO, BlockType.KANBAN, BlockType.SKETCH, BlockType.GALLERY) && remainder.isEmpty()) {
                     onDeleteBlock("", true)
                     keyboardController?.show()
-                    return@handleTextChange // FIX: Force stop to prevent ghost updates during deletion
+                    return@handleTextChange
                 } else {
-                    android.util.Log.e("LoomDeleteTrace", "Backspace triggered remainder merge for block ${block.id}")
                     onDeleteBlock(remainder, false)
                     keyboardController?.show()
-                    return@handleTextChange // FIX: Force stop
+                    return@handleTextChange
                 }
             }
             else if (newText.contains('\n')) {
@@ -288,12 +230,12 @@ fun BlockRenderer(
                 if (currentLine.isEmpty() && block.type != BlockType.TEXT && block.type != BlockType.TOGGLE && block.type != BlockType.CARD) {
                     textState = newTextState.copy(text = ZWSP, selection = TextRange(1))
                     onUpdate(currentBlock.copy(type = BlockType.TEXT, content = ZWSP, textFormats = emptyList()))
-                    scope.launch { delay(50); isProcessingEnter = false }
+                    scope.launch { kotlinx.coroutines.delay(50); isProcessingEnter = false }
                 } else {
                     val nextType = if (block.type in listOf(BlockType.TODO, BlockType.BULLET, BlockType.NUMBER)) block.type else BlockType.TEXT
                     textState = TextFieldValue(ZWSP + currentLine, TextRange((ZWSP + currentLine).length))
                     onSplitBlock(ZWSP + currentLine, nextType, nextContent)
-                    scope.launch { delay(50); isProcessingEnter = false }
+                    scope.launch { kotlinx.coroutines.delay(50); isProcessingEnter = false }
                 }
             } else {
                 isProcessingEnter = false
@@ -414,17 +356,32 @@ fun BlockRenderer(
                     else -> MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onBackground)
                 }
 
-                val bgColorCallout = if (block.type == BlockType.CALLOUT) Color(0xFFF2FBF5) else if (block.type == BlockType.QUOTE) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f) else Color.Transparent
+                // --- UI FIX: Callout Bright Glow Integration ---
+                val calloutBaseColor = try {
+                    if (block.secondaryContent.isNotEmpty()) Color(android.graphics.Color.parseColor(block.secondaryContent))
+                    else Color(0xFF4CAF50)
+                } catch (e: Exception) { Color(0xFF4CAF50) }
+
+                val bgColorCallout = if (block.type == BlockType.CALLOUT) calloutBaseColor.copy(alpha = 0.1f) else if (block.type == BlockType.QUOTE) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f) else Color.Transparent
                 val shape = if (block.type == BlockType.CALLOUT || block.type == BlockType.QUOTE) RoundedCornerShape(12.dp) else RoundedCornerShape(0.dp)
-                val shadow = if (block.type == BlockType.CALLOUT) 4.dp else 0.dp
+
+                val shadowElevation = if (block.type == BlockType.CALLOUT) 16.dp else 0.dp
+                val spotShadowColor = if (block.type == BlockType.CALLOUT) calloutBaseColor else Color.Black
+
+                var showCalloutPicker by remember { mutableStateOf(false) }
 
                 Column(modifier = Modifier.fillMaxWidth()) {
                     Surface(
                         color = bgColorCallout, shape = shape,
-                        modifier = Modifier.fillMaxWidth().padding(vertical = if (block.type == BlockType.QUOTE) 4.dp else 0.dp).shadow(shadow, shape, spotColor = if (block.type == BlockType.CALLOUT) Color(0xFF4CAF50) else Color.Black)
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = if (block.type == BlockType.QUOTE || block.type == BlockType.CALLOUT) 4.dp else 0.dp)
+                            .shadow(shadowElevation, shape, ambientColor = spotShadowColor, spotColor = spotShadowColor)
                     ) {
                         Row(
-                            modifier = Modifier.fillMaxWidth().then(if (block.type == BlockType.QUOTE) Modifier.height(IntrinsicSize.Min) else Modifier).padding(if (block.type == BlockType.CALLOUT) 14.dp else if (block.type == BlockType.QUOTE) 16.dp else 0.dp),
+                            modifier = Modifier.fillMaxWidth()
+                                .then(if (block.type == BlockType.QUOTE) Modifier.height(IntrinsicSize.Min) else Modifier)
+                                .padding(if (block.type == BlockType.CALLOUT) 14.dp else if (block.type == BlockType.QUOTE) 16.dp else 0.dp),
                             verticalAlignment = if (block.type == BlockType.CALLOUT) Alignment.CenterVertically else Alignment.Top
                         ) {
                             if (block.type == BlockType.QUOTE) {
@@ -457,6 +414,13 @@ fun BlockRenderer(
                                         decorationBox = { inner -> Box { if (block.secondaryContent.isEmpty()) Text("- Author", color = Color.LightGray) else Row{ Text("- "); inner() } } },
                                         readOnly = isReadOnly
                                     )
+                                }
+                            }
+
+                            // --- NEW: Callout 3-Dot Menu ---
+                            if (block.type == BlockType.CALLOUT && !isReadOnly) {
+                                IconButton(onClick = { showCalloutPicker = true }, modifier = Modifier.size(24.dp)) {
+                                    Icon(Icons.Default.MoreVert, "Change Color", tint = calloutBaseColor)
                                 }
                             }
                         }
@@ -546,6 +510,14 @@ fun BlockRenderer(
                             }
                         }
                     }
+
+                    if (showCalloutPicker) {
+                        CalloutColorPicker(
+                            currentBlock = currentBlock,
+                            onUpdate = onUpdate,
+                            onDismiss = { showCalloutPicker = false }
+                        )
+                    }
                 }
             } else {
                 when (block.type) {
@@ -553,6 +525,7 @@ fun BlockRenderer(
                     BlockType.SKETCH -> SketchBlockRenderer(currentBlock, textState, handleTextChange, commonModifier, placeholderUI, onUpdate, onDeleteBlock)
                     BlockType.KANBAN -> KanbanBlockRenderer(currentBlock, textState, handleTextChange, commonModifier, placeholderUI, onUpdate, onDeleteBlock)
                     BlockType.TABLE -> TableBlockRenderer(currentBlock, recentTableColors, onUpdate, onDeleteBlock)
+                    BlockType.TIMELINE -> TimelineBlockRenderer(currentBlock, allSpaces, currentSpaceId, recentTableColors, focusRequesters, onUpdate, onDeleteBlock)
                     BlockType.IMAGE -> ImageBlockRenderer(currentBlock, textState, handleTextChange, commonModifier, placeholderUI, mediaLauncher, onDeleteBlock)
                     BlockType.VIDEO -> VideoBlockRenderer(currentBlock, textState, handleTextChange, commonModifier, placeholderUI, videoLauncher, onUpdate, onDeleteBlock)
                     BlockType.AUDIO -> AudioBlockRenderer(currentBlock, textState, handleTextChange, commonModifier, placeholderUI, mediaLauncher, audioLauncher, onUpdate, onDeleteBlock)
@@ -564,693 +537,27 @@ fun BlockRenderer(
                     BlockType.LINK -> LinkBlockRenderer(currentBlock, textState, handleTextChange, commonModifier, placeholderUI, onUpdate, onDeleteBlock)
                     BlockType.BOOKMARK -> BookmarkBlockRenderer(currentBlock, onUpdate, onDeleteBlock)
                     BlockType.GALLERY -> GalleryBlockRenderer(currentBlock, onUpdate, onDeleteBlock)
-                    BlockType.CARD -> {
-                        // --- UI UPGRADE: Perfect Home-Tab Replication ---
-                        val isWidget = isWidgetMode
 
-                        // When in Widget mode, we perfectly mimic the ElevatedCard from NutritionLogCard
-                        if (isWidget) {
-                            androidx.compose.material3.ElevatedCard(
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                                shape = RoundedCornerShape(24.dp), // Exact corner radius from your Home components
-                                colors = androidx.compose.material3.CardDefaults.elevatedCardColors(
-                                    containerColor = MaterialTheme.colorScheme.surface
-                                )
-                            ) {
-                                Column(modifier = Modifier.padding(20.dp)) { // Exact padding from your Home components
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        BasicTextField(
-                                            value = textState, onValueChange = handleTextChange,
-                                            textStyle = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant),
-                                            modifier = commonModifier.weight(1f), cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                                            decorationBox = placeholderUI,
-                                            readOnly = isReadOnly
-                                        )
-
-                                        if (block.isLocked) {
-                                            Icon(Icons.Default.Lock, "Locked", tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f), modifier = Modifier.size(16.dp))
-                                        }
-                                    }
-
-                                    HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = MaterialTheme.colorScheme.surfaceVariant)
-
-                                    Column(modifier = Modifier.fillMaxWidth()) {
-                                        block.children.forEachIndexed { childIndex, childBlock ->
-                                            val cNumberedIndex = if (childBlock.type == BlockType.NUMBER) {
-                                                var cCount = 1
-                                                for (i in childIndex - 1 downTo 0) { if (block.children[i].type == BlockType.NUMBER) cCount++ else break }
-                                                cCount
-                                            } else 1
-
-                                            key(childBlock.id) {
-                                                BlockRenderer(
-                                                    block = childBlock, numberIndex = cNumberedIndex, allSpaces = allSpaces, currentSpaceId = currentSpaceId, recentTableColors = recentTableColors,
-                                                    focusRequesters = focusRequesters, focusTargetId = focusTargetId, allBlocks = allBlocks,
-                                                    isWidgetMode = isWidgetMode,
-                                                    isReadOnly = isReadOnly || block.isLocked,
-                                                    onScrollToBlock = onScrollToBlock,
-                                                    onMove = { offset ->
-                                                        val currentIndex = currentBlock.children.indexOfFirst { it.id == childBlock.id }
-                                                        if (currentIndex != -1) {
-                                                            val newIndex = currentIndex + offset
-                                                            if (newIndex in 0 until currentBlock.children.size) {
-                                                                val newChildren = currentBlock.children.toMutableList()
-                                                                val temp = newChildren[currentIndex]
-                                                                newChildren[currentIndex] = newChildren[newIndex]
-                                                                newChildren[newIndex] = temp
-                                                                onUpdate(currentBlock.copy(children = newChildren))
-                                                            }
-                                                        }
-                                                    },
-                                                    onFocusRequest = onFocusRequest, onScrollToTop = onScrollToTop, onNavigateToSpace = onNavigateToSpace, onCreateLinkedSpace = onCreateLinkedSpace,
-                                                    onUpdate = { updatedChild ->
-                                                        val newChildren = currentBlock.children.toMutableList()
-                                                        val safeIndex = newChildren.indexOfFirst { it.id == updatedChild.id }
-                                                        if (safeIndex != -1) { newChildren[safeIndex] = updatedChild; onUpdate(currentBlock.copy(children = newChildren)) }
-                                                    },
-                                                    onSplitBlock = { currentContent, nextType, nextContent ->
-                                                        val newChildren = currentBlock.children.toMutableList()
-                                                        val safeIndex = newChildren.indexOfFirst { it.id == childBlock.id }
-                                                        if (safeIndex != -1) {
-                                                            newChildren[safeIndex] = newChildren[safeIndex].copy(content = currentContent)
-                                                            val newBlockId = java.util.UUID.randomUUID().toString()
-                                                            newChildren.add(safeIndex + 1, SandboxBlock(id = newBlockId, type = nextType, content = nextContent))
-                                                            onUpdate(currentBlock.copy(children = newChildren))
-                                                            onFocusRequest(newBlockId)
-                                                        }
-                                                    },
-                                                    onDeleteBlock = { remainder, deleteEntirely ->
-                                                        val newChildren = currentBlock.children.toMutableList()
-                                                        val safeIndex = newChildren.indexOfFirst { it.id == childBlock.id }
-                                                        if (safeIndex != -1 && safeIndex < newChildren.size) {
-                                                            if (deleteEntirely) {
-                                                                val prevId = if (safeIndex > 0) newChildren[safeIndex - 1].id else block.id
-                                                                newChildren.removeAt(safeIndex)
-                                                                onUpdate(currentBlock.copy(children = newChildren))
-                                                                onFocusRequest(prevId)
-                                                                try { focusRequesters[prevId]?.requestFocus() } catch(e:Exception){}
-                                                            } else if (safeIndex > 0) {
-                                                                val prevChild = newChildren[safeIndex - 1]
-                                                                val isPrevTextBased = prevChild.type in listOf(BlockType.TEXT, BlockType.HEADING, BlockType.HEADING_2, BlockType.HEADING_3, BlockType.HEADING_4, BlockType.BULLET, BlockType.NUMBER, BlockType.TODO, BlockType.QUOTE, BlockType.CALLOUT, BlockType.TOGGLE)
-                                                                if (isPrevTextBased) {
-                                                                    val prevId = prevChild.id
-                                                                    newChildren[safeIndex - 1] = prevChild.copy(content = prevChild.content + remainder)
-                                                                    newChildren.removeAt(safeIndex)
-                                                                    onUpdate(currentBlock.copy(children = newChildren))
-                                                                    onFocusRequest(prevId)
-                                                                    try { focusRequesters[prevId]?.requestFocus() } catch(e:Exception){}
-                                                                } else {
-                                                                    newChildren.removeAt(safeIndex - 1)
-                                                                    onUpdate(currentBlock.copy(children = newChildren))
-                                                                }
-                                                            } else if (safeIndex == 0) {
-                                                                if (deleteEntirely || remainder.trim().replace("\u200B","").isEmpty()) {
-                                                                    newChildren.removeAt(0)
-                                                                    onUpdate(currentBlock.copy(children = newChildren))
-                                                                    onFocusRequest(block.id)
-                                                                } else {
-                                                                    newChildren[0] = newChildren[0].copy(content = "\u200B" + remainder)
-                                                                    onUpdate(currentBlock.copy(children = newChildren))
-                                                                }
-                                                            }
-                                                        }
-                                                    }
-                                                )
-                                                Spacer(modifier = Modifier.height(4.dp))
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        } else {
-                            // --- ORIGINAL SANDBOX STYLING ---
-                            Surface(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), shape = RoundedCornerShape(16.dp), border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant), modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-                                Column(modifier = Modifier.padding(16.dp)) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        BasicTextField(
-                                            value = textState, onValueChange = handleTextChange,
-                                            textStyle = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground),
-                                            modifier = commonModifier.weight(1f), cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                                            decorationBox = placeholderUI,
-                                            readOnly = isReadOnly
-                                        )
-
-                                        IconButton(onClick = { onUpdate(currentBlock.copy(isLocked = !currentBlock.isLocked)) }, modifier = Modifier.size(32.dp)) {
-                                            Icon(if (block.isLocked) Icons.Default.Lock else Icons.Outlined.LockOpen, "Lock", tint = if (block.isLocked) MaterialTheme.colorScheme.primary else Color.Gray, modifier = Modifier.size(20.dp))
-                                        }
-
-                                        var showPinMenu by remember { mutableStateOf(false) }
-                                        IconButton(onClick = { showPinMenu = true }, modifier = Modifier.size(32.dp)) {
-                                            Icon(if (block.pinnedTab.isNotBlank()) Icons.Default.PushPin else Icons.Outlined.PushPin, "Pin", tint = if (block.pinnedTab.isNotBlank()) MaterialTheme.colorScheme.primary else Color.Gray, modifier = Modifier.size(20.dp))
-                                        }
-                                        DropdownMenu(expanded = showPinMenu, onDismissRequest = { showPinMenu = false }) {
-                                            val tabsList = block.pinnedTab.split(",").filter { it.isNotBlank() }.toMutableSet()
-                                            val isHome = tabsList.contains("Home")
-                                            val isHealth = tabsList.contains("Health")
-
-                                            DropdownMenuItem(
-                                                text = { Text("Home") },
-                                                trailingIcon = { if (isHome) Icon(Icons.Default.Check, null) },
-                                                onClick = {
-                                                    if (isHome) tabsList.remove("Home") else tabsList.add("Home")
-                                                    val newPins = tabsList.joinToString(",")
-                                                    onUpdate(currentBlock.copy(pinnedTab = newPins))
-                                                    showPinMenu = false
-                                                }
-                                            )
-                                            DropdownMenuItem(
-                                                text = { Text("Health") },
-                                                trailingIcon = { if (isHealth) Icon(Icons.Default.Check, null) },
-                                                onClick = {
-                                                    if (isHealth) tabsList.remove("Health") else tabsList.add("Health")
-                                                    val newPins = tabsList.joinToString(",")
-                                                    onUpdate(currentBlock.copy(pinnedTab = newPins))
-                                                    showPinMenu = false
-                                                }
-                                            )
-                                        }
-
-                                        Spacer(Modifier.width(4.dp))
-                                        IconButton(onClick = {
-                                            val prefs = context.getSharedPreferences("loom_prefs", android.content.Context.MODE_PRIVATE)
-                                            prefs.edit().putBoolean("deleted_card_${currentBlock.id}", true).apply()
-                                            onDeleteBlock("", true)
-                                        }, modifier = Modifier.size(32.dp)) {
-                                            Icon(Icons.Default.Delete, "Delete", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp))
-                                        }
-                                    }
-
-                                    HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = MaterialTheme.colorScheme.outlineVariant)
-
-                                    Column(modifier = Modifier.fillMaxWidth().padding(start = 4.dp)) {
-                                        block.children.forEachIndexed { childIndex, childBlock ->
-                                            val cNumberedIndex = if (childBlock.type == BlockType.NUMBER) {
-                                                var cCount = 1
-                                                for (i in childIndex - 1 downTo 0) { if (block.children[i].type == BlockType.NUMBER) cCount++ else break }
-                                                cCount
-                                            } else 1
-
-                                            key(childBlock.id) {
-                                                BlockRenderer(
-                                                    block = childBlock, numberIndex = cNumberedIndex, allSpaces = allSpaces, currentSpaceId = currentSpaceId, recentTableColors = recentTableColors,
-                                                    focusRequesters = focusRequesters, focusTargetId = focusTargetId, allBlocks = allBlocks,
-                                                    isWidgetMode = isWidgetMode,
-                                                    isReadOnly = isReadOnly || block.isLocked,
-                                                    onScrollToBlock = onScrollToBlock,
-                                                    onMove = { offset ->
-                                                        val currentIndex = currentBlock.children.indexOfFirst { it.id == childBlock.id }
-                                                        if (currentIndex != -1) {
-                                                            val newIndex = currentIndex + offset
-                                                            if (newIndex in 0 until currentBlock.children.size) {
-                                                                val newChildren = currentBlock.children.toMutableList()
-                                                                val temp = newChildren[currentIndex]
-                                                                newChildren[currentIndex] = newChildren[newIndex]
-                                                                newChildren[newIndex] = temp
-                                                                onUpdate(currentBlock.copy(children = newChildren))
-                                                            }
-                                                        }
-                                                    },
-                                                    onFocusRequest = onFocusRequest, onScrollToTop = onScrollToTop, onNavigateToSpace = onNavigateToSpace, onCreateLinkedSpace = onCreateLinkedSpace,
-                                                    onUpdate = { updatedChild ->
-                                                        val newChildren = currentBlock.children.toMutableList()
-                                                        val safeIndex = newChildren.indexOfFirst { it.id == updatedChild.id }
-                                                        if (safeIndex != -1) { newChildren[safeIndex] = updatedChild; onUpdate(currentBlock.copy(children = newChildren)) }
-                                                    },
-                                                    onSplitBlock = { currentContent, nextType, nextContent ->
-                                                        val newChildren = currentBlock.children.toMutableList()
-                                                        val safeIndex = newChildren.indexOfFirst { it.id == childBlock.id }
-                                                        if (safeIndex != -1) {
-                                                            newChildren[safeIndex] = newChildren[safeIndex].copy(content = currentContent)
-                                                            val newBlockId = java.util.UUID.randomUUID().toString()
-                                                            newChildren.add(safeIndex + 1, SandboxBlock(id = newBlockId, type = nextType, content = nextContent))
-                                                            onUpdate(currentBlock.copy(children = newChildren))
-                                                            onFocusRequest(newBlockId)
-                                                        }
-                                                    },
-                                                    onDeleteBlock = { remainder, deleteEntirely ->
-                                                        val newChildren = currentBlock.children.toMutableList()
-                                                        val safeIndex = newChildren.indexOfFirst { it.id == childBlock.id }
-                                                        if (safeIndex != -1 && safeIndex < newChildren.size) {
-                                                            if (deleteEntirely) {
-                                                                val prevId = if (safeIndex > 0) newChildren[safeIndex - 1].id else block.id
-                                                                newChildren.removeAt(safeIndex)
-                                                                onUpdate(currentBlock.copy(children = newChildren))
-                                                                onFocusRequest(prevId)
-                                                                try { focusRequesters[prevId]?.requestFocus() } catch(e:Exception){}
-                                                            } else if (safeIndex > 0) {
-                                                                val prevChild = newChildren[safeIndex - 1]
-                                                                val isPrevTextBased = prevChild.type in listOf(BlockType.TEXT, BlockType.HEADING, BlockType.HEADING_2, BlockType.HEADING_3, BlockType.HEADING_4, BlockType.BULLET, BlockType.NUMBER, BlockType.TODO, BlockType.QUOTE, BlockType.CALLOUT, BlockType.TOGGLE)
-                                                                if (isPrevTextBased) {
-                                                                    val prevId = prevChild.id
-                                                                    newChildren[safeIndex - 1] = prevChild.copy(content = prevChild.content + remainder)
-                                                                    newChildren.removeAt(safeIndex)
-                                                                    onUpdate(currentBlock.copy(children = newChildren))
-                                                                    onFocusRequest(prevId)
-                                                                    try { focusRequesters[prevId]?.requestFocus() } catch(e:Exception){}
-                                                                } else {
-                                                                    newChildren.removeAt(safeIndex - 1)
-                                                                    onUpdate(currentBlock.copy(children = newChildren))
-                                                                }
-                                                            } else if (safeIndex == 0) {
-                                                                if (deleteEntirely || remainder.trim().replace("\u200B","").isEmpty()) {
-                                                                    newChildren.removeAt(0)
-                                                                    onUpdate(currentBlock.copy(children = newChildren))
-                                                                    onFocusRequest(block.id)
-                                                                } else {
-                                                                    newChildren[0] = newChildren[0].copy(content = "\u200B" + remainder)
-                                                                    onUpdate(currentBlock.copy(children = newChildren))
-                                                                }
-                                                            }
-                                                        }
-                                                    }
-                                                )
-                                                Spacer(modifier = Modifier.height(4.dp))
-                                            }
-                                        }
-
-                                        val lastChild = block.children.lastOrNull()
-                                        val showAddBtn = lastChild == null || lastChild.type != BlockType.TEXT || lastChild.content.replace("\u200B", "").isNotEmpty()
-
-                                        if (!isReadOnly && !block.isLocked && showAddBtn) {
-                                            TextButton(onClick = {
-                                                val newChildren = block.children.toMutableList()
-                                                val newId = java.util.UUID.randomUUID().toString()
-                                                newChildren.add(SandboxBlock(id = newId, content = "\u200B"))
-                                                onUpdate(currentBlock.copy(children = newChildren))
-                                                onFocusRequest(newId)
-                                            }) { Text("+ Add Block", color = Color.Gray) }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    BlockType.MATH -> {
-                        var showMathSymbols by remember { mutableStateOf(false) }
-                        Surface(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha=0.3f), shape = RoundedCornerShape(8.dp), border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant), modifier = Modifier.fillMaxWidth()) {
-                            Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Box {
-                                    Text("∑", fontSize = 24.sp, fontFamily = FontFamily.Serif, color = MaterialTheme.colorScheme.primary, modifier = Modifier.clickable { if (!isReadOnly) showMathSymbols = true })
-                                    DropdownMenu(expanded = showMathSymbols, onDismissRequest = { showMathSymbols = false }, modifier = Modifier.width(280.dp).background(MaterialTheme.colorScheme.surface)) {
-                                        val symbols = listOf("∫", "∬", "√", "∞", "≈", "≠", "≤", "≥", "±", "×", "÷", "π", "θ", "α", "β", "Δ", "λ", "μ", "σ", "°")
-                                        Column(modifier = Modifier.padding(8.dp)) {
-                                            Text("Math Symbols", style = MaterialTheme.typography.labelMedium, color = Color.Gray, modifier = Modifier.padding(bottom = 8.dp))
-                                            symbols.chunked(5).forEach { rowSymbols ->
-                                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                                                    rowSymbols.forEach { sym ->
-                                                        Text(sym, fontSize = 20.sp, modifier = Modifier.padding(8.dp).clickable {
-                                                            val start = textState.selection.start.coerceIn(0, textState.text.length)
-                                                            val newContent = textState.text.substring(0, start) + sym + textState.text.substring(start)
-                                                            textState = TextFieldValue(newContent, TextRange(start + sym.length))
-                                                            onUpdate(currentBlock.copy(content = newContent))
-                                                            showMathSymbols = false
-                                                        })
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                                Spacer(Modifier.width(16.dp))
-                                BasicTextField(
-                                    value = textState, onValueChange = handleTextChange,
-                                    textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onBackground, fontFamily = FontFamily.Serif, fontStyle = FontStyle.Italic, fontSize = 20.sp),
-                                    modifier = commonModifier.weight(1f), cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                                    visualTransformation = MathVisualTransformation(),
-                                    decorationBox = placeholderUI,
-                                    readOnly = isReadOnly
-                                )
-                            }
-                        }
-                    }
-                    BlockType.CODE -> {
-                        Surface(color = Color(0xFF1E1E1E), shape = RoundedCornerShape(8.dp), modifier = Modifier.fillMaxWidth()) {
-                            Box(modifier = Modifier.fillMaxWidth()) {
-                                BasicTextField(
-                                    value = textState,
-                                    onValueChange = handleTextChange,
-                                    visualTransformation = CodeSyntaxTransformation(),
-                                    textStyle = MaterialTheme.typography.bodyMedium.copy(color = Color(0xFFD4D4D4), fontFamily = FontFamily.Monospace),
-                                    modifier = commonModifier.padding(16.dp).padding(end = 24.dp),
-                                    cursorBrush = SolidColor(Color.White),
-                                    readOnly = isReadOnly,
-                                    decorationBox = { inner -> Box{ if (textState.text.isEmpty()) Text("// write code here", color = Color.Gray, fontFamily = FontFamily.Monospace); inner() } }
-                                )
-                                if (!isReadOnly) {
-                                    IconButton(
-                                        onClick = { onDeleteBlock("", true) },
-                                        modifier = Modifier.align(Alignment.TopEnd).padding(4.dp).size(24.dp)
-                                    ) {
-                                        Icon(Icons.Default.Close, "Delete Code", tint = Color.Gray, modifier = Modifier.size(16.dp))
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    BlockType.SPACE -> {
-                        Column(modifier = Modifier.fillMaxWidth()) {
-                            if (block.url.isEmpty()) {
-                                var showSpacePicker by remember { mutableStateOf(false) }
-                                if (!isReadOnly) {
-                                    Button(onClick = { showSpacePicker = true }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant, contentColor = MaterialTheme.colorScheme.onSurface)) {
-                                        Icon(Icons.Default.Dashboard, null); Spacer(Modifier.width(8.dp)); Text("Select or Create a Space to Link")
-                                    }
-                                }
-
-                                if (showSpacePicker) {
-                                    AlertDialog(
-                                        onDismissRequest = { showSpacePicker = false },
-                                        title = { Text("Link a Space") },
-                                        text = {
-                                            LazyColumn {
-                                                item {
-                                                    TextButton(onClick = {
-                                                        val newId = onCreateLinkedSpace()
-                                                        onUpdate(currentBlock.copy(url = newId))
-                                                        onNavigateToSpace(newId)
-                                                        showSpacePicker = false
-                                                    }) { Text("+ Create New Space", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold) }
-                                                    HorizontalDivider(Modifier.padding(vertical = 8.dp))
-                                                }
-                                                items(allSpaces) { s ->
-                                                    Row(modifier = Modifier.fillMaxWidth().clickable {
-                                                        onUpdate(currentBlock.copy(url = s.id))
-                                                        showSpacePicker = false
-                                                    }.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                                                        Text(s.icon, fontSize = 24.sp); Spacer(Modifier.width(16.dp))
-                                                        Text(s.title.ifBlank { "Untitled" }, style = MaterialTheme.typography.titleMedium)
-                                                        if (s.id == currentSpaceId) {
-                                                            Spacer(Modifier.width(8.dp))
-                                                            Text("(Current Space)", color = Color.Gray, fontSize = 12.sp)
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        },
-                                        confirmButton = { TextButton(onClick = { showSpacePicker = false }) { Text("Cancel") } }
-                                    )
-                                }
-                            } else {
-                                val linkedSpace = allSpaces.find { it.id == block.url }
-                                if (linkedSpace != null) {
-                                    Surface(
-                                        modifier = Modifier.fillMaxWidth().clickable {
-                                            if (linkedSpace.id == currentSpaceId) onScrollToTop() else onNavigateToSpace(linkedSpace.id)
-                                        },
-                                        shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha=0.5f)
-                                    ) {
-                                        Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                                            Text(linkedSpace.icon, fontSize = 24.sp); Spacer(Modifier.width(12.dp))
-                                            Text(linkedSpace.title.ifBlank { "Untitled" }, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                                            if (linkedSpace.id == currentSpaceId) {
-                                                Text("(Current)", color = Color.Gray, fontSize = 12.sp, modifier = Modifier.padding(end = 8.dp))
-                                            }
-                                            Icon(Icons.AutoMirrored.Filled.ArrowForwardIos, null, tint = Color.Gray, modifier = Modifier.size(16.dp))
-                                            if (!isReadOnly) {
-                                                IconButton(onClick = { showBlockMenu = true }) { Icon(Icons.Default.MoreVert, "Options", tint = Color.Gray) }
-                                                DropdownMenu(expanded = showBlockMenu, onDismissRequest = { showBlockMenu = false }) {
-                                                    DropdownMenuItem(text = { Text("Delete Block", color = MaterialTheme.colorScheme.error) }, onClick = { onDeleteBlock("", true) })
-                                                    DropdownMenuItem(text = { Text("Change Space") }, onClick = { onUpdate(currentBlock.copy(url = "")); showBlockMenu = false })
-                                                }
-                                            }
-                                        }
-                                    }
-                                } else {
-                                    Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.errorContainer) {
-                                        Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                                            Icon(Icons.Default.ErrorOutline, null, tint = MaterialTheme.colorScheme.error); Spacer(Modifier.width(12.dp))
-                                            Text("Space not found or deleted.", color = MaterialTheme.colorScheme.error, modifier = Modifier.weight(1f))
-                                            if (!isReadOnly) {
-                                                IconButton(onClick = { onDeleteBlock("", true) }) { Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error) }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    BlockType.DIVIDER -> {
-                        Box(modifier = Modifier.fillMaxWidth().height(32.dp), contentAlignment = Alignment.Center) {
-                            HorizontalDivider(modifier = Modifier.padding(end = 40.dp), color = Color.LightGray)
-                            if (!isReadOnly) {
-                                IconButton(onClick = { showBlockMenu = true }, modifier = Modifier.align(Alignment.CenterEnd).size(32.dp)) {
-                                    Icon(Icons.Default.MoreVert, "Options", tint = Color.LightGray, modifier = Modifier.size(18.dp))
-                                }
-                                DropdownMenu(expanded = showBlockMenu, onDismissRequest = { showBlockMenu = false }) {
-                                    DropdownMenuItem(text = { Text("Delete Divider", color = MaterialTheme.colorScheme.error) }, onClick = { onDeleteBlock("", true) })
-                                }
-                            }
-                        }
-                    }
-                    BlockType.TOC -> {
-                        Column(modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), RoundedCornerShape(8.dp)).padding(16.dp)) {
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                Text("Table of Contents", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
-                                if (!isReadOnly) {
-                                    IconButton(onClick = { showBlockMenu = true }, modifier = Modifier.size(24.dp)) { Icon(Icons.Default.MoreVert, "Options", tint = Color.Gray) }
-                                }
-                            }
-                            DropdownMenu(expanded = showBlockMenu, onDismissRequest = { showBlockMenu = false }) {
-                                DropdownMenuItem(text = { Text("Delete TOC", color = MaterialTheme.colorScheme.error) }, onClick = { onDeleteBlock("", true) })
-                            }
-                            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-
-                            val headings = extractHeadings(allBlocks)
-                            if (headings.isEmpty()) {
-                                Text("No headings found. Add H1, H2, H3, or H4 blocks.", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
-                            } else {
-                                headings.forEach { hBlock ->
-                                    val indent = when(hBlock.type) {
-                                        BlockType.HEADING -> 0.dp
-                                        BlockType.HEADING_2 -> 16.dp
-                                        BlockType.HEADING_3 -> 32.dp
-                                        BlockType.HEADING_4 -> 48.dp
-                                        else -> 0.dp
-                                    }
-                                    val text = hBlock.content.replace(ZWSP, "").ifEmpty { "Untitled Heading" }
-                                    Text(
-                                        text = text,
-                                        color = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(start = indent, top = 4.dp, bottom = 4.dp)
-                                            .clickable { onScrollToBlock(hBlock.id) },
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-                            }
-
-                            BasicTextField(
-                                value = textState, onValueChange = handleTextChange,
-                                textStyle = MaterialTheme.typography.bodySmall.copy(color = Color.Transparent, fontSize = 1.sp),
-                                modifier = commonModifier.height(1.dp), cursorBrush = SolidColor(Color.Transparent),
-                                decorationBox = placeholderUI,
-                                readOnly = isReadOnly
-                            )
-                        }
-                    }
+                    BlockType.CARD -> CardBlockRenderer(currentBlock, textState, handleTextChange, commonModifier, placeholderUI, isWidgetMode, isReadOnly, allSpaces, currentSpaceId, recentTableColors, focusRequesters, focusTargetId, allBlocks, onScrollToBlock, onFocusRequest, onScrollToTop, onNavigateToSpace, onCreateLinkedSpace, onUpdate, onDeleteBlock)
+                    BlockType.MATH -> MathBlockRenderer(currentBlock, textState, handleTextChange, commonModifier, placeholderUI, isReadOnly, onUpdate)
+                    BlockType.CODE -> CodeBlockRenderer(textState, handleTextChange, commonModifier, isReadOnly, onDeleteBlock)
+                    BlockType.SPACE -> SpaceBlockRenderer(currentBlock, isReadOnly, allSpaces, currentSpaceId, onUpdate, onDeleteBlock, onScrollToTop, onNavigateToSpace, onCreateLinkedSpace)
+                    BlockType.DIVIDER -> DividerBlockRenderer(isReadOnly, onDeleteBlock)
+                    BlockType.TOC -> TocBlockRenderer(textState, handleTextChange, commonModifier, placeholderUI, isReadOnly, allBlocks, onScrollToBlock, onDeleteBlock)
                     else -> {}
                 }
             }
 
-            if (isFocused && textState.selection.length > 0) {
-                Popup(alignment = Alignment.TopCenter, offset = IntOffset(0, -220)) {
-                    Surface(shape = RoundedCornerShape(8.dp), shadowElevation = 8.dp, color = MaterialTheme.colorScheme.surface) {
-                        Row(modifier = Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            IconButton(onClick = { applyFormat("BOLD", "") }, modifier = Modifier.size(32.dp)) {
-                                Text("B", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = MaterialTheme.colorScheme.onSurface)
-                            }
-                            IconButton(onClick = { applyFormat("ITALIC", "") }, modifier = Modifier.size(32.dp)) {
-                                Text("I", fontStyle = FontStyle.Italic, fontSize = 18.sp, color = MaterialTheme.colorScheme.onSurface)
-                            }
-                            IconButton(onClick = { applyFormat("STRIKE", "") }, modifier = Modifier.size(32.dp)) {
-                                Text("S", textDecoration = TextDecoration.LineThrough, fontSize = 18.sp, color = MaterialTheme.colorScheme.onSurface)
-                            }
-
-                            Spacer(Modifier.width(8.dp))
-                            Box(modifier = Modifier.width(1.dp).height(24.dp).background(Color.LightGray))
-                            Spacer(Modifier.width(8.dp))
-
-                            IconButton(onClick = { showTextColorPicker = true }, modifier = Modifier.size(32.dp)) {
-                                Text("A", fontWeight = FontWeight.ExtraBold, fontSize = 18.sp, color = MaterialTheme.colorScheme.onSurface, textDecoration = TextDecoration.Underline)
-                            }
-
-                            IconButton(onClick = { showHighlightColorPicker = true }, modifier = Modifier.size(32.dp)) {
-                                Text("A", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = MaterialTheme.colorScheme.surface, modifier = Modifier.background(MaterialTheme.colorScheme.onSurface, RoundedCornerShape(4.dp)).padding(horizontal = 4.dp))
-                            }
-
-                            Spacer(Modifier.width(8.dp))
-
-                            IconButton(onClick = {
-                                val selStart = textState.selection.min
-                                val selEnd = textState.selection.max
-                                val cleared = currentBlock.textFormats.filterNot { maxOf(it.start, selStart) < minOf(it.end, selEnd) }
-                                onUpdate(currentBlock.copy(textFormats = cleared))
-                                textState = textState.copy(annotatedString = buildAnnotated(textState.text, cleared))
-                            }, modifier = Modifier.size(32.dp)) {
-                                Icon(Icons.Default.FormatClear, "Clear Formatting", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp))
-                            }
-                        }
-                    }
-                }
-            }
-
-            if (showTextColorPicker || showHighlightColorPicker) {
-                val isHighlight = showHighlightColorPicker
-                var hue by remember { mutableFloatStateOf(210f) }
-                var saturation by remember { mutableFloatStateOf(0.9f) }
-                var value by remember { mutableFloatStateOf(0.9f) }
-
-                AlertDialog(
-                    onDismissRequest = { showTextColorPicker = false; showHighlightColorPicker = false },
-                    title = { Text(if (isHighlight) "Highlight Color" else "Text Color") },
-                    text = {
-                        Column {
-                            Box(modifier = Modifier.fillMaxWidth().height(120.dp).clip(RoundedCornerShape(8.dp)).background(Color.hsv(hue, 1f, 1f))
-                                .pointerInput(Unit) {
-                                    detectDragGestures { change, _ -> change.consume(); saturation = (change.position.x / size.width.toFloat()).coerceIn(0f, 1f); value = 1f - (change.position.y / size.height.toFloat()).coerceIn(0f, 1f) }
-                                }
-                            ) {
-                                Canvas(modifier = Modifier.fillMaxSize()) {
-                                    drawRect(Brush.horizontalGradient(listOf(Color.White, Color.Transparent))); drawRect(Brush.verticalGradient(listOf(Color.Transparent, Color.Black)))
-                                    drawCircle(Color.White, 6.dp.toPx(), Offset(saturation * size.width, (1f - value) * size.height), style = Stroke(2.dp.toPx()))
-                                }
-                            }
-                            Spacer(Modifier.height(16.dp))
-                            Canvas(modifier = Modifier.fillMaxWidth().height(30.dp).clip(RoundedCornerShape(50))
-                                .pointerInput(Unit) { detectDragGestures { change, _ -> change.consume(); hue = (change.position.x / size.width.toFloat()).coerceIn(0f, 1f) * 360f } }
-                            ) {
-                                drawRect(Brush.horizontalGradient(listOf(Color.Red, Color.Yellow, Color.Green, Color.Cyan, Color.Blue, Color.Magenta, Color.Red)))
-                                drawCircle(Color.White, 12.dp.toPx(), Offset((hue / 360f) * size.width, size.height / 2), style = Stroke(3.dp.toPx()))
-                            }
-
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                val palette = listOf(Color.Transparent) + recentTableColors
-                                palette.take(6).forEach { color ->
-                                    Box(
-                                        modifier = Modifier.size(32.dp).background(color, CircleShape).border(1.dp, Color.LightGray, CircleShape)
-                                            .clickable {
-                                                if (color == Transparent) {
-                                                    applyFormat(if (isHighlight) "HIGHLIGHT" else "COLOR", "")
-                                                } else {
-                                                    val hex = String.format("#%06X", (0xFFFFFF and color.toArgb()))
-                                                    applyFormat(if (isHighlight) "HIGHLIGHT" else "COLOR", hex)
-                                                }
-                                                showTextColorPicker = false; showHighlightColorPicker = false
-                                            }
-                                    )
-                                }
-                            }
-
-                            Spacer(Modifier.height(16.dp))
-                            Button(modifier = Modifier.fillMaxWidth(), onClick = {
-                                val pickedColor = Color.hsv(hue, saturation, value)
-                                val hex = String.format("#%06X", (0xFFFFFF and pickedColor.toArgb()))
-                                if (!recentTableColors.contains(pickedColor)) {
-                                    recentTableColors.add(0, pickedColor)
-                                    if (recentTableColors.size > 5) recentTableColors.removeAt(recentTableColors.size - 1)
-                                }
-                                applyFormat(if (isHighlight) "HIGHLIGHT" else "COLOR", hex)
-                                showTextColorPicker = false; showHighlightColorPicker = false
-                            }) { Text("Apply Color") }
-                        }
-                    },
-                    confirmButton = { TextButton(onClick = { showTextColorPicker = false; showHighlightColorPicker = false }) { Text("Close") } }
-                )
-            }
-
-            DropdownMenu(
-                expanded = showMenu,
-                onDismissRequest = { showMenu = false },
-                modifier = Modifier.width(240.dp).heightIn(max = 350.dp).background(MaterialTheme.colorScheme.surface, RoundedCornerShape(12.dp)),
-                properties = PopupProperties(focusable = false)
-            ) {
-                val applyType: (BlockType) -> Unit = { type ->
-                    val cleanText = textState.text.substringBeforeLast('/')
-
-                    textState = textState.copy(text = cleanText, selection = TextRange(cleanText.length))
-                    val updated = currentBlock.copy(type = type, content = cleanText)
-                    if (type == BlockType.TABLE) updated.tableData = List(3) { List(3) { encodeCell(TableCellData()) } }
-                    onUpdate(updated)
-
-                    showMenu = false
-                    try { focusRequester.requestFocus() } catch(e: Exception){}
-                    onFocusRequest(block.id)
-                }
-
-                val menuItems = listOf(
-                    "Basic Blocks" to null,
-                    BlockType.TEXT to ("Text" to "Aa"),
-                    BlockType.HEADING to ("Heading 1" to "H1"),
-                    BlockType.HEADING_2 to ("Heading 2" to "H2"),
-                    BlockType.HEADING_3 to ("Heading 3" to "H3"),
-                    BlockType.HEADING_4 to ("Heading 4" to "H4"),
-                    BlockType.TODO to ("To-do List" to "☑"),
-                    BlockType.BULLET to ("Bulleted List" to "•"),
-                    BlockType.NUMBER to ("Numbered List" to "1."),
-                    BlockType.TOGGLE to ("Toggle List" to "▶"),
-                    BlockType.QUOTE to ("Quote" to "”"),
-                    BlockType.DIVIDER to ("Divider" to "—"),
-
-                    "Advanced Blocks" to null,
-                    BlockType.CARD to ("Widget Card" to "🗂️"),
-                    BlockType.TOC to ("Table of Contents" to "📑"),
-                    BlockType.CHART to ("Chart" to "📈"),
-                    BlockType.CALLOUT to ("Callout" to "💡"),
-                    BlockType.TABLE to ("Table" to "⊞"),
-                    BlockType.CALENDAR to ("Calendar" to "📅"),
-                    BlockType.KANBAN to ("Kanban Board" to "📊"),
-                    BlockType.SKETCH to ("Sketch Canvas" to "🎨"),
-                    BlockType.MATH to ("Math Equation" to "🧮"),
-                    BlockType.PROGRESS to ("Progress Tracker" to "⏳"),
-                    BlockType.CODE to ("Code Snippet" to "⌨️"),
-                    BlockType.TIMER to ("Pomodoro Timer" to "⏱️"),
-                    BlockType.COUNTDOWN to ("Countdown" to "⏳"),
-                    BlockType.GALLERY to ("Photo Gallery" to "📸"),
-
-                    "Media & Links" to null,
-                    BlockType.IMAGE to ("Image" to "🖼️"),
-                    BlockType.VIDEO to ("Video" to "▶️"),
-                    BlockType.AUDIO to ("Audio" to "🎵"),
-                    BlockType.FILE to ("File" to "📁"),
-                    BlockType.SPACE to ("Link Space" to "🚀"),
-                    BlockType.LINK to ("Web Link" to "🌐") ,
-                    BlockType.BOOKMARK to ("Web Bookmark" to "🔗")
-                )
-
-                val filteredMenuItems = if (commandQuery.isEmpty()) {
-                    menuItems
-                } else {
-                    menuItems.filter { (type, data) ->
-                        if (data == null) false
-                        else data.first.contains(commandQuery, ignoreCase = true) || type.toString().contains(commandQuery, ignoreCase = true)
-                    }
-                }
-
-                if (filteredMenuItems.isEmpty()) {
-                    DropdownMenuItem(text = { Text("No matching blocks found", color = Color.Gray, style = MaterialTheme.typography.bodySmall) }, onClick = {})
-                } else {
-                    filteredMenuItems.forEach { (type, data) ->
-                        if (data == null) {
-                            Text(type.toString(), style = MaterialTheme.typography.labelSmall, color = Color.Gray, modifier = Modifier.padding(start = 16.dp, top = 8.dp, bottom = 4.dp))
-                        } else {
-                            val (label, iconStr) = data
-                            DropdownMenuItem(
-                                text = {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text(iconStr, style = MaterialTheme.typography.titleMedium, modifier = Modifier.width(32.dp), color = MaterialTheme.colorScheme.primary)
-                                        Text(label, style = MaterialTheme.typography.bodyMedium)
-                                    }
-                                },
-                                onClick = { applyType(type as BlockType) },
-                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp)
-                            )
-                        }
-                    }
-                }
+            TextFormatToolbar(isFocused, textState, currentBlock, recentTableColors, onUpdate, applyFormat)
+            SlashCommandMenu(showMenu, { showMenu = false }, commandQuery) { type ->
+                val cleanText = textState.text.substringBeforeLast('/')
+                textState = textState.copy(text = cleanText, selection = TextRange(cleanText.length))
+                val updated = currentBlock.copy(type = type, content = cleanText)
+                if (type == BlockType.TABLE) updated.tableData = List(3) { List(3) { encodeCell(TableCellData()) } }
+                onUpdate(updated)
+                showMenu = false
+                try { focusRequester.requestFocus() } catch(e: Exception){}
+                onFocusRequest(block.id)
             }
         }
     }

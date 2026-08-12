@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBackIos
 import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
@@ -30,12 +31,14 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.example.loom.data.models.CalendarChecklistItem
 import com.example.loom.data.models.KanbanCard
 import com.example.loom.data.models.KanbanColumn
-import com.example.loom.data.models.SandboxBlock
-import com.example.loom.ui.sandbox.EditKanbanCardDialog
 
-@OptIn(ExperimentalFoundationApi::class)
+import com.example.loom.data.models.SandboxBlock
+import kotlin.math.roundToInt
+
+@OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
 @Composable
 fun KanbanBlockRenderer(
     block: SandboxBlock,
@@ -53,7 +56,7 @@ fun KanbanBlockRenderer(
         Row(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             BasicTextField(
                 value = textState, onValueChange = handleTextChange,
-                textStyle = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                textStyle = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface),
                 modifier = commonModifier.weight(1f), cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                 decorationBox = placeholderUI
             )
@@ -65,12 +68,13 @@ fun KanbanBlockRenderer(
 
         val columns = if (block.kanbanColumns.isEmpty()) listOf(KanbanColumn(title = "To Do"), KanbanColumn(title = "In Progress"), KanbanColumn(title = "Done")) else block.kanbanColumns
 
-        Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        // --- FIX: IntrinsicSize.Max ensures all columns dynamically stretch to match the tallest one ---
+        Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).height(IntrinsicSize.Max), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             columns.forEachIndexed { colIndex, col ->
                 Column(
                     modifier = Modifier
                         .width(280.dp)
-                        .fillMaxHeight()
+                        .fillMaxHeight() // Takes up full Intrinsic size available in the row
                         .defaultMinSize(minHeight = 150.dp)
                         .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f), RoundedCornerShape(12.dp))
                         .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f), RoundedCornerShape(12.dp))
@@ -171,6 +175,7 @@ fun KanbanBlockRenderer(
             Column(
                 modifier = Modifier
                     .width(50.dp)
+                    .fillMaxHeight()
                     .defaultMinSize(minHeight = 150.dp)
                     .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f), RoundedCornerShape(12.dp))
                     .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f), RoundedCornerShape(12.dp))
@@ -182,26 +187,102 @@ fun KanbanBlockRenderer(
             }
         }
 
+        // --- FIX: Completely Re-Written Inline Kanban Card Edit Dialog ---
         if (editingCard != null) {
             val (cIdx, rIdx, cardToEdit) = editingCard!!
-            EditKanbanCardDialog(
-                card = cardToEdit,
-                onDismiss = { editingCard = null },
-                onSave = { updatedCard ->
-                    val newCols = columns.toMutableList()
-                    val newCards = newCols[cIdx].cards.toMutableList()
-                    newCards[rIdx] = updatedCard
-                    newCols[cIdx] = newCols[cIdx].copy(cards = newCards)
-                    onUpdate(block.copy(kanbanColumns = newCols))
-                    editingCard = null
+
+            var editTitle by remember { mutableStateOf(cardToEdit.text) }
+            var editDesc by remember { mutableStateOf(cardToEdit.description) }
+            var editPriority by remember { mutableIntStateOf(cardToEdit.priority) }
+
+            // Chips tag state
+            var editTags by remember { mutableStateOf(cardToEdit.tags) }
+            var newTagText by remember { mutableStateOf("") }
+
+            // Subtasks state
+            var editSubtasks by remember { mutableStateOf(cardToEdit.subtasks) }
+
+            AlertDialog(
+                onDismissRequest = { editingCard = null },
+                title = { Text("Edit Task Card") },
+                text = {
+                    Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                        OutlinedTextField(value = editTitle, onValueChange = { editTitle = it }, label = { Text("Task Name") }, modifier = Modifier.fillMaxWidth())
+                        Spacer(Modifier.height(8.dp))
+                        OutlinedTextField(value = editDesc, onValueChange = { editDesc = it }, label = { Text("Description") }, modifier = Modifier.fillMaxWidth(), minLines = 2)
+
+                        Spacer(Modifier.height(16.dp))
+                        Text("Priority (1-5)", style = MaterialTheme.typography.labelMedium)
+                        Slider(value = editPriority.toFloat(), onValueChange = { editPriority = it.roundToInt() }, valueRange = 1f..5f, steps = 3)
+
+                        Spacer(Modifier.height(16.dp))
+                        Text("Tags", style = MaterialTheme.typography.labelMedium)
+
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.padding(top = 4.dp, bottom = 8.dp)) {
+                            editTags.forEach { tag ->
+                                InputChip(
+                                    selected = true,
+                                    onClick = { editTags = editTags - tag },
+                                    label = { Text(tag) },
+                                    trailingIcon = { Icon(Icons.Default.Close, "Remove", modifier = Modifier.size(16.dp)) }
+                                )
+                            }
+                        }
+
+                        OutlinedTextField(
+                            value = newTagText,
+                            onValueChange = { newTagText = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            placeholder = { Text("Type tag and press Add...") },
+                            singleLine = true,
+                            trailingIcon = {
+                                IconButton(onClick = {
+                                    if (newTagText.isNotBlank() && !editTags.contains(newTagText.trim())) {
+                                        editTags = editTags + newTagText.trim()
+                                        newTagText = ""
+                                    }
+                                }) { Icon(Icons.Default.Add, "Add Tag") }
+                            }
+                        )
+
+                        Spacer(Modifier.height(16.dp))
+                        Text("Subtasks", style = MaterialTheme.typography.labelMedium)
+                        editSubtasks.forEachIndexed { sIdx, sub ->
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                                Checkbox(checked = sub.isChecked, onCheckedChange = { chk -> editSubtasks = editSubtasks.toMutableList().apply { set(sIdx, sub.copy(isChecked = chk)) } })
+                                OutlinedTextField(
+                                    value = sub.text,
+                                    onValueChange = { txt -> editSubtasks = editSubtasks.toMutableList().apply { set(sIdx, sub.copy(text = txt)) } },
+                                    modifier = Modifier.weight(1f)
+                                )
+                                IconButton(onClick = { editSubtasks = editSubtasks.toMutableList().apply { removeAt(sIdx) } }) { Icon(Icons.Default.Close, "Remove") }
+                            }
+                        }
+                        TextButton(onClick = { editSubtasks = editSubtasks + CalendarChecklistItem(
+                            text = "New Subtask"
+                        )
+                        }) { Text("+ Add Subtask") }
+                    }
                 },
-                onDelete = {
-                    val newCols = columns.toMutableList()
-                    val newCards = newCols[cIdx].cards.toMutableList()
-                    newCards.removeAt(rIdx)
-                    newCols[cIdx] = newCols[cIdx].copy(cards = newCards)
-                    onUpdate(block.copy(kanbanColumns = newCols))
-                    editingCard = null
+                confirmButton = {
+                    TextButton(onClick = {
+                        val newCols = columns.toMutableList()
+                        val newCards = newCols[cIdx].cards.toMutableList()
+                        newCards[rIdx] = cardToEdit.copy(text = editTitle, description = editDesc, priority = editPriority, tags = editTags, subtasks = editSubtasks)
+                        newCols[cIdx] = newCols[cIdx].copy(cards = newCards)
+                        onUpdate(block.copy(kanbanColumns = newCols))
+                        editingCard = null
+                    }) { Text("Save") }
+                },
+                dismissButton = {
+                    TextButton(onClick = {
+                        val newCols = columns.toMutableList()
+                        val newCards = newCols[cIdx].cards.toMutableList()
+                        newCards.removeAt(rIdx)
+                        newCols[cIdx] = newCols[cIdx].copy(cards = newCards)
+                        onUpdate(block.copy(kanbanColumns = newCols))
+                        editingCard = null
+                    }, colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Text("Delete Card") }
                 }
             )
         }

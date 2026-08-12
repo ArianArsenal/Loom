@@ -109,19 +109,20 @@ fun CalendarBlockRenderer(
                             val dateStr = date.toString()
                             val events = block.calendarEvents[dateStr] ?: emptyList()
 
+                            // --- UI FIX: Colors updated to match app theme correctly in dark/light mode ---
                             Surface(
                                 modifier = Modifier.weight(1f).aspectRatio(1f).padding(2.dp).combinedClickable(
                                     onClick = { selectedDate = date; isCalendarEditMode = false },
                                     onLongClick = { selectedDate = date; isCalendarEditMode = true }
                                 ),
                                 shape = RoundedCornerShape(8.dp),
-                                color = if (events.isNotEmpty()) Color(0xFFE8F5E9) else MaterialTheme.colorScheme.surfaceVariant,
-                                border = if (date == LocalDate.now()) BorderStroke(2.dp, Color(0xFF4CAF50)) else null
+                                color = if (events.isNotEmpty()) MaterialTheme.colorScheme.primary.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surfaceVariant,
+                                border = if (date == LocalDate.now()) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null
                             ) {
                                 Column(modifier = Modifier.padding(4.dp)) {
-                                    Text(dayCounter.toString(), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = if (events.isNotEmpty()) Color(0xFF2E7D32) else Color.Unspecified)
+                                    Text(dayCounter.toString(), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = if (events.isNotEmpty()) MaterialTheme.colorScheme.primary else Color.Unspecified)
                                     if (events.isNotEmpty()) {
-                                        Text("${events.size} card${if(events.size>1)"s" else ""}", style = MaterialTheme.typography.labelSmall, color = Color(0xFF4CAF50), fontSize = 8.sp)
+                                        Text("${events.size} card${if(events.size>1)"s" else ""}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, fontSize = 8.sp)
                                     }
                                 }
                             }
@@ -157,7 +158,7 @@ fun CalendarBlockRenderer(
                     eventsForDay.forEachIndexed { eIndex, event ->
                         ElevatedCard(
                             modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                            colors = CardDefaults.elevatedCardColors(containerColor = if (isCalendarEditMode) MaterialTheme.colorScheme.surface else Color(0xFFF2FBF5))
+                            colors = CardDefaults.elevatedCardColors(containerColor = if (isCalendarEditMode) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.surfaceVariant.copy(alpha=0.6f))
                         ) {
                             Column(modifier = Modifier.padding(12.dp)) {
 
@@ -169,7 +170,7 @@ fun CalendarBlockRenderer(
                                         )
                                         if (event.title.isNotEmpty()) Text(event.title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp))
                                     } else {
-                                        if (event.title.isNotEmpty()) Text(event.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color(0xFF1B5E20))
+                                        if (event.title.isNotEmpty()) Text(event.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                                         if (event.details.isNotEmpty()) Text(event.details, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))
 
                                         if (event.type == "Checklist") {
@@ -178,7 +179,7 @@ fun CalendarBlockRenderer(
                                                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
                                                     Icon(
                                                         if(item.isChecked) Icons.Outlined.CheckCircle else Icons.Outlined.RadioButtonUnchecked, null,
-                                                        tint = Color(0xFF4CAF50), modifier = Modifier.size(20.dp).clickable {
+                                                        tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp).clickable {
                                                             val newChecklist = event.checklist.toMutableList()
                                                             newChecklist[cIndex] = item.copy(isChecked = !item.isChecked)
                                                             val newEvents = eventsForDay.toMutableList()
@@ -194,8 +195,8 @@ fun CalendarBlockRenderer(
                                     }
                                 } else {
                                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                        Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = RoundedCornerShape(4.dp)) {
-                                            Text(event.type, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp))
+                                        Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = RoundedCornerShape(4.dp)) {
+                                            Text(event.type, color = MaterialTheme.colorScheme.onSecondaryContainer, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp))
                                         }
                                         IconButton(onClick = {
                                             val newEvents = eventsForDay.toMutableList().apply { removeAt(eIndex) }
@@ -237,7 +238,7 @@ fun CalendarBlockRenderer(
                                                         newEvents[eIndex] = event.copy(checklist = newChecklist)
                                                         onUpdate(block.copy(calendarEvents = block.calendarEvents + (dateStr to newEvents)))
                                                     },
-                                                    modifier = Modifier.weight(1f).border(1.dp, Color.LightGray, RoundedCornerShape(4.dp)).padding(4.dp),
+                                                    modifier = Modifier.weight(1f).border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(4.dp)).padding(6.dp),
                                                     textStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface)
                                                 )
                                                 IconButton(onClick = {
@@ -245,7 +246,7 @@ fun CalendarBlockRenderer(
                                                     val newEvents = eventsForDay.toMutableList()
                                                     newEvents[eIndex] = event.copy(checklist = newChecklist)
                                                     onUpdate(block.copy(calendarEvents = block.calendarEvents + (dateStr to newEvents)))
-                                                }, modifier = Modifier.size(24.dp)) { Icon(Icons.Default.Remove, "Remove", tint = Color.Red) }
+                                                }, modifier = Modifier.size(24.dp)) { Icon(Icons.Default.Remove, "Remove", tint = MaterialTheme.colorScheme.error) }
                                             }
                                         }
                                         TextButton(onClick = {
