@@ -113,28 +113,47 @@ fun BookmarkBlockRenderer(
 
     LaunchedEffect(block.url) {
         if (block.url.isNotBlank() && block.url.contains(".")) {
+
+            // --- FIX: Ensure Cache Belongs to the CURRENT URL! ---
+            val cachedData = block.secondaryContent.split("|||")
+            if (cachedData.size >= 4 && cachedData[0] == block.url && cachedData[1] != "Preview unavailable") {
+                ogTitle = cachedData[1]
+                ogDesc = cachedData[2]
+                ogImage = cachedData[3]
+                isLoading = false
+                return@LaunchedEffect
+            }
+
             isLoading = true
             val fetchUrl = if (!block.url.startsWith("http")) "https://${block.url}" else block.url
+            var tempTitle = ""
+            var tempDesc = ""
+            var tempImage = ""
 
             withContext(kotlinx.coroutines.Dispatchers.IO) {
                 try {
-                    val doc = Jsoup.connect(fetchUrl)
-                        .userAgent("Mozilla/5.0")
-                        .timeout(4000)
-                        .get()
-                    ogTitle = doc.select("meta[property=og:title]").attr("content").ifEmpty { doc.title() }
-                    ogDesc = doc.select("meta[property=og:description]").attr("content").ifEmpty { doc.select("meta[name=description]").attr("content") }
-                    ogImage = doc.select("meta[property=og:image]").attr("content").ifEmpty { doc.select("meta[name=twitter:image]").attr("content") }
+                    val doc = Jsoup.connect(fetchUrl).userAgent("Mozilla/5.0").timeout(5000).get()
+                    tempTitle = doc.select("meta[property=og:title]").attr("content").ifEmpty { doc.title() }
+                    tempDesc = doc.select("meta[property=og:description]").attr("content").ifEmpty { doc.select("meta[name=description]").attr("content") }
+                    tempImage = doc.select("meta[property=og:image]").attr("content").ifEmpty { doc.select("meta[name=twitter:image]").attr("content") }
                 } catch (e: Exception) {
-                    ogTitle = "Preview unavailable"
-                    ogDesc = "Could not load metadata for this link."
-                    ogImage = ""
+                    tempTitle = "Preview unavailable"
+                    tempDesc = "Could not load metadata for this link."
+                    tempImage = ""
                 }
             }
+
+            ogTitle = tempTitle
+            ogDesc = tempDesc
+            ogImage = tempImage
             isLoading = false
+
+            if (tempTitle.isNotEmpty() && tempTitle != "Preview unavailable") {
+                // Save URL at index 0 so it instantly invalidates if the URL changes!
+                onUpdate(block.copy(secondaryContent = "${block.url}|||$tempTitle|||$tempDesc|||$tempImage"))
+            }
         } else {
-            ogTitle = ""; ogDesc = ""; ogImage = ""
-            isLoading = false
+            ogTitle = ""; ogDesc = ""; ogImage = ""; isLoading = false
         }
     }
 

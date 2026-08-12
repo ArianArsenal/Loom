@@ -1,8 +1,5 @@
 package com.example.loom.ui.sandbox.blocks
 
-import com.example.loom.ui.sandbox.TableCellData
-import com.example.loom.ui.sandbox.parseCell
-import com.example.loom.ui.sandbox.encodeCell
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -29,12 +26,19 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import com.example.loom.data.models.SandboxBlock
-
+import com.example.loom.data.models.TextFormatSpan
+import com.example.loom.ui.sandbox.TableCellData
+import com.example.loom.ui.sandbox.TextFormatToolbar
+import com.example.loom.ui.sandbox.adjustFormats
+import com.example.loom.ui.sandbox.buildAnnotated
 import com.example.loom.ui.sandbox.encodeCell
 import com.example.loom.ui.sandbox.parseCell
 
@@ -55,6 +59,9 @@ fun TableBlockRenderer(
     val colWidths = if (block.colWidths.size == colCount) block.colWidths else List(colCount) { 120f }
     val rowHeights = if (block.rowHeights.size == rowCount) block.rowHeights else List(rowCount) { 48f }
 
+    // State to track text field value for the currently focused cell
+    var activeTextFieldValue by remember { mutableStateOf(TextFieldValue("")) }
+
     Column(modifier = Modifier.fillMaxWidth().border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp)).padding(4.dp)) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
             Box {
@@ -73,6 +80,7 @@ fun TableBlockRenderer(
                     Row(modifier = Modifier.height(IntrinsicSize.Max)) {
                         row.forEachIndexed { cIndex, rawCell ->
                             val cell = parseCell(rawCell)
+                            val isFocused = focusedCell == (rIndex to cIndex)
 
                             Box(modifier = Modifier.width(colWidths[cIndex].dp).height(rowHeights[rIndex].dp)) {
                                 if (cell.isDeleted) {
@@ -84,17 +92,48 @@ fun TableBlockRenderer(
                                         color = bgColor
                                     ) {
                                         Box(modifier = Modifier.fillMaxSize()) {
+
+                                            // Ensure non-focused cells display the correct rich text state
+                                            val displayValue = if (isFocused) {
+                                                activeTextFieldValue
+                                            } else {
+                                                TextFieldValue(buildAnnotated(cell.text, cell.formats), TextRange(cell.text.length))
+                                            }
+
                                             BasicTextField(
-                                                value = cell.text,
-                                                onValueChange = { newText ->
-                                                    val newData = block.tableData.map { it.toMutableList() }.toMutableList()
-                                                    newData[rIndex][cIndex] = encodeCell(cell.copy(text = newText))
-                                                    onUpdate(block.copy(tableData = newData))
+                                                value = displayValue,
+                                                onValueChange = { newTextState ->
+                                                    if (isFocused) {
+                                                        val oldText = activeTextFieldValue.text
+                                                        val newText = newTextState.text
+                                                        var newFormats = cell.formats
+
+                                                        if (newText != oldText) {
+                                                            newFormats = adjustFormats(oldText, newText, cell.formats, newTextState.selection.start)
+                                                        }
+
+                                                        val updatedValue = newTextState.copy(annotatedString = buildAnnotated(newText, newFormats))
+                                                        activeTextFieldValue = updatedValue
+
+                                                        val newData = block.tableData.map { it.toMutableList() }.toMutableList()
+                                                        newData[rIndex][cIndex] = encodeCell(cell.copy(text = newText, formats = newFormats))
+                                                        onUpdate(block.copy(tableData = newData))
+                                                    }
                                                 },
-                                                modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).onFocusChanged { if (it.isFocused) focusedCell = rIndex to cIndex }.padding(8.dp),
-                                                textStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onBackground)
+                                                modifier = Modifier.fillMaxSize()
+                                                    .verticalScroll(rememberScrollState())
+                                                    .onFocusChanged {
+                                                        if (it.isFocused) {
+                                                            focusedCell = rIndex to cIndex
+                                                            activeTextFieldValue = TextFieldValue(buildAnnotated(cell.text, cell.formats), TextRange(cell.text.length))
+                                                        }
+                                                    }
+                                                    .padding(8.dp),
+                                                textStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onBackground),
+                                                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary)
                                             )
-                                            if (focusedCell == (rIndex to cIndex)) {
+
+                                            if (isFocused) {
                                                 IconButton(onClick = { cellOptionsTarget = rIndex to cIndex }, modifier = Modifier.align(Alignment.TopEnd).size(24.dp)) {
                                                     Icon(Icons.Default.MoreVert, "Options", modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.primary)
                                                 }
@@ -108,6 +147,50 @@ fun TableBlockRenderer(
                 }
             }
         }
+
+        // --- ADD: Rich Text Toolbar Integration ---
+        focusedCell?.let { (r, c) ->
+            val cell = parseCell(block.tableData[r][c])
+            // Fake a SandboxBlock struct so we can reuse the existing Toolbar exactly as is!
+            val fakeBlock = SandboxBlock(id = "table_cell", content = cell.text, textFormats = cell.formats)
+
+            TextFormatToolbar(
+                isFocused = true,
+                textState = activeTextFieldValue,
+                currentBlock = fakeBlock,
+                recentTableColors = recentTableColors,
+                onUpdate = { updatedBlock ->
+                    val newData = block.tableData.map { it.toMutableList() }.toMutableList()
+                    newData[r][c] = encodeCell(cell.copy(formats = updatedBlock.textFormats))
+                    onUpdate(block.copy(tableData = newData))
+
+                    // Instantly sync the visual state
+                    activeTextFieldValue = activeTextFieldValue.copy(annotatedString = buildAnnotated(activeTextFieldValue.text, updatedBlock.textFormats))
+                },
+                applyFormat = { type, value ->
+                    val selStart = activeTextFieldValue.selection.min
+                    val selEnd = activeTextFieldValue.selection.max
+                    val overlapping = cell.formats.filter { it.type == type && maxOf(it.start, selStart) < minOf(it.end, selEnd) }
+                    val cleared = cell.formats - overlapping.toSet()
+
+                    val newFormats = if (value.isNotEmpty()) {
+                        cleared + TextFormatSpan(selStart, selEnd, type, value)
+                    } else if (type in listOf("BOLD", "ITALIC", "STRIKE", "UNDERLINE")) {
+                        if (overlapping.isNotEmpty()) cleared else cleared + TextFormatSpan(selStart, selEnd, type, "")
+                    } else {
+                        cleared
+                    }
+
+                    val newData = block.tableData.map { it.toMutableList() }.toMutableList()
+                    newData[r][c] = encodeCell(cell.copy(formats = newFormats))
+                    onUpdate(block.copy(tableData = newData))
+
+                    // Instantly sync the visual state
+                    activeTextFieldValue = activeTextFieldValue.copy(annotatedString = buildAnnotated(activeTextFieldValue.text, newFormats))
+                }
+            )
+        }
+
         Row(modifier = Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
             TextButton(onClick = {
                 val newData = block.tableData.toMutableList().apply { add(List(colCount) { encodeCell(TableCellData()) }) }

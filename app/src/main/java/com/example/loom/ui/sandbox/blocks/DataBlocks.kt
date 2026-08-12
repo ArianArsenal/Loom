@@ -9,8 +9,12 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ShowChart
+import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.PieChart
+import androidx.compose.material.icons.filled.ShowChart
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -55,7 +59,15 @@ fun ChartBlockRenderer(
     Column(modifier = Modifier.fillMaxWidth().border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp)).padding(12.dp)) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Row(modifier = Modifier.background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp))) {
-                listOf("BAR" to "📊", "LINE" to "📈", "PIE" to "🥧").forEach { (type, icon) ->
+
+                // --- FIX: Professional Material Icons ---
+                val chartIcons = listOf(
+                    "BAR" to Icons.Default.BarChart,
+                    "LINE" to Icons.Default.ShowChart,
+                    "PIE" to Icons.Default.PieChart
+                )
+
+                chartIcons.forEach { (type, iconVector) ->
                     val isSelected = chartType == type
                     Box(
                         modifier = Modifier
@@ -67,7 +79,12 @@ fun ChartBlockRenderer(
                             }
                             .padding(horizontal = 12.dp, vertical = 6.dp)
                     ) {
-                        Text(icon, fontSize = 16.sp)
+                        Icon(
+                            imageVector = iconVector,
+                            contentDescription = type,
+                            tint = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.size(20.dp)
+                        )
                     }
                 }
             }
@@ -150,11 +167,9 @@ fun ChartBlockRenderer(
                     Box(modifier = Modifier.size(12.dp).background(chartColors[index % chartColors.size], CircleShape))
                     Spacer(Modifier.width(8.dp))
 
-                    // --- BULLETPROOF FIX FOR NAME FIELD ---
                     var nameState by remember { mutableStateOf(TextFieldValue(data.first)) }
                     var isNameFocused by remember { mutableStateOf(false) }
 
-                    // Only listen to the parent if the user is NOT actively typing
                     LaunchedEffect(data.first) {
                         if (!isNameFocused && nameState.text != data.first) {
                             nameState = nameState.copy(text = data.first)
@@ -174,13 +189,12 @@ fun ChartBlockRenderer(
                         modifier = Modifier
                             .weight(1f)
                             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha=0.3f), RoundedCornerShape(4.dp))
-                            .onFocusChanged { isNameFocused = it.isFocused } // Track focus!
+                            .onFocusChanged { isNameFocused = it.isFocused }
                             .padding(8.dp),
                         cursorBrush = SolidColor(MaterialTheme.colorScheme.primary)
                     )
                     Spacer(Modifier.width(8.dp))
 
-                    // --- BULLETPROOF FIX FOR VALUE FIELD ---
                     val expectedValStr = if (data.second % 1 == 0f) data.second.toInt().toString() else data.second.toString()
                     var valState by remember { mutableStateOf(TextFieldValue(expectedValStr)) }
                     var isValFocused by remember { mutableStateOf(false) }
@@ -205,7 +219,7 @@ fun ChartBlockRenderer(
                         modifier = Modifier
                             .width(60.dp)
                             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha=0.3f), RoundedCornerShape(4.dp))
-                            .onFocusChanged { isValFocused = it.isFocused } // Track focus!
+                            .onFocusChanged { isValFocused = it.isFocused }
                             .padding(8.dp),
                         cursorBrush = SolidColor(MaterialTheme.colorScheme.primary)
                     )

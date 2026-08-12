@@ -153,7 +153,7 @@ fun BlockRenderer(
 
         val newFormats = if (value.isNotEmpty()) {
             cleared + TextFormatSpan(selStart, selEnd, type, value)
-        } else if (type in listOf("BOLD", "ITALIC", "STRIKE")) {
+        } else if (type in listOf("BOLD", "ITALIC", "STRIKE", "UNDERLINE")) { // --- FIX: Added Underline support! ---
             if (overlapping.isNotEmpty()) cleared else cleared + TextFormatSpan(selStart, selEnd, type, "")
         } else {
             cleared
@@ -193,33 +193,59 @@ fun BlockRenderer(
             }
 
             if (!newText.startsWith(ZWSP) || newText.isEmpty()) {
-                val remainder = newText.replace(ZWSP, "")
+                val isDeletion = newText.length < oldText.length // --- FIX: Line Combining Bug Check ---
 
-                if (block.type == BlockType.CARD || block.type == BlockType.TIMELINE) {
-                    val safeText = ZWSP + remainder
-                    textState = newTextState.copy(
-                        annotatedString = buildAnnotated(safeText, newFormats),
-                        selection = TextRange(1.coerceAtMost(safeText.length))
-                    )
-                    onUpdate(currentBlock.copy(content = safeText, textFormats = newFormats))
-                    return@handleTextChange
-                }
+                if (isDeletion) {
+                    val remainder = newText.replace(ZWSP, "")
 
-                if (block.type != BlockType.TEXT && remainder.isEmpty()) {
-                    textState = textState.copy(text = ZWSP, selection = TextRange(1))
-                    onUpdate(currentBlock.copy(type = BlockType.TEXT, content = ZWSP, textFormats = emptyList()))
-                    keyboardController?.show()
-                } else if (block.type in listOf(BlockType.IMAGE, BlockType.AUDIO, BlockType.FILE, BlockType.SPACE, BlockType.LINK, BlockType.PROGRESS, BlockType.MATH, BlockType.VIDEO, BlockType.KANBAN, BlockType.SKETCH, BlockType.GALLERY) && remainder.isEmpty()) {
-                    onDeleteBlock("", true)
-                    keyboardController?.show()
-                    return@handleTextChange
-                } else {
+                    // 1. Protection for rigid blocks
+                    if (block.type == BlockType.CARD || block.type == BlockType.TIMELINE) {
+                        val safeText = ZWSP + remainder
+                        textState = newTextState.copy(annotatedString = buildAnnotated(safeText, newFormats), selection = TextRange(1.coerceAtMost(safeText.length)))
+                        onUpdate(currentBlock.copy(content = safeText, textFormats = newFormats))
+                        return@handleTextChange
+                    }
+
+                    // --- FIX 2: If we delete the start of a formatting block, downgrade it to TEXT first! ---
+                    if (block.type in listOf(BlockType.HEADING, BlockType.HEADING_2, BlockType.HEADING_3, BlockType.HEADING_4, BlockType.BULLET, BlockType.NUMBER, BlockType.TODO, BlockType.QUOTE, BlockType.CALLOUT, BlockType.TOGGLE)) {
+                        textState = newTextState.copy(
+                            annotatedString = buildAnnotated(ZWSP + remainder, newFormats),
+                            selection = TextRange(1)
+                        )
+                        onUpdate(currentBlock.copy(type = BlockType.TEXT, content = ZWSP + remainder, textFormats = newFormats))
+                        return@handleTextChange
+                    }
+
+                    // 3. Delete empty media/special blocks
+                    if (block.type in listOf(BlockType.IMAGE, BlockType.AUDIO, BlockType.FILE, BlockType.SPACE, BlockType.LINK, BlockType.PROGRESS, BlockType.MATH, BlockType.VIDEO, BlockType.KANBAN, BlockType.SKETCH, BlockType.GALLERY) && remainder.isEmpty()) {
+                        onDeleteBlock("", true)
+                        keyboardController?.show()
+                        return@handleTextChange
+                    }
+
+                    // 4. Merge text blocks
                     onDeleteBlock(remainder, false)
                     keyboardController?.show()
                     return@handleTextChange
+
+                } else {
+                    // Restore ZWSP if user typed before it
+                    val restoredText = ZWSP + newText.replace(ZWSP, "")
+                    val newCursor = newTextState.selection.start.coerceAtLeast(1)
+
+                    textState = newTextState.copy(
+                        annotatedString = buildAnnotated(restoredText, newFormats),
+                        selection = TextRange(newCursor)
+                    )
+                    onUpdate(currentBlock.copy(content = restoredText, textFormats = newFormats))
+                    return@handleTextChange
                 }
             }
-            else if (newText.contains('\n')) {
+
+            // --- FIX: Ensure we only split if a NEW newline was typed ---
+            val newlyAddedNewline = newText.length > oldText.length && newText.count { it == '\n' } > oldText.count { it == '\n' }
+
+            if (newlyAddedNewline) {
                 if (isProcessingEnter) return@handleTextChange
                 isProcessingEnter = true
 
@@ -233,7 +259,13 @@ fun BlockRenderer(
                     scope.launch { kotlinx.coroutines.delay(50); isProcessingEnter = false }
                 } else {
                     val nextType = if (block.type in listOf(BlockType.TODO, BlockType.BULLET, BlockType.NUMBER)) block.type else BlockType.TEXT
-                    textState = TextFieldValue(ZWSP + currentLine, TextRange((ZWSP + currentLine).length))
+
+                    // --- FIX: Rebuild formats instantly so color isn't lost during enter ---
+                    textState = TextFieldValue(
+                        annotatedString = buildAnnotated(ZWSP + currentLine, newFormats),
+                        selection = TextRange((ZWSP + currentLine).length)
+                    )
+
                     onSplitBlock(ZWSP + currentLine, nextType, nextContent)
                     scope.launch { kotlinx.coroutines.delay(50); isProcessingEnter = false }
                 }
@@ -356,7 +388,6 @@ fun BlockRenderer(
                     else -> MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onBackground)
                 }
 
-                // --- UI FIX: Callout Bright Glow Integration ---
                 val calloutBaseColor = try {
                     if (block.secondaryContent.isNotEmpty()) Color(android.graphics.Color.parseColor(block.secondaryContent))
                     else Color(0xFF4CAF50)
@@ -417,7 +448,6 @@ fun BlockRenderer(
                                 }
                             }
 
-                            // --- NEW: Callout 3-Dot Menu ---
                             if (block.type == BlockType.CALLOUT && !isReadOnly) {
                                 IconButton(onClick = { showCalloutPicker = true }, modifier = Modifier.size(24.dp)) {
                                     Icon(Icons.Default.MoreVert, "Change Color", tint = calloutBaseColor)

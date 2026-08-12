@@ -7,6 +7,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
+import androidx.compose.material.icons.filled.BugReport
+import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.ErrorOutline
@@ -22,6 +24,28 @@ import androidx.compose.ui.unit.sp
 import com.example.loom.data.models.SandboxBlock
 import com.example.loom.data.models.SandboxSpace
 
+// --- FIX: Safely parses your custom Space icon strings and resolves colors/icons ---
+@Composable
+fun SpaceDynamicIcon(iconString: String, modifier: Modifier = Modifier) {
+    if (iconString.contains("|")) {
+        val parts = iconString.split("|")
+        val iconName = parts.getOrNull(0) ?: ""
+        val colorHex = parts.getOrNull(1) ?: "#808080"
+        val color = try { Color(android.graphics.Color.parseColor(colorHex)) } catch (e: Exception) { Color.Gray }
+
+        // Add your custom string-to-icon mappings here!
+        val imageVector = when (iconName) {
+            "file_code" -> Icons.Default.Code
+            "bug" -> Icons.Default.BugReport
+            else -> Icons.Default.Dashboard
+        }
+
+        Icon(imageVector, contentDescription = null, tint = color, modifier = modifier.size(24.dp))
+    } else {
+        Text(iconString, fontSize = 24.sp, modifier = modifier)
+    }
+}
+
 @Composable
 fun SpaceBlockRenderer(currentBlock: SandboxBlock, isReadOnly: Boolean, allSpaces: List<SandboxSpace>, currentSpaceId: String, onUpdate: (SandboxBlock) -> Unit, onDeleteBlock: (String, Boolean) -> Unit, onScrollToTop: () -> Unit, onNavigateToSpace: (String) -> Unit, onCreateLinkedSpace: () -> String) {
     var showBlockMenu by remember { mutableStateOf(false) }
@@ -36,7 +60,12 @@ fun SpaceBlockRenderer(currentBlock: SandboxBlock, isReadOnly: Boolean, allSpace
                     text = {
                         LazyColumn {
                             item { TextButton(onClick = { val newId = onCreateLinkedSpace(); onUpdate(currentBlock.copy(url = newId)); onNavigateToSpace(newId); showSpacePicker = false }) { Text("+ Create New Space", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold) }; HorizontalDivider(Modifier.padding(vertical = 8.dp)) }
-                            items(allSpaces) { s -> Row(modifier = Modifier.fillMaxWidth().clickable { onUpdate(currentBlock.copy(url = s.id)); showSpacePicker = false }.padding(12.dp), verticalAlignment = Alignment.CenterVertically) { Text(s.icon, fontSize = 24.sp); Spacer(Modifier.width(16.dp)); Text(s.title.ifBlank { "Untitled" }, style = MaterialTheme.typography.titleMedium); if (s.id == currentSpaceId) { Spacer(Modifier.width(8.dp)); Text("(Current Space)", color = Color.Gray, fontSize = 12.sp) } } }
+                            items(allSpaces) { s ->
+                                Row(modifier = Modifier.fillMaxWidth().clickable { onUpdate(currentBlock.copy(url = s.id)); showSpacePicker = false }.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    SpaceDynamicIcon(s.icon)
+                                    Spacer(Modifier.width(16.dp)); Text(s.title.ifBlank { "Untitled" }, style = MaterialTheme.typography.titleMedium); if (s.id == currentSpaceId) { Spacer(Modifier.width(8.dp)); Text("(Current Space)", color = Color.Gray, fontSize = 12.sp) }
+                                }
+                            }
                         }
                     },
                     confirmButton = { TextButton(onClick = { showSpacePicker = false }) { Text("Cancel") } }
@@ -47,7 +76,8 @@ fun SpaceBlockRenderer(currentBlock: SandboxBlock, isReadOnly: Boolean, allSpace
             if (linkedSpace != null) {
                 Surface(modifier = Modifier.fillMaxWidth().clickable { if (linkedSpace.id == currentSpaceId) onScrollToTop() else onNavigateToSpace(linkedSpace.id) }, shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha=0.5f)) {
                     Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text(linkedSpace.icon, fontSize = 24.sp); Spacer(Modifier.width(12.dp)); Text(linkedSpace.title.ifBlank { "Untitled" }, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f)); if (linkedSpace.id == currentSpaceId) { Text("(Current)", color = Color.Gray, fontSize = 12.sp, modifier = Modifier.padding(end = 8.dp)) }
+                        SpaceDynamicIcon(linkedSpace.icon)
+                        Spacer(Modifier.width(12.dp)); Text(linkedSpace.title.ifBlank { "Untitled" }, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f)); if (linkedSpace.id == currentSpaceId) { Text("(Current)", color = Color.Gray, fontSize = 12.sp, modifier = Modifier.padding(end = 8.dp)) }
                         Icon(Icons.AutoMirrored.Filled.ArrowForwardIos, null, tint = Color.Gray, modifier = Modifier.size(16.dp))
                         if (!isReadOnly) { IconButton(onClick = { showBlockMenu = true }) { Icon(Icons.Default.MoreVert, "Options", tint = Color.Gray) }; DropdownMenu(expanded = showBlockMenu, onDismissRequest = { showBlockMenu = false }) { DropdownMenuItem(text = { Text("Delete Block", color = MaterialTheme.colorScheme.error) }, onClick = { onDeleteBlock("", true) }); DropdownMenuItem(text = { Text("Change Space") }, onClick = { onUpdate(currentBlock.copy(url = "")); showBlockMenu = false }) } }
                     }

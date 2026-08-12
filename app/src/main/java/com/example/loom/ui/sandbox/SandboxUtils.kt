@@ -34,8 +34,12 @@ import java.util.UUID
 const val ZWSP = "\u200B"
 
 @Serializable
-data class TableCellData(val text: String = "", val colorHex: String? = null, val isDeleted: Boolean = false)
-
+data class TableCellData(
+    val text: String = "",
+    val colorHex: String? = null,
+    val isDeleted: Boolean = false,
+    val formats: List<TextFormatSpan> = emptyList() // --- NEW: Required for table rich text! ---
+)
 fun parseCell(raw: String): TableCellData {
     if (raw.isBlank()) return TableCellData()
     return try { Json.decodeFromString(raw) } catch (e: Exception) { TableCellData(text = raw) }
@@ -55,6 +59,7 @@ fun buildAnnotated(text: String, formats: List<TextFormatSpan>): AnnotatedString
                     "BOLD" -> addStyle(SpanStyle(fontWeight = FontWeight.Bold), start, end)
                     "ITALIC" -> addStyle(SpanStyle(fontStyle = FontStyle.Italic), start, end)
                     "STRIKE" -> addStyle(SpanStyle(textDecoration = TextDecoration.LineThrough), start, end)
+                    "UNDERLINE" -> addStyle(SpanStyle(textDecoration = TextDecoration.Underline), start, end) // --- NEW UNDERLINE FIX ---
                     "COLOR" -> try { addStyle(SpanStyle(color = Color(android.graphics.Color.parseColor(f.value))), start, end) } catch(e:Exception){}
                     "HIGHLIGHT" -> try { addStyle(SpanStyle(background = Color(android.graphics.Color.parseColor(f.value))), start, end) } catch(e:Exception){}
                 }
