@@ -1,5 +1,8 @@
 package com.example.loom.ui.sandbox.blocks
-
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.ui.input.pointer.PointerInputChange
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -10,10 +13,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ShowChart
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PieChart
+import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.ShowChart
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -21,13 +26,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.geometry.Offset
+
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
@@ -36,7 +42,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.loom.data.models.SandboxBlock
 import com.example.loom.ui.sandbox.ZWSP
+import kotlinx.serialization.encodeToString
 
+
+@kotlinx.serialization.Serializable
+data class ProgressMeta(
+    val current: Float = 0f,
+    val max: Float = 100f,
+    val unit: String = "%"
+)
 @Composable
 fun ChartBlockRenderer(
     block: SandboxBlock,
@@ -245,7 +259,6 @@ fun ChartBlockRenderer(
         }
     }
 }
-
 @Composable
 fun ProgressBlockRenderer(
     block: SandboxBlock,
@@ -257,25 +270,170 @@ fun ProgressBlockRenderer(
     onDeleteBlock: (String, Boolean) -> Unit
 ) {
     var showBlockMenu by remember { mutableStateOf(false) }
+    var showEditDialog by remember { mutableStateOf(false) }
 
-    Column(modifier = Modifier.fillMaxWidth()) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+    // Parse the custom properties, or fall back to standard 0-100%
+    val meta = try {
+        if (block.secondaryContent.isNotBlank()) {
+            kotlinx.serialization.json.Json.decodeFromString<ProgressMeta>(block.secondaryContent)
+        } else {
+            ProgressMeta(current = block.progress * 100f, max = 100f, unit = "%")
+        }
+    } catch (e: Exception) {
+        ProgressMeta(current = block.progress * 100f, max = 100f, unit = "%")
+    }
+
+    // Helper to hide decimals if it's a clean whole number (e.g., "15" instead of "15.0")
+    val formatNum = { value: Float -> if (value % 1f == 0f) value.toInt().toString() else value.toString() }
+
+    val displayString = if (meta.unit == "%" && meta.max == 100f) {
+        "${formatNum(meta.current)}%"
+    } else {
+        "${formatNum(meta.current)} / ${formatNum(meta.max)} ${meta.unit}".trim()
+    }
+
+    val ratio = if (meta.max > 0f) (meta.current / meta.max).coerceIn(0f, 1f) else 0f
+
+    // Smoothly animates the progress bar filling up or down
+    val animatedProgress by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = ratio,
+        animationSpec = androidx.compose.animation.core.tween(durationMillis = 400, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+        label = "progress_anim"
+    )
+
+    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
             BasicTextField(
                 value = textState, onValueChange = handleTextChange,
-                textStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onBackground, fontWeight = FontWeight.Bold),
+                textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onBackground, fontWeight = FontWeight.Bold),
                 modifier = commonModifier.weight(1f), cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                 decorationBox = placeholderUI
             )
+
             Spacer(Modifier.width(8.dp))
-            Text("${(block.progress * 100).toInt()}%", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-            IconButton(onClick = { showBlockMenu = true }, modifier = Modifier.size(24.dp)) { Icon(Icons.Default.MoreVert, "Options", tint = Color.Gray) }
+
+            // --- THE NEW PRECISION CONTROLS ---
+            Row(
+                modifier = Modifier.background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), RoundedCornerShape(8.dp)),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = {
+                    val newVal = (meta.current - 1f).coerceAtLeast(0f)
+                    val newMeta = meta.copy(current = newVal)
+                    onUpdate(block.copy(progress = newVal / meta.max, secondaryContent = kotlinx.serialization.json.Json.encodeToString(newMeta)))
+                }, modifier = Modifier.size(28.dp)) {
+                    Icon(androidx.compose.material.icons.Icons.Default.Remove, "Decrease", modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+
+                Text(
+                    text = displayString,
+                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary),
+                    modifier = Modifier.clickable { showEditDialog = true }.padding(horizontal = 4.dp)
+                )
+
+                IconButton(onClick = {
+                    val newVal = (meta.current + 1f).coerceAtMost(meta.max)
+                    val newMeta = meta.copy(current = newVal)
+                    onUpdate(block.copy(progress = newVal / meta.max, secondaryContent = kotlinx.serialization.json.Json.encodeToString(newMeta)))
+                }, modifier = Modifier.size(28.dp)) {
+                    Icon(androidx.compose.material.icons.Icons.Default.Add, "Increase", modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+
+            IconButton(onClick = { showBlockMenu = true }, modifier = Modifier.size(24.dp).padding(start = 4.dp)) {
+                Icon(androidx.compose.material.icons.Icons.Default.MoreVert, "Options", tint = Color.Gray)
+            }
             DropdownMenu(expanded = showBlockMenu, onDismissRequest = { showBlockMenu = false }) {
+                DropdownMenuItem(text = { Text("Edit Target & Unit") }, onClick = { showEditDialog = true; showBlockMenu = false })
                 DropdownMenuItem(text = { Text("Delete Tracker", color = MaterialTheme.colorScheme.error) }, onClick = { onDeleteBlock("", true) })
             }
         }
-        Slider(
-            value = block.progress, onValueChange = { onUpdate(block.copy(progress = it)) },
-            modifier = Modifier.fillMaxWidth().height(24.dp), colors = SliderDefaults.colors(thumbColor = MaterialTheme.colorScheme.primary, activeTrackColor = MaterialTheme.colorScheme.primary)
+
+        Spacer(Modifier.height(8.dp))
+
+        // --- MODERN INTERACTIVE CANVAS SLIDER ---
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(16.dp)
+                .clip(RoundedCornerShape(50))
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                .pointerInput(Unit) {
+                    detectTapGestures(
+                        onTap = { offset: Offset ->
+                            val newRatio = (offset.x / size.width.toFloat()).coerceIn(0f, 1f)
+                            val newVal = newRatio * meta.max
+                            val finalVal = if (meta.max % 1f == 0f) kotlin.math.round(newVal) else newVal
+                            val newMeta = meta.copy(current = finalVal)
+                            onUpdate(block.copy(progress = finalVal / meta.max, secondaryContent = kotlinx.serialization.json.Json.encodeToString(newMeta)))
+                        }
+                    )
+                }
+                .pointerInput(Unit) {
+                    // FIX: Explicitly typed change and dragAmount to resolve compiler errors
+                    detectDragGestures { change: PointerInputChange, dragAmount: Offset ->
+                        change.consume()
+                        val newRatio = (change.position.x / size.width.toFloat()).coerceIn(0f, 1f)
+                        val newVal = newRatio * meta.max
+                        val finalVal = if (meta.max % 1f == 0f) kotlin.math.round(newVal) else newVal
+                        val newMeta = meta.copy(current = finalVal)
+                        onUpdate(block.copy(progress = finalVal / meta.max, secondaryContent = kotlinx.serialization.json.Json.encodeToString(newMeta)))
+                    }
+                }
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(animatedProgress)
+                    .fillMaxHeight()
+                    .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(50))
+            )
+        }
+    }
+
+    // --- CUSTOM TARGET DIALOG ---
+    if (showEditDialog) {
+        var editCurrent by remember { mutableStateOf(formatNum(meta.current)) }
+        var editMax by remember { mutableStateOf(formatNum(meta.max)) }
+        var editUnit by remember { mutableStateOf(meta.unit) }
+
+        AlertDialog(
+            onDismissRequest = { showEditDialog = false },
+            title = { Text("Setup Goal Tracker") },
+            text = {
+                Column {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(
+                            value = editCurrent, onValueChange = { editCurrent = it },
+                            label = { Text("Current") }, modifier = Modifier.weight(1f), singleLine = true
+                        )
+                        OutlinedTextField(
+                            value = editMax, onValueChange = { editMax = it },
+                            label = { Text("Target") }, modifier = Modifier.weight(1f), singleLine = true
+                        )
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = editUnit, onValueChange = { editUnit = it },
+                        label = { Text("Unit Label (e.g., Pages, kg, $, %)") },
+                        modifier = Modifier.fillMaxWidth(), singleLine = true
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val c = editCurrent.toFloatOrNull() ?: meta.current
+                    val m = editMax.toFloatOrNull() ?: meta.max
+                    val safeMax = if (m <= 0f) 1f else m // Prevents dividing by zero
+                    val safeCurrent = c.coerceIn(0f, safeMax)
+
+                    val newMeta = ProgressMeta(current = safeCurrent, max = safeMax, unit = editUnit.trim())
+                    onUpdate(block.copy(progress = safeCurrent / safeMax, secondaryContent = kotlinx.serialization.json.Json.encodeToString(newMeta)))
+                    showEditDialog = false
+                }) { Text("Save Goal") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showEditDialog = false }) { Text("Cancel") }
+            }
         )
     }
 }

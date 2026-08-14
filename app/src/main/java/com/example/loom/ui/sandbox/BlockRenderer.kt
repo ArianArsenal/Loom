@@ -324,7 +324,7 @@ fun BlockRenderer(
 
     val isEmptyText = block.type == BlockType.TEXT && textState.text.replace(ZWSP, "").trim().isEmpty()
 
-    val hideDragHandle = isWidgetMode && block.type == BlockType.CARD
+    val hideDragHandle = (isWidgetMode && block.type == BlockType.CARD) || isReadOnly
     val showHandle = if (hideDragHandle) false else if (isTextBased) { !isEmptyText && (isFocused || isDragging) && !isReadOnly } else { !isReadOnly }
 
     val elevation by animateDpAsState(if (isDragging) 6.dp else 0.dp, label = "drag_elevation")
@@ -555,6 +555,7 @@ fun BlockRenderer(
                     BlockType.SKETCH -> SketchBlockRenderer(currentBlock, textState, handleTextChange, commonModifier, placeholderUI, onUpdate, onDeleteBlock)
                     BlockType.KANBAN -> KanbanBlockRenderer(currentBlock, textState, handleTextChange, commonModifier, placeholderUI, onUpdate, onDeleteBlock)
                     BlockType.TABLE -> TableBlockRenderer(currentBlock, recentTableColors, onUpdate, onDeleteBlock)
+                    BlockType.DATABASE -> DatabaseBlockRenderer(currentBlock, onUpdate, onDeleteBlock)
                     BlockType.TIMELINE -> TimelineBlockRenderer(currentBlock, allSpaces, currentSpaceId, recentTableColors, focusRequesters, onUpdate, onDeleteBlock)
                     BlockType.IMAGE -> ImageBlockRenderer(currentBlock, textState, handleTextChange, commonModifier, placeholderUI, mediaLauncher, onDeleteBlock)
                     BlockType.VIDEO -> VideoBlockRenderer(currentBlock, textState, handleTextChange, commonModifier, placeholderUI, videoLauncher, onUpdate, onDeleteBlock)

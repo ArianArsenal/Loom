@@ -59,8 +59,8 @@ data class TimelineSettings(
 @Serializable
 data class TimelineCardMeta(
     val dayIndex: Int = 0,
-    val startTimeMin: Int = 540,
-    val durationMin: Int = 60,
+    val startTimeMin: Int = 0,
+    val durationMin: Int = 0,
     val colorHex: String = "#4CAF50"
 )
 
@@ -334,8 +334,6 @@ fun TimelineBlockRenderer(
 
         var showSettingsStartPicker by remember { mutableStateOf(false) }
         var showSettingsEndPicker by remember { mutableStateOf(false) }
-
-        // --- NEW: M3 LIVE DATE PICKER STATE ---
         var showLiveDatePicker by remember { mutableStateOf(false) }
 
         if (showSettingsStartPicker) {
@@ -366,7 +364,6 @@ fun TimelineBlockRenderer(
             )
         }
 
-        // --- M3 CALENDAR DIALOG UI ---
         if (showLiveDatePicker) {
             val datePickerState = rememberDatePickerState(initialSelectedDateMillis = settings.liveStartDateMillis)
             DatePickerDialog(
@@ -474,7 +471,6 @@ fun TimelineBlockRenderer(
 
                     if (settings.mode == "LIVE") {
                         Spacer(Modifier.height(16.dp))
-                        // Replaced the context-based DatePickerDialog with our showLiveDatePicker trigger
                         Button(onClick = { showLiveDatePicker = true }, modifier = Modifier.fillMaxWidth()) { Text("Select Start Date") }
                     }
 
@@ -703,6 +699,7 @@ fun TimelineBlockRenderer(
                 Text(currentBlock.content.replace("\u200B", "").ifEmpty { "Weekly Schedule" }, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
                 Row {
                     IconButton(onClick = {
+                        // --- FIX: Start exactly at the beginning of the visible timeline! ---
                         val newEvent = SandboxBlock(type = BlockType.TIMELINE_CARD, content = "\u200BNew Event", secondaryContent = Json.encodeToString(TimelineCardMeta(startTimeMin = settings.startHour * 60)))
                         cardToEditProps = newEvent
                         isNewCard = true
@@ -732,7 +729,6 @@ fun TimelineBlockRenderer(
                                 Box(modifier = Modifier.width(hourWidth).fillMaxHeight()) {
                                     Text("$hour:00", style = MaterialTheme.typography.labelSmall, color = Color.Gray, modifier = Modifier.align(Alignment.BottomStart).padding(start = 4.dp, bottom = 4.dp))
 
-                                    // --- FIX: Add the final hour label at the very end boundary ---
                                     if (hour == settings.endHour - 1) {
                                         Text("${settings.endHour}:00", style = MaterialTheme.typography.labelSmall, color = Color.Gray, modifier = Modifier.align(Alignment.BottomEnd).padding(end = 4.dp, bottom = 4.dp))
                                     }
@@ -744,7 +740,6 @@ fun TimelineBlockRenderer(
                                         Box(modifier = Modifier.offset(x = tickSpacingPx * t).width(1.dp).height(tickHeight).background(Color.Gray.copy(alpha=0.5f)).align(Alignment.BottomStart))
                                     }
 
-                                    // Final tall tick mark at the exact end boundary
                                     if (hour == settings.endHour - 1) {
                                         Box(modifier = Modifier.align(Alignment.BottomEnd).width(1.dp).height(12.dp).background(Color.Gray.copy(alpha=0.5f)))
                                     }

@@ -7,8 +7,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
-import androidx.compose.material.icons.filled.BugReport
-import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.ErrorOutline
@@ -18,29 +16,30 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.loom.data.models.SandboxBlock
 import com.example.loom.data.models.SandboxSpace
 
-// --- FIX: Safely parses your custom Space icon strings and resolves colors/icons ---
 @Composable
 fun SpaceDynamicIcon(iconString: String, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
     if (iconString.contains("|")) {
         val parts = iconString.split("|")
         val iconName = parts.getOrNull(0) ?: ""
         val colorHex = parts.getOrNull(1) ?: "#808080"
         val color = try { Color(android.graphics.Color.parseColor(colorHex)) } catch (e: Exception) { Color.Gray }
 
-        // Add your custom string-to-icon mappings here!
-        val imageVector = when (iconName) {
-            "file_code" -> Icons.Default.Code
-            "bug" -> Icons.Default.BugReport
-            else -> Icons.Default.Dashboard
+        // --- FIX: Safely parses custom Space icon strings and resolves colors/icons from your drawable resources ---
+        val resId = context.resources.getIdentifier(iconName, "drawable", context.packageName)
+        if (resId != 0) {
+            Icon(painterResource(id = resId), contentDescription = null, tint = color, modifier = modifier.size(24.dp))
+        } else {
+            Icon(Icons.Default.Dashboard, contentDescription = null, tint = color, modifier = modifier.size(24.dp))
         }
-
-        Icon(imageVector, contentDescription = null, tint = color, modifier = modifier.size(24.dp))
     } else {
         Text(iconString, fontSize = 24.sp, modifier = modifier)
     }

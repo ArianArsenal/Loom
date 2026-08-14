@@ -9,7 +9,7 @@ enum class BlockType {
     IMAGE, AUDIO, FILE, CODE, SPACE, LINK,
     SKETCH, KANBAN, VIDEO, PROGRESS, MATH,
     TOC, CHART, TIMER, BOOKMARK, COUNTDOWN, GALLERY, CARD, TIMELINE,
-    TIMELINE_CARD
+    TIMELINE_CARD, DATABASE
 }
 
 @Serializable
@@ -28,6 +28,19 @@ data class CalendarEvent(
     var checklist: List<CalendarChecklistItem> = emptyList(), // <-- MUST BE CalendarChecklistItem
     var imageUrl: String = "",
     var frequency: String = "Once"
+)
+
+@Serializable
+enum class PropertyType {
+    TEXT, NUMBER, CHECKBOX, DATE, SELECT, MULTI_SELECT
+}
+
+@Serializable
+data class DatabaseProperty(
+    val id: String = java.util.UUID.randomUUID().toString(),
+    var name: String = "New Property",
+    var type: PropertyType = PropertyType.TEXT,
+    var options: List<String> = emptyList() // Used for Select/Multi-Select
 )
 
 // NEW: Data class for individual gallery images
