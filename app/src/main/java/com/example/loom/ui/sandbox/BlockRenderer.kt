@@ -555,7 +555,7 @@ fun BlockRenderer(
                     BlockType.SKETCH -> SketchBlockRenderer(currentBlock, textState, handleTextChange, commonModifier, placeholderUI, onUpdate, onDeleteBlock)
                     BlockType.KANBAN -> KanbanBlockRenderer(currentBlock, textState, handleTextChange, commonModifier, placeholderUI, onUpdate, onDeleteBlock)
                     BlockType.TABLE -> TableBlockRenderer(currentBlock, recentTableColors, onUpdate, onDeleteBlock)
-                    BlockType.DATABASE -> DatabaseBlockRenderer(currentBlock, onUpdate, onDeleteBlock)
+                    BlockType.DATABASE -> DatabaseBlockRenderer(currentBlock, allSpaces, currentSpaceId, onNavigateToSpace, onUpdate, onDeleteBlock)
                     BlockType.TIMELINE -> TimelineBlockRenderer(currentBlock, allSpaces, currentSpaceId, recentTableColors, focusRequesters, onUpdate, onDeleteBlock)
                     BlockType.IMAGE -> ImageBlockRenderer(currentBlock, textState, handleTextChange, commonModifier, placeholderUI, mediaLauncher, onDeleteBlock)
                     BlockType.VIDEO -> VideoBlockRenderer(currentBlock, textState, handleTextChange, commonModifier, placeholderUI, videoLauncher, onUpdate, onDeleteBlock)

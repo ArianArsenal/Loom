@@ -32,7 +32,8 @@ data class CalendarEvent(
 
 @Serializable
 enum class PropertyType {
-    TEXT, NUMBER, CHECKBOX, DATE, SELECT, MULTI_SELECT
+    TEXT, NUMBER, CHECKBOX, DATE, SELECT, MULTI_SELECT,
+    STATUS, PROGRESS, FORMULA, URL, MEDIA, SPACE // --- FIX: Added 6 new types!
 }
 
 @Serializable
@@ -40,7 +41,8 @@ data class DatabaseProperty(
     val id: String = java.util.UUID.randomUUID().toString(),
     var name: String = "New Property",
     var type: PropertyType = PropertyType.TEXT,
-    var options: List<String> = emptyList() // Used for Select/Multi-Select
+    // --- FIX: Map now holds the option name AND its custom HSV Hex Color ---
+    var options: Map<String, String> = emptyMap()
 )
 
 // NEW: Data class for individual gallery images
