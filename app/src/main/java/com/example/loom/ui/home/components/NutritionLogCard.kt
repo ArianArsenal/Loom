@@ -19,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -29,11 +30,40 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-// --- FIX: Dynamic Locale generation ---
 private fun getTimelineDateFormatter() = SimpleDateFormat("h:mm a", Locale.getDefault())
 
+// --- PERFECT PRECISION FIX: Max 3 decimals, strip trailing zeros ---
 private fun Float.formatWeight(): String {
-    return if (this % 1f == 0f) this.toInt().toString() else this.toString()
+    val formatted = String.format(Locale.US, "%.3f", this)
+    return formatted.trimEnd('0').trimEnd('.')
+}
+
+// --- RTL MASTER FIX ---
+@Composable
+fun LoggedServingDisplay(servings: Float, servingUnit: String, textStyle: androidx.compose.ui.text.TextStyle, color: Color) {
+    val mResult = "\\d+(\\.\\d+)?".toRegex().find(servingUnit)
+    val numStr = mResult?.value ?: ""
+    val textStr = if (mResult != null) servingUnit.replaceFirst(numStr, "").trim() else servingUnit.trim()
+    val isPersian = Regex("[\\u0600-\\u06FF]").containsMatchIn(textStr)
+
+    val finalMultiplierStr = servings.formatWeight()
+
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (isPersian) {
+            if (textStr.isNotBlank()) Text(textStr, style = textStyle.copy(textDirection = TextDirection.Rtl), color = color)
+            if (numStr.isNotBlank()) Text(numStr, style = textStyle, fontWeight = FontWeight.Bold, color = color)
+            Text("×", style = textStyle, color = color)
+            Text(finalMultiplierStr, style = textStyle, fontWeight = FontWeight.Bold, color = color)
+        } else {
+            Text(finalMultiplierStr, style = textStyle, fontWeight = FontWeight.Bold, color = color)
+            Text("×", style = textStyle, color = color)
+            if (numStr.isNotBlank()) Text(numStr, style = textStyle, fontWeight = FontWeight.Bold, color = color)
+            if (textStr.isNotBlank()) Text(textStr, style = textStyle.copy(textDirection = TextDirection.Ltr), color = color)
+        }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
@@ -70,38 +100,24 @@ fun NutritionLogCard(
                     }
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    Text(log.foodName, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+                    val isNamePersian = Regex("[\\u0600-\\u06FF]").containsMatchIn(log.foodName)
+                    Text(
+                        text = log.foodName,
+                        style = MaterialTheme.typography.titleLarge.copy(
+                            textDirection = if (isNamePersian) TextDirection.Rtl else TextDirection.Ltr
+                        ),
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center
+                    )
 
-                    val unitDisplay = log.servingUnit.ifBlank { "serving" }
-                    val uText = unitDisplay.trim()
-                    val mResult = "\\d+(\\.\\d+)?".toRegex().find(uText)
+                    Spacer(modifier = Modifier.height(8.dp))
 
-                    val calculatedNumStr: String
-                    val finalUnitText: String
-                    val showMultiplier: Boolean
-
-                    if (mResult != null) {
-                        val baseNum = mResult.value.toFloat()
-                        val totalNum = baseNum * log.servings
-                        calculatedNumStr = totalNum.formatWeight()
-                        finalUnitText = uText.replaceFirst(mResult.value, "").trim()
-                        showMultiplier = false
-                    } else {
-                        calculatedNumStr = ""
-                        finalUnitText = uText
-                        showMultiplier = true
-                    }
-
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-                        if (finalUnitText.isNotBlank()) {
-                            Text(finalUnitText, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Spacer(modifier = Modifier.width(4.dp))
-                        }
-                        if (showMultiplier) {
-                            Text("${log.servings.formatWeight()}x", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        } else {
-                            Text(calculatedNumStr, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        LoggedServingDisplay(log.servings, log.servingUnit.ifBlank { "serving" }, MaterialTheme.typography.bodyMedium, MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(modifier = Modifier.width(8.dp))
                         Text("•  $timeStr", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
@@ -242,28 +258,6 @@ fun NutritionLogCard(
                                 }
                                 Spacer(modifier = Modifier.width(16.dp))
                                 Column(modifier = Modifier.weight(1f)) {
-                                    val servingDisplay = log.servings.formatWeight()
-                                    val unitDisplay = log.servingUnit.ifBlank { "serving" }
-
-                                    val uText = unitDisplay.trim()
-                                    val mResult = "\\d+(\\.\\d+)?".toRegex().find(uText)
-
-                                    val calculatedNumStr: String
-                                    val finalUnitText: String
-                                    val showMultiplier: Boolean
-
-                                    if (mResult != null) {
-                                        val baseNum = mResult.value.toFloat()
-                                        val totalNum = baseNum * log.servings
-                                        calculatedNumStr = totalNum.formatWeight()
-                                        finalUnitText = uText.replaceFirst(mResult.value, "").trim()
-                                        showMultiplier = false
-                                    } else {
-                                        calculatedNumStr = ""
-                                        finalUnitText = uText
-                                        showMultiplier = true
-                                    }
-
                                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                                         Surface(
                                             shape = RoundedCornerShape(6.dp),
@@ -271,26 +265,26 @@ fun NutritionLogCard(
                                         ) {
                                             Row(
                                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                                verticalAlignment = Alignment.CenterVertically
+                                                verticalAlignment = Alignment.CenterVertically,
                                             ) {
-                                                if (finalUnitText.isNotBlank()) {
-                                                    Text(finalUnitText, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSecondaryContainer)
-                                                    Spacer(modifier = Modifier.width(4.dp))
-                                                }
-                                                if (showMultiplier) {
-                                                    Text("${servingDisplay}x", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSecondaryContainer)
-                                                } else {
-                                                    Text(calculatedNumStr, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSecondaryContainer)
-                                                }
+                                                LoggedServingDisplay(
+                                                    servings = log.servings,
+                                                    servingUnit = log.servingUnit.ifBlank { "serving" },
+                                                    textStyle = MaterialTheme.typography.labelSmall,
+                                                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                                                )
                                             }
                                         }
 
                                         Spacer(modifier = Modifier.width(8.dp))
 
+                                        val isNamePersian = Regex("[\\u0600-\\u06FF]").containsMatchIn(log.foodName)
                                         Text(
                                             text = log.foodName,
                                             fontWeight = FontWeight.Bold,
-                                            style = MaterialTheme.typography.bodyMedium,
+                                            style = MaterialTheme.typography.bodyMedium.copy(
+                                                textDirection = if (isNamePersian) TextDirection.Rtl else TextDirection.Ltr
+                                            ),
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis,
                                             modifier = Modifier.weight(1f)

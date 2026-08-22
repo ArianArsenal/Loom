@@ -1,5 +1,6 @@
 package com.example.loom.ui.sandbox
 
+import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -21,10 +22,12 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.outlined.LibraryAdd
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -58,7 +61,7 @@ private val trashDateFormatter = object : ThreadLocal<SimpleDateFormat>() {
 private val globalGson = Gson()
 
 @OptIn(ExperimentalMaterial3Api::class)
-@Suppress("DiscouragedApi", "KotlinConstantConditions") // --- FIX: Suppressed Compose State false-positive ---
+@Suppress("DiscouragedApi", "KotlinConstantConditions")
 @Composable
 fun SandboxHubScreen(
     viewModel: SandboxViewModel,
@@ -69,6 +72,9 @@ fun SandboxHubScreen(
     var showCreateDialog by remember { mutableStateOf(false) }
 
     var templateToDelete by remember { mutableStateOf<SpaceTemplate?>(null) }
+
+    var showCloneSelectDialog by remember { mutableStateOf(false) }
+    var showCloneSaveDialog by remember { mutableStateOf<SandboxSpace?>(null) }
 
     var showingTrash by remember { mutableStateOf(false) }
     var templateTrashTrigger by remember { mutableIntStateOf(0) }
@@ -552,15 +558,144 @@ fun SandboxHubScreen(
         )
     }
 
+    if (showCloneSelectDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                showCloneSelectDialog = false
+                showCreateDialog = true
+            },
+            title = { Text("Select Space to Clone", fontWeight = FontWeight.Bold) },
+            text = {
+                if (allSpaces.isEmpty()) {
+                    Text("You have no active spaces to clone.", color = Color.Gray)
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxWidth().heightIn(max = 400.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(allSpaces, key = { it.id }) { space ->
+                            Surface(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        showCloneSaveDialog = space
+                                        showCloneSelectDialog = false
+                                    }
+                                    .clip(RoundedCornerShape(12.dp)),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    // --- FIX: Properly parse and display the icon natively ---
+                                    val iconParts = space.icon.split("|")
+                                    if (iconParts.size == 2) {
+                                        val iconName = iconParts[0]
+                                        val iconColorHex = iconParts[1]
+                                        val iconTint = try { Color(iconColorHex.toColorInt()) } catch (_: Exception) { MaterialTheme.colorScheme.onSurface }
+                                        val resId = context.resources.getIdentifier(iconName, "drawable", context.packageName)
+                                        if (resId != 0) {
+                                            Icon(painterResource(resId), contentDescription = null, tint = iconTint, modifier = Modifier.size(24.dp))
+                                        } else {
+                                            Text("❓", fontSize = 24.sp)
+                                        }
+                                    } else {
+                                        Text(space.icon.ifEmpty { "📄" }, fontSize = 24.sp)
+                                    }
+
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Text(space.title.ifBlank { "Untitled Space" }, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = {
+                    showCloneSelectDialog = false
+                    showCreateDialog = true
+                }) { Text("Cancel") }
+            }
+        )
+    }
+
+    // --- FIX: Removed redundant icon input prompt ---
+    if (showCloneSaveDialog != null) {
+        var cloneNameInput by remember { mutableStateOf(showCloneSaveDialog!!.title + " Template") }
+
+        AlertDialog(
+            onDismissRequest = {
+                showCloneSaveDialog = null
+                showCreateDialog = true
+            },
+            title = { Text("Save as New Layout", fontWeight = FontWeight.Bold) },
+            text = {
+                Column {
+                    Text("This will copy all the blocks from your selected space and save them as a reusable blueprint.", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                    Spacer(modifier = Modifier.height(16.dp))
+                    OutlinedTextField(
+                        value = cloneNameInput,
+                        onValueChange = { cloneNameInput = it },
+                        label = { Text("Template Name") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val finalName = cloneNameInput.ifBlank { "Custom Layout" }
+                        TemplateManager.saveCustomTemplate(
+                            context = context,
+                            name = finalName,
+                            icon = showCloneSaveDialog!!.icon, // Inherit native icon automatically
+                            blocks = showCloneSaveDialog!!.blocks
+                        )
+                        Toast.makeText(context, "Layout saved!", Toast.LENGTH_SHORT).show()
+                        templateTrashTrigger++
+                        showCloneSaveDialog = null
+                        showCreateDialog = true
+                    },
+                    enabled = cloneNameInput.isNotBlank()
+                ) { Text("Save Template") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showCloneSaveDialog = null
+                    showCloneSelectDialog = true
+                }) { Text("Back") }
+            }
+        )
+    }
+
     if (showCreateDialog) {
         val appTemplates = remember(showCreateDialog, templateTrashTrigger) { TemplateManager.getActiveAppTemplates(context) }
         val userTemplates = remember(showCreateDialog, templateTrashTrigger) { TemplateManager.getCustomTemplates(context) }
 
         AlertDialog(
             onDismissRequest = { showCreateDialog = false },
-            title = { Text("Choose a Template", fontWeight = FontWeight.Bold, fontSize = 22.sp) },
+            title = { Text("Choose a Blueprint", fontWeight = FontWeight.Bold, fontSize = 22.sp) },
             text = {
                 LazyColumn(modifier = Modifier.fillMaxWidth()) {
+
+                    item {
+                        OutlinedButton(
+                            onClick = {
+                                showCreateDialog = false
+                                showCloneSelectDialog = true
+                            },
+                            modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Icon(Icons.Outlined.LibraryAdd, contentDescription = null, modifier = Modifier.size(20.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Save Layout from Existing Space")
+                        }
+                    }
 
                     if (appTemplates.isNotEmpty()) {
                         item { Text("App Layouts", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 8.dp, top = 8.dp)) }
@@ -597,7 +732,6 @@ fun SandboxHubScreen(
                                     }
                                 },
                                 modifier = Modifier.clickable {
-                                    // --- FIX: R8-Proof Type Token ---
                                     val type = TypeToken.getParameterized(List::class.java, SandboxBlock::class.java).type
                                     val initialBlocks: List<SandboxBlock> = try {
                                         globalGson.fromJson(template.blocksJson, type) ?: listOf(SandboxBlock(content = "\u200B"))
@@ -649,7 +783,6 @@ fun SandboxHubScreen(
                                     }
                                 },
                                 modifier = Modifier.clickable {
-                                    // --- FIX: R8-Proof Type Token ---
                                     val type = TypeToken.getParameterized(List::class.java, SandboxBlock::class.java).type
                                     val initialBlocks: List<SandboxBlock> = try {
                                         globalGson.fromJson(template.blocksJson, type) ?: listOf(SandboxBlock(content = "\u200B"))

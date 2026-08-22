@@ -9,20 +9,20 @@ import com.example.loom.data.repository.TrackerRepository
 import com.example.loom.util.DateUtils
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.FlowPreview // --- FIX ---
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext // --- FIX ---
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.time.LocalDate
-import java.util.Calendar // --- FIX ---
-import java.util.UUID // --- FIX ---
+import java.util.Calendar
+import java.util.UUID
 import javax.inject.Inject
-import kotlin.time.Duration.Companion.milliseconds // --- FIX ---
+import kotlin.time.Duration.Companion.milliseconds
 
 @Serializable
 data class SupplementItem(
@@ -33,7 +33,8 @@ data class SupplementItem(
     val timeOfUse: String = "Anytime",
     val recurrenceType: String = "DAILY",
     val recurrenceValue: String = "",
-    val instruction: String = "None"
+    val instruction: String = "None",
+    val isActive: Boolean = false // --- NEW: To hide inactive templates ---
 )
 
 @HiltViewModel
@@ -42,6 +43,9 @@ class HealthViewModel @Inject constructor(
     private val userPreferences: UserPreferences,
     private val sandboxDao: SandboxDao
 ) : ViewModel() {
+
+    // --- NEW: Lenient Parser so old JSON backups don't crash when adding new fields ---
+    private val jsonParser = Json { ignoreUnknownKeys = true; isLenient = true }
 
     val hiddenHealthCards: StateFlow<Set<String>> = userPreferences.hiddenHealthCardsFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptySet())
     val isFasting: StateFlow<Boolean> = userPreferences.isFastingFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
@@ -63,8 +67,8 @@ class HealthViewModel @Inject constructor(
 
     fun updateSpaceFromWidget(space: com.example.loom.data.models.SandboxSpace) {
         @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
-        GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) { // --- FIX ---
-            withContext(NonCancellable) { // --- FIX: Proper structured concurrency ---
+        GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            withContext(NonCancellable) {
                 try {
                     val spaceToSave = space.copy(updatedAt = System.currentTimeMillis())
                     val spaceEntity = NotionSpaceEntity.fromDomainModel(spaceToSave)
@@ -105,20 +109,23 @@ class HealthViewModel @Inject constructor(
     val calorieCycling: StateFlow<Boolean> = userPreferences.calorieCyclingFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
     val supplementCategories: StateFlow<List<String>> = userPreferences.supplementCategoriesFlow
-        .map { try { Json.decodeFromString<List<String>>(it) } catch (_: Exception) { listOf("Supplement", "Medication", "Pre-workout") } } // --- FIX: Unused 'e' ---
+        .map { try { jsonParser.decodeFromString<List<String>>(it) } catch (_: Exception) { listOf("Supplement", "Medication", "Pre-workout") } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), listOf("Supplement", "Medication", "Pre-workout"))
 
     val supplementsRoster: StateFlow<List<SupplementItem>> = userPreferences.supplementsRosterFlow
-        .map { try { Json.decodeFromString<List<SupplementItem>>(it) } catch (_: Exception) { emptyList() } } // --- FIX: Unused 'e' ---
+        .map { try { jsonParser.decodeFromString<List<SupplementItem>>(it) } catch (_: Exception) { emptyList() } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val completedSupplements: StateFlow<List<String>> = todayRecord
-        .map { try { Json.decodeFromString<List<String>>(it?.completedSupplementsJson ?: "[]") } catch (_: Exception) { emptyList() } } // --- FIX: Unused 'e' ---
+        .map { try { jsonParser.decodeFromString<List<String>>(it?.completedSupplementsJson ?: "[]") } catch (_: Exception) { emptyList() } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    // --- FIX: Only show ACTIVE supplements on the daily card ---
     val todayScheduledSupplements: StateFlow<List<SupplementItem>> = supplementsRoster.map { roster ->
         val today = LocalDate.now()
         roster.filter { item ->
+            if (!item.isActive) return@filter false
+
             when (item.recurrenceType) {
                 "DAILY" -> true
                 "SPECIFIC_DAYS" -> {
@@ -151,9 +158,22 @@ class HealthViewModel @Inject constructor(
 
     fun toggleSupplement(id: String) = viewModelScope.launch {
         val record = todayRecord.value ?: return@launch
-        val currentList = try { Json.decodeFromString<List<String>>(record.completedSupplementsJson) } catch (_: Exception) { emptyList() }.toMutableList() // --- FIX: Unused 'e' ---
+        val currentList = try { jsonParser.decodeFromString<List<String>>(record.completedSupplementsJson) } catch (_: Exception) { emptyList() }.toMutableList()
         if (currentList.contains(id)) currentList.remove(id) else currentList.add(id)
         repository.updateDailyRecord(record.copy(completedSupplementsJson = Json.encodeToString(currentList)))
+    }
+
+    // --- NEW: Toggle active state of a supplement ---
+    fun toggleSupplementActive(item: SupplementItem) = viewModelScope.launch {
+        val current = supplementsRoster.value.toMutableList()
+        val index = current.indexOfFirst { it.name.equals(item.name, ignoreCase = true) }
+
+        if (index >= 0) {
+            current[index] = current[index].copy(isActive = !current[index].isActive)
+        } else {
+            current.add(item.copy(id = UUID.randomUUID().toString(), isActive = true))
+        }
+        userPreferences.saveSupplementsRoster(Json.encodeToString(current))
     }
 
     fun saveSupplementItem(item: SupplementItem) = viewModelScope.launch {
@@ -167,7 +187,7 @@ class HealthViewModel @Inject constructor(
         val current = supplementsRoster.value.filter { it.id != id }
         userPreferences.saveSupplementsRoster(Json.encodeToString(current))
         val record = todayRecord.value ?: return@launch
-        val currentCompleted = try { Json.decodeFromString<List<String>>(record.completedSupplementsJson) } catch (_: Exception) { emptyList() }.toMutableList() // --- FIX: Unused 'e' ---
+        val currentCompleted = try { jsonParser.decodeFromString<List<String>>(record.completedSupplementsJson) } catch (_: Exception) { emptyList() }.toMutableList()
         if (currentCompleted.contains(id)) {
             currentCompleted.remove(id)
             repository.updateDailyRecord(record.copy(completedSupplementsJson = Json.encodeToString(currentCompleted)))
@@ -177,23 +197,23 @@ class HealthViewModel @Inject constructor(
     fun toggleCardVisibility(cardName: String, isVisible: Boolean) = viewModelScope.launch { userPreferences.toggleHealthCardVisibility(cardName, isVisible) }
     fun deleteDailyWeight() = viewModelScope.launch { val record = todayRecord.value ?: return@launch; repository.updateDailyRecord(record.copy(weightLogKg = 0f)) }
 
-    val customWaterContainers: StateFlow<List<WaterContainer>> = userPreferences.customWaterContainersFlow.map { try { Json.decodeFromString<List<WaterContainer>>(it) } catch (_: Exception) { emptyList() } }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList()) // --- FIX: Unused 'e' ---
-    val waterLogs: StateFlow<List<WaterLog>> = todayRecord.map { try { Json.decodeFromString<List<WaterLog>>(it?.waterLogsJson ?: "[]") } catch (_: Exception) { emptyList() } }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList()) // --- FIX: Unused 'e' ---
+    val customWaterContainers: StateFlow<List<WaterContainer>> = userPreferences.customWaterContainersFlow.map { try { jsonParser.decodeFromString<List<WaterContainer>>(it) } catch (_: Exception) { emptyList() } }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val waterLogs: StateFlow<List<WaterLog>> = todayRecord.map { try { jsonParser.decodeFromString<List<WaterLog>>(it?.waterLogsJson ?: "[]") } catch (_: Exception) { emptyList() } }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     fun saveWaterGoal(goal: Int, isAuto: Boolean) = viewModelScope.launch { userPreferences.saveWaterDailyGoal(goal, isAuto) }
     fun saveCustomWaterContainers(containers: List<WaterContainer>) = viewModelScope.launch { userPreferences.saveCustomWaterContainers(Json.encodeToString(containers)) }
-    fun logDetailedWater(container: WaterContainer) = viewModelScope.launch { val newLog = WaterLog(id = UUID.randomUUID().toString(), containerName = container.name, emoji = container.iconEmoji, amountMl = container.volumeMl, hydrationFactor = container.hydrationFactor, timestamp = System.currentTimeMillis()); repository.logDetailedWater(Json.encodeToString(waterLogs.value + newLog)) } // --- FIX ---
+    fun logDetailedWater(container: WaterContainer) = viewModelScope.launch { val newLog = WaterLog(id = UUID.randomUUID().toString(), containerName = container.name, emoji = container.iconEmoji, amountMl = container.volumeMl, hydrationFactor = container.hydrationFactor, timestamp = System.currentTimeMillis()); repository.logDetailedWater(Json.encodeToString(waterLogs.value + newLog)) }
     fun removeDetailedWaterLog(logId: String) = viewModelScope.launch { repository.logDetailedWater(Json.encodeToString(waterLogs.value.filter { it.id != logId })) }
 
-    val consumedFoods: StateFlow<List<ConsumedFoodLog>> = todayRecord.map { try { Json.decodeFromString<List<ConsumedFoodLog>>(it?.consumedFoodsJson ?: "[]") } catch (_: Exception) { emptyList() } }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList()) // --- FIX: Unused 'e' ---
-    val completedSkincareRoutines: StateFlow<List<String>> = todayRecord.map { try { Json.decodeFromString<List<String>>(it?.completedSkincareRoutinesJson ?: "[]") } catch (_: Exception) { emptyList() } }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList()) // --- FIX: Unused 'e' ---
-    val completedSkincareSteps: StateFlow<List<String>> = todayRecord.map { try { Json.decodeFromString<List<String>>(it?.completedSkincareStepsJson ?: "[]") } catch (_: Exception) { emptyList() } }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList()) // --- FIX: Unused 'e' ---
+    val consumedFoods: StateFlow<List<ConsumedFoodLog>> = todayRecord.map { try { jsonParser.decodeFromString<List<ConsumedFoodLog>>(it?.consumedFoodsJson ?: "[]") } catch (_: Exception) { emptyList() } }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val completedSkincareRoutines: StateFlow<List<String>> = todayRecord.map { try { jsonParser.decodeFromString<List<String>>(it?.completedSkincareRoutinesJson ?: "[]") } catch (_: Exception) { emptyList() } }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val completedSkincareSteps: StateFlow<List<String>> = todayRecord.map { try { jsonParser.decodeFromString<List<String>>(it?.completedSkincareStepsJson ?: "[]") } catch (_: Exception) { emptyList() } }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private val _foodSearchQuery = MutableStateFlow("")
     val foodSearchQuery: StateFlow<String> = _foodSearchQuery.asStateFlow()
 
-    @OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class) // --- FIX: Explicitly Opt-in to Preview Flow features ---
-    val searchedFoodItems: StateFlow<List<FoodItem>> = _foodSearchQuery.debounce(300.milliseconds).flatMapLatest { query -> if (query.isBlank()) repository.searchFoodItems("مرغ") else repository.searchFoodItems(query) }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList()) // --- FIX: Duration mapping ---
+    @OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
+    val searchedFoodItems: StateFlow<List<FoodItem>> = _foodSearchQuery.debounce(300.milliseconds).flatMapLatest { query -> if (query.isBlank()) repository.searchFoodItems("مرغ") else repository.searchFoodItems(query) }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     fun updateFoodSearchQuery(query: String) { _foodSearchQuery.value = query }
 
@@ -204,8 +224,8 @@ class HealthViewModel @Inject constructor(
     fun saveDefaultWaterIncrement(ml: Int) = viewModelScope.launch { userPreferences.saveDefaultWaterIncrement(ml) }
     fun addFoodItem(food: FoodItem) = viewModelScope.launch { repository.insertFoodItem(food) }
     fun deleteFoodItem(food: FoodItem) = viewModelScope.launch { repository.deleteFoodItem(food) }
-    fun logFoodItem(food: FoodItem, servings: Float) = viewModelScope.launch { val record = todayRecord.value ?: return@launch; val totalCals = (food.calories * servings).toInt(); val totalPro = (food.protein * servings).toInt(); val totalCarbs = (food.carbs * servings).toInt(); val totalFats = (food.fats * servings).toInt(); val currentTime = System.currentTimeMillis(); val log = ConsumedFoodLog(id = UUID.randomUUID().toString(), foodName = food.name, emoji = getMealEmojiForTime(currentTime), servings = servings, servingUnit = food.servingUnit, calories = totalCals, protein = totalPro, carbs = totalCarbs, fats = totalFats, timestamp = currentTime); val currentLogs = try { Json.decodeFromString<List<ConsumedFoodLog>>(record.consumedFoodsJson) } catch (_: Exception) { emptyList() }; repository.logConsumedFood(totalCals, totalPro, totalCarbs, totalFats, Json.encodeToString(currentLogs + log)) } // --- FIX: Unused 'e' & UUID ---
-    fun removeConsumedFoodLog(log: ConsumedFoodLog) = viewModelScope.launch { val record = todayRecord.value ?: return@launch; val currentLogs = try { Json.decodeFromString<List<ConsumedFoodLog>>(record.consumedFoodsJson) } catch (_: Exception) { emptyList() }; val updatedLogs = currentLogs.filter { it.id != log.id }; repository.logConsumedFood(-log.calories, -log.protein, -log.carbs, -log.fats, Json.encodeToString(updatedLogs)) } // --- FIX: Unused 'e' ---
+    fun logFoodItem(food: FoodItem, servings: Float) = viewModelScope.launch { val record = todayRecord.value ?: return@launch; val totalCals = (food.calories * servings).toInt(); val totalPro = (food.protein * servings).toInt(); val totalCarbs = (food.carbs * servings).toInt(); val totalFats = (food.fats * servings).toInt(); val currentTime = System.currentTimeMillis(); val log = ConsumedFoodLog(id = UUID.randomUUID().toString(), foodName = food.name, emoji = getMealEmojiForTime(currentTime), servings = servings, servingUnit = food.servingUnit, calories = totalCals, protein = totalPro, carbs = totalCarbs, fats = totalFats, timestamp = currentTime); val currentLogs = try { jsonParser.decodeFromString<List<ConsumedFoodLog>>(record.consumedFoodsJson) } catch (_: Exception) { emptyList() }; repository.logConsumedFood(totalCals, totalPro, totalCarbs, totalFats, Json.encodeToString(currentLogs + log)) }
+    fun removeConsumedFoodLog(log: ConsumedFoodLog) = viewModelScope.launch { val record = todayRecord.value ?: return@launch; val currentLogs = try { jsonParser.decodeFromString<List<ConsumedFoodLog>>(record.consumedFoodsJson) } catch (_: Exception) { emptyList() }; val updatedLogs = currentLogs.filter { it.id != log.id }; repository.logConsumedFood(-log.calories, -log.protein, -log.carbs, -log.fats, Json.encodeToString(updatedLogs)) }
     fun createExerciseTemplate(name: String) = viewModelScope.launch { repository.insertTemplateIfNotExists(name) }
     fun addExercise(name: String, sets: Int, reps: Int, weight: Float, weightListJson: String = "[]", isTimeBased: Boolean, duration: Int, presetName: String? = null) = viewModelScope.launch { repository.insertExercise(name, sets, reps, weight, weightListJson, isTimeBased, duration, presetName); repository.insertTemplateIfNotExists(name) }
     fun updateExercise(exercise: Exercise) = viewModelScope.launch { repository.updateExercise(exercise) }
@@ -219,12 +239,12 @@ class HealthViewModel @Inject constructor(
     fun saveSkincareRoutine(routine: SkincareRoutine) = viewModelScope.launch { repository.insertSkincareRoutine(routine) }
     fun deleteSkincareRoutine(routine: SkincareRoutine) = viewModelScope.launch { repository.deleteSkincareRoutine(routine) }
     fun addSkincareProduct(name: String) = viewModelScope.launch { repository.insertSkincareProduct(SkincareProduct(name = name)) }
-    fun toggleSkincareStep(routineName: String, productName: String) = viewModelScope.launch { val record = todayRecord.value ?: return@launch; val stepId = "${routineName}_${productName}"; val currentList = try { Json.decodeFromString<List<String>>(record.completedSkincareStepsJson) } catch (_: Exception) { emptyList() }.toMutableList(); if (currentList.contains(stepId)) currentList.remove(stepId) else currentList.add(stepId); repository.updateDailyRecord(record.copy(completedSkincareStepsJson = Json.encodeToString(currentList))) } // --- FIX: Unused 'e' ---
-    fun logSkincareRoutine(routineName: String) = viewModelScope.launch { val record = todayRecord.value ?: return@launch; val currentRoutines = try { Json.decodeFromString<List<String>>(record.completedSkincareRoutinesJson) } catch (_: Exception) { emptyList() }.toMutableList(); if (!currentRoutines.contains(routineName)) { currentRoutines.add(routineName); repository.updateCompletedSkincareRoutines(Json.encodeToString(currentRoutines)) } } // --- FIX: Unused 'e' ---
-    fun removeLoggedSkincareRoutine(routineName: String, products: List<String>) = viewModelScope.launch { val record = todayRecord.value ?: return@launch; val currentRoutines = try { Json.decodeFromString<List<String>>(record.completedSkincareRoutinesJson) } catch (_: Exception) { emptyList() }.toMutableList(); val currentSteps = try { Json.decodeFromString<List<String>>(record.completedSkincareStepsJson) } catch (_: Exception) { emptyList() }.toMutableList(); currentRoutines.remove(routineName); products.forEach { p -> currentSteps.remove("${routineName}_$p") }; repository.updateCompletedSkincareRoutines(Json.encodeToString(currentRoutines)); repository.updateCompletedSkincareSteps(Json.encodeToString(currentSteps)) } // --- FIX: Unused 'e' ---
-    fun toggleAllSkincareSteps(routineName: String, products: List<String>, isCompleted: Boolean) = viewModelScope.launch { val record = todayRecord.value ?: return@launch; val currentSteps = try { Json.decodeFromString<List<String>>(record.completedSkincareStepsJson) } catch (_: Exception) { emptyList() }.toMutableList(); products.forEach { p -> val stepId = "${routineName}_$p"; if (isCompleted) { if (!currentSteps.contains(stepId)) currentSteps.add(stepId) } else { currentSteps.remove(stepId) } }; repository.updateCompletedSkincareSteps(Json.encodeToString(currentSteps)) } // --- FIX: Unused 'e' ---
-    private fun getMealEmojiForTime(timestamp: Long): String { val hour = Calendar.getInstance().apply { timeInMillis = timestamp }.get(Calendar.HOUR_OF_DAY); return when (hour) { in 5..9 -> "🍳"; in 10..12 -> "🍎"; in 13..15 -> "🍛"; in 16..19 -> "☕"; in 20..23 -> "🍲"; else -> "🌙" } } // --- FIX ---
+    fun toggleSkincareStep(routineName: String, productName: String) = viewModelScope.launch { val record = todayRecord.value ?: return@launch; val stepId = "${routineName}_${productName}"; val currentList = try { jsonParser.decodeFromString<List<String>>(record.completedSkincareStepsJson) } catch (_: Exception) { emptyList() }.toMutableList(); if (currentList.contains(stepId)) currentList.remove(stepId) else currentList.add(stepId); repository.updateDailyRecord(record.copy(completedSkincareStepsJson = Json.encodeToString(currentList))) }
+    fun logSkincareRoutine(routineName: String) = viewModelScope.launch { val record = todayRecord.value ?: return@launch; val currentRoutines = try { jsonParser.decodeFromString<List<String>>(record.completedSkincareRoutinesJson) } catch (_: Exception) { emptyList() }.toMutableList(); if (!currentRoutines.contains(routineName)) { currentRoutines.add(routineName); repository.updateCompletedSkincareRoutines(Json.encodeToString(currentRoutines)) } }
+    fun removeLoggedSkincareRoutine(routineName: String, products: List<String>) = viewModelScope.launch { val record = todayRecord.value ?: return@launch; val currentRoutines = try { jsonParser.decodeFromString<List<String>>(record.completedSkincareRoutinesJson) } catch (_: Exception) { emptyList() }.toMutableList(); val currentSteps = try { jsonParser.decodeFromString<List<String>>(record.completedSkincareStepsJson) } catch (_: Exception) { emptyList() }.toMutableList(); currentRoutines.remove(routineName); products.forEach { p -> currentSteps.remove("${routineName}_$p") }; repository.updateCompletedSkincareRoutines(Json.encodeToString(currentRoutines)); repository.updateCompletedSkincareSteps(Json.encodeToString(currentSteps)) }
+    fun toggleAllSkincareSteps(routineName: String, products: List<String>, isCompleted: Boolean) = viewModelScope.launch { val record = todayRecord.value ?: return@launch; val currentSteps = try { jsonParser.decodeFromString<List<String>>(record.completedSkincareStepsJson) } catch (_: Exception) { emptyList() }.toMutableList(); products.forEach { p -> val stepId = "${routineName}_$p"; if (isCompleted) { if (!currentSteps.contains(stepId)) currentSteps.add(stepId) } else { currentSteps.remove(stepId) } }; repository.updateCompletedSkincareSteps(Json.encodeToString(currentSteps)) }
+    private fun getMealEmojiForTime(timestamp: Long): String { val hour = Calendar.getInstance().apply { timeInMillis = timestamp }.get(Calendar.HOUR_OF_DAY); return when (hour) { in 5..9 -> "🍳"; in 10..12 -> "🍎"; in 13..15 -> "🍛"; in 16..19 -> "☕"; in 20..23 -> "🍲"; else -> "🌙" } }
     fun toggleFasting(start: Boolean, goalHours: Int) = viewModelScope.launch { if (start) { userPreferences.setFastingState(true, System.currentTimeMillis(), goalHours) } else { userPreferences.setFastingState(false, 0L, goalHours) } }
     fun logSleep(hours: Float, rating: Int) = viewModelScope.launch { val record = todayRecord.value ?: return@launch; repository.updateDailyRecord(record.copy(sleepHours = hours, sleepRating = rating)) }
-    fun logMeasurements(measurements: Map<String, Float>) = viewModelScope.launch { val record = todayRecord.value ?: return@launch; repository.updateDailyRecord(record.copy(measurementsJson = Json.encodeToString(measurements))) } // --- FIX ---
+    fun logMeasurements(measurements: Map<String, Float>) = viewModelScope.launch { val record = todayRecord.value ?: return@launch; repository.updateDailyRecord(record.copy(measurementsJson = Json.encodeToString(measurements))) }
 }

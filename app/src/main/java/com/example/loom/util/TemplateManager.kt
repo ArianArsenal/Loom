@@ -1,8 +1,8 @@
-package com.example.loom.util // --- FIX: Corrected package path ---
+package com.example.loom.util
 
 import android.content.Context
 import androidx.annotation.Keep
-import androidx.core.content.edit // --- FIX: Imported KTX edit extension ---
+import androidx.core.content.edit
 import com.example.loom.data.models.BlockType
 import com.example.loom.data.models.SandboxBlock
 import com.google.gson.Gson
@@ -25,13 +25,60 @@ object TemplateManager {
     private const val KEY_TRASHED_CUSTOM_TEMPLATES = "trashed_custom_templates"
     private val gson = Gson()
 
-    @Suppress("SpellCheckingInspection") // --- FIX: Tell compiler Quera is not a typo ---
+    @Suppress("SpellCheckingInspection")
     val appTemplates = listOf(
         SpaceTemplate(
             id = "empty",
             name = "Empty Space",
             icon = "📄",
             blocksJson = "[]",
+            isAppDefault = true
+        ),
+        // --- NEW: Project Roadmap Template ---
+        SpaceTemplate(
+            id = "project_roadmap",
+            name = "Project Roadmap",
+            icon = "🗺️",
+            blocksJson = gson.toJson(listOf(
+                SandboxBlock(id = UUID.randomUUID().toString(), type = BlockType.HEADING, content = "\u200BProject Overview"),
+                SandboxBlock(id = UUID.randomUUID().toString(), type = BlockType.TEXT, content = "\u200BDefine the main objectives and scope here."),
+                SandboxBlock(id = UUID.randomUUID().toString(), type = BlockType.HEADING_4, content = "\u200BTask Board"),
+                SandboxBlock(id = UUID.randomUUID().toString(), type = BlockType.KANBAN, content = "\u200B[]"),
+                SandboxBlock(id = UUID.randomUUID().toString(), type = BlockType.DIVIDER, content = "\u200B"),
+                SandboxBlock(id = UUID.randomUUID().toString(), type = BlockType.HEADING_2, content = "\u200BMeeting Notes"),
+                SandboxBlock(id = UUID.randomUUID().toString(), type = BlockType.BULLET, content = "\u200BKickoff discussion points...")
+            )),
+            isAppDefault = true
+        ),
+        // --- NEW: Cornell Notes Template ---
+        SpaceTemplate(
+            id = "cornell_notes",
+            name = "Cornell Notes System",
+            icon = "📝",
+            blocksJson = gson.toJson(listOf(
+                SandboxBlock(id = UUID.randomUUID().toString(), type = BlockType.HEADING, content = "\u200BTopic / Objective"),
+                SandboxBlock(id = UUID.randomUUID().toString(), type = BlockType.HEADING_2, content = "\u200BCues & Questions"),
+                SandboxBlock(id = UUID.randomUUID().toString(), type = BlockType.BULLET, content = "\u200B"),
+                SandboxBlock(id = UUID.randomUUID().toString(), type = BlockType.HEADING_2, content = "\u200BMain Notes"),
+                SandboxBlock(id = UUID.randomUUID().toString(), type = BlockType.BULLET, content = "\u200B"),
+                SandboxBlock(id = UUID.randomUUID().toString(), type = BlockType.DIVIDER, content = "\u200B"),
+                SandboxBlock(id = UUID.randomUUID().toString(), type = BlockType.HEADING_2, content = "\u200BSummary"),
+                SandboxBlock(id = UUID.randomUUID().toString(), type = BlockType.TEXT, content = "\u200B")
+            )),
+            isAppDefault = true
+        ),
+        // --- NEW: Budget Dashboard Template ---
+        SpaceTemplate(
+            id = "finance_budget",
+            name = "Budget & Finance Dashboard",
+            icon = "💰",
+            blocksJson = gson.toJson(listOf(
+                SandboxBlock(id = UUID.randomUUID().toString(), type = BlockType.HEADING, content = "\u200BMonthly Budget"),
+                SandboxBlock(id = UUID.randomUUID().toString(), type = BlockType.TABLE, content = "\u200B[[\"Expense\",\"Amount\",\"Status\"],[\"Rent / Mortgage\",\"\",\"\"],[\"Groceries\",\"\",\"\"]]"),
+                SandboxBlock(id = UUID.randomUUID().toString(), type = BlockType.HEADING_2, content = "\u200BFinancial Goals"),
+                SandboxBlock(id = UUID.randomUUID().toString(), type = BlockType.TODO, content = "\u200BSave 20% of income"),
+                SandboxBlock(id = UUID.randomUUID().toString(), type = BlockType.TODO, content = "\u200BPay off remaining debt")
+            )),
             isAppDefault = true
         ),
         SpaceTemplate(
@@ -98,7 +145,7 @@ object TemplateManager {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val deletedIds = prefs.getStringSet("deleted_app_templates", emptySet())?.toMutableSet() ?: mutableSetOf()
         deletedIds.add(templateId)
-        prefs.edit { putStringSet("deleted_app_templates", deletedIds) } // --- FIX: Fast KTX Edit ---
+        prefs.edit { putStringSet("deleted_app_templates", deletedIds) }
     }
 
     fun restoreAppTemplate(context: Context, templateId: String) {
@@ -119,7 +166,6 @@ object TemplateManager {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val jsonStr = prefs.getString(KEY_CUSTOM_TEMPLATES, "[]") ?: "[]"
 
-        // --- FIX: R8-Proof Type Token ---
         val type = TypeToken.getParameterized(List::class.java, SpaceTemplate::class.java).type
 
         return try { gson.fromJson(jsonStr, type) ?: emptyList() } catch (_: Exception) { emptyList() }
@@ -129,7 +175,6 @@ object TemplateManager {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val jsonStr = prefs.getString(KEY_TRASHED_CUSTOM_TEMPLATES, "[]") ?: "[]"
 
-        // --- FIX: R8-Proof Type Token ---
         val type = TypeToken.getParameterized(List::class.java, SpaceTemplate::class.java).type
 
         return try { gson.fromJson(jsonStr, type) ?: emptyList() } catch (_: Exception) { emptyList() }
@@ -137,6 +182,8 @@ object TemplateManager {
 
     fun saveCustomTemplate(context: Context, name: String, icon: String, blocks: List<SandboxBlock>) {
         val current = getCustomTemplates(context).toMutableList()
+
+        // Strip out sensitive IDs to make the template fully reusable
         val cleanBlocks = blocks.map { it.copy(id = UUID.randomUUID().toString()) }
 
         val newTemplate = SpaceTemplate(
@@ -158,7 +205,6 @@ object TemplateManager {
 
         currentActive.remove(toTrash)
         prefs.edit { putString(KEY_CUSTOM_TEMPLATES, gson.toJson(currentActive)) }
-
         val currentTrashed = getTrashedCustomTemplates(context).toMutableList()
         currentTrashed.add(toTrash)
         prefs.edit { putString(KEY_TRASHED_CUSTOM_TEMPLATES, gson.toJson(currentTrashed)) }

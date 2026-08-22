@@ -33,7 +33,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
-import androidx.core.graphics.toColorInt // --- FIX: Using fast KTX extension ---
+import androidx.core.graphics.toColorInt
 import com.example.loom.data.models.SandboxBlock
 import com.example.loom.data.models.TextFormatSpan
 import com.example.loom.ui.sandbox.TableCellData
@@ -86,7 +86,7 @@ fun TableBlockRenderer(
                                 if (cell.isDeleted) {
                                     Box(modifier = Modifier.fillMaxSize().padding(4.dp))
                                 } else {
-                                    val bgColor = cell.colorHex?.let { try { Color(it.toColorInt()) } catch(_: Exception){Color.Transparent} } ?: Color.Transparent // --- FIX: KTX Color & Unused e ---
+                                    val bgColor = cell.colorHex?.let { try { Color(it.toColorInt()) } catch(_: Exception){Color.Transparent} } ?: Color.Transparent
                                     Surface(
                                         modifier = Modifier.fillMaxSize().border(0.5.dp, MaterialTheme.colorScheme.outlineVariant),
                                         color = bgColor
@@ -147,43 +147,48 @@ fun TableBlockRenderer(
             }
         }
 
+        // --- FIX: Safely check boundaries to prevent crash if row/col is deleted ---
         focusedCell?.let { (r, c) ->
-            val cell = parseCell(block.tableData[r][c])
-            val fakeBlock = SandboxBlock(id = "table_cell", content = cell.text, textFormats = cell.formats)
+            if (r in block.tableData.indices && c in block.tableData[r].indices) {
+                val cell = parseCell(block.tableData[r][c])
+                val fakeBlock = SandboxBlock(id = "table_cell", content = cell.text, textFormats = cell.formats)
 
-            TextFormatToolbar(
-                isFocused = true,
-                textState = activeTextFieldValue,
-                currentBlock = fakeBlock,
-                recentTableColors = recentTableColors,
-                onUpdate = { updatedBlock ->
-                    val newData = block.tableData.map { it.toMutableList() }.toMutableList()
-                    newData[r][c] = encodeCell(cell.copy(formats = updatedBlock.textFormats))
-                    onUpdate(block.copy(tableData = newData))
+                TextFormatToolbar(
+                    isFocused = true,
+                    textState = activeTextFieldValue,
+                    currentBlock = fakeBlock,
+                    recentTableColors = recentTableColors,
+                    onUpdate = { updatedBlock ->
+                        val newData = block.tableData.map { it.toMutableList() }.toMutableList()
+                        newData[r][c] = encodeCell(cell.copy(formats = updatedBlock.textFormats))
+                        onUpdate(block.copy(tableData = newData))
 
-                    activeTextFieldValue = activeTextFieldValue.copy(annotatedString = buildAnnotated(activeTextFieldValue.text, updatedBlock.textFormats))
-                },
-                applyFormat = { type, value ->
-                    val selStart = activeTextFieldValue.selection.min
-                    val selEnd = activeTextFieldValue.selection.max
-                    val overlapping = cell.formats.filter { it.type == type && maxOf(it.start, selStart) < minOf(it.end, selEnd) }
-                    val cleared = cell.formats - overlapping.toSet()
+                        activeTextFieldValue = activeTextFieldValue.copy(annotatedString = buildAnnotated(activeTextFieldValue.text, updatedBlock.textFormats))
+                    },
+                    applyFormat = { type, value ->
+                        val selStart = activeTextFieldValue.selection.min
+                        val selEnd = activeTextFieldValue.selection.max
+                        val overlapping = cell.formats.filter { it.type == type && maxOf(it.start, selStart) < minOf(it.end, selEnd) }
+                        val cleared = cell.formats - overlapping.toSet()
 
-                    val newFormats = if (value.isNotEmpty()) {
-                        cleared + TextFormatSpan(selStart, selEnd, type, value)
-                    } else if (type in listOf("BOLD", "ITALIC", "STRIKE", "UNDERLINE")) {
-                        if (overlapping.isNotEmpty()) cleared else cleared + TextFormatSpan(selStart, selEnd, type, "")
-                    } else {
-                        cleared
+                        val newFormats = if (value.isNotEmpty()) {
+                            cleared + TextFormatSpan(selStart, selEnd, type, value)
+                        } else if (type in listOf("BOLD", "ITALIC", "STRIKE", "UNDERLINE")) {
+                            if (overlapping.isNotEmpty()) cleared else cleared + TextFormatSpan(selStart, selEnd, type, "")
+                        } else {
+                            cleared
+                        }
+
+                        val newData = block.tableData.map { it.toMutableList() }.toMutableList()
+                        newData[r][c] = encodeCell(cell.copy(formats = newFormats))
+                        onUpdate(block.copy(tableData = newData))
+
+                        activeTextFieldValue = activeTextFieldValue.copy(annotatedString = buildAnnotated(activeTextFieldValue.text, newFormats))
                     }
-
-                    val newData = block.tableData.map { it.toMutableList() }.toMutableList()
-                    newData[r][c] = encodeCell(cell.copy(formats = newFormats))
-                    onUpdate(block.copy(tableData = newData))
-
-                    activeTextFieldValue = activeTextFieldValue.copy(annotatedString = buildAnnotated(activeTextFieldValue.text, newFormats))
-                }
-            )
+                )
+            } else {
+                focusedCell = null
+            }
         }
 
         Row(modifier = Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -276,18 +281,31 @@ fun TableBlockRenderer(
                             onUpdate(block.copy(tableData = newData))
                             cellOptionsTarget = null
                         }) { Text("Delete Cell (Leave Blank)") }
+
+                        // --- FIX: Safely delete the block if it's the last row/column ---
                         TextButton(onClick = {
-                            val newData = block.tableData.toMutableList().apply { removeAt(r) }
-                            val newHeights = rowHeights.toMutableList().apply { removeAt(r) }
-                            onUpdate(block.copy(tableData = newData, rowHeights = newHeights))
+                            if (block.tableData.size <= 1) {
+                                onDeleteBlock("", true)
+                            } else {
+                                val newData = block.tableData.toMutableList().apply { removeAt(r) }
+                                val newHeights = rowHeights.toMutableList().apply { removeAt(r) }
+                                focusedCell = null // Fix State Leak
+                                onUpdate(block.copy(tableData = newData, rowHeights = newHeights))
+                            }
                             cellOptionsTarget = null
-                        }) { Text("Delete Entire Row") }
+                        }) { Text("Delete Entire Row", color = MaterialTheme.colorScheme.error) }
+
                         TextButton(onClick = {
-                            val newData = block.tableData.map { it.toMutableList().apply { removeAt(c) } }
-                            val newWidths = colWidths.toMutableList().apply { removeAt(c) }
-                            onUpdate(block.copy(tableData = newData, colWidths = newWidths))
+                            if ((block.tableData.firstOrNull()?.size ?: 0) <= 1) {
+                                onDeleteBlock("", true)
+                            } else {
+                                val newData = block.tableData.map { it.toMutableList().apply { removeAt(c) } }
+                                val newWidths = colWidths.toMutableList().apply { removeAt(c) }
+                                focusedCell = null // Fix State Leak
+                                onUpdate(block.copy(tableData = newData, colWidths = newWidths))
+                            }
                             cellOptionsTarget = null
-                        }) { Text("Delete Entire Column") }
+                        }) { Text("Delete Entire Column", color = MaterialTheme.colorScheme.error) }
 
                         Spacer(modifier = Modifier.height(16.dp))
                         Text("Cell Color", style = MaterialTheme.typography.labelMedium)

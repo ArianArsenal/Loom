@@ -164,7 +164,6 @@ interface TrackerDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertSkincareProductReplace(product: SkincareProduct)
 
-    // NEW: Update function for Product Profiles
     @Update
     suspend fun updateSkincareProduct(product: SkincareProduct)
 
@@ -177,10 +176,17 @@ interface TrackerDao {
     // --- Food Pantry ---
     @Query("SELECT * FROM food_items")
     fun getAllFoodItems(): Flow<List<FoodItem>>
+
     @Query("SELECT * FROM food_items WHERE isUserCreated = 1")
     fun getUserCreatedFoodItems(): Flow<List<FoodItem>>
-    @Query("SELECT * FROM food_items WHERE name LIKE '%' || :searchQuery || '%' ORDER BY name ASC LIMIT 50")
-    fun searchFoodItems(searchQuery: String): Flow<List<FoodItem>>
+
+    // --- NEW: Grouped search for the hierarchical UI ---
+    @Query("SELECT * FROM food_items WHERE name LIKE '%' || :searchQuery || '%' GROUP BY name ORDER BY name ASC LIMIT 30")
+    fun searchFoodItemsGrouped(searchQuery: String): Flow<List<FoodItem>>
+
+    // --- NEW: Fetch specific variants of a food ---
+    @Query("SELECT * FROM food_items WHERE name = :foodName ORDER BY servingUnit ASC")
+    suspend fun getFoodVariantsSync(foodName: String): List<FoodItem>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertFoodItem(food: FoodItem)
@@ -195,34 +201,24 @@ interface TrackerDao {
     // --- BULK IMPORTS FOR LIGHTNING FAST RESTORES ---
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertDailyRecords(records: List<DailyRecord>)
-
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertTasks(tasks: List<Task>)
-
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertTaskSections(sections: List<TaskSection>)
-
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertExercises(exercises: List<Exercise>)
-
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertPresets(presets: List<WorkoutPreset>)
-
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertTemplates(templates: List<ExerciseTemplate>)
-
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertDiaryNotes(notes: List<DiaryNote>)
-
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertNoteTags(tags: List<NoteTag>)
-
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertSkincareProducts(products: List<SkincareProduct>)
-
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertSkincareRoutines(routines: List<SkincareRoutine>)
-
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertFoodItems(foodItems: List<FoodItem>)
 

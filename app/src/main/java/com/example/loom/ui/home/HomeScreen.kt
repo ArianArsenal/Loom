@@ -30,10 +30,11 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.toColorInt
@@ -68,6 +69,37 @@ import java.util.TimeZone
 import java.util.UUID
 import kotlin.time.Duration.Companion.milliseconds
 
+// --- PERFECT PRECISION FIX: Max 3 decimals, strip trailing zeros ---
+private fun Float.formatWeight(): String {
+    val formatted = String.format(Locale.US, "%.3f", this)
+    return formatted.trimEnd('0').trimEnd('.')
+}
+
+// --- RTL MASTER FIX: Explicitly splits the number from the text to enforce visual order ---
+@Composable
+fun ServingUnitDisplay(servingUnit: String, textStyle: androidx.compose.ui.text.TextStyle, modifier: Modifier = Modifier) {
+    val mResult = "\\d+(\\.\\d+)?".toRegex().find(servingUnit)
+    val numStr = mResult?.value ?: ""
+    val textStr = if (mResult != null) servingUnit.replaceFirst(numStr, "").trim() else servingUnit.trim()
+    val isPersian = Regex("[\\u0600-\\u06FF]").containsMatchIn(textStr)
+
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (isPersian) {
+            // Visual LTR order for Persian: [Text] then [Number] (Reads RTL correctly)
+            if (textStr.isNotBlank()) Text(textStr, style = textStyle.copy(textDirection = TextDirection.Rtl))
+            if (numStr.isNotBlank()) Text(numStr, style = textStyle, fontWeight = FontWeight.Bold)
+        } else {
+            // Visual LTR order for English: [Number] then [Text]
+            if (numStr.isNotBlank()) Text(numStr, style = textStyle, fontWeight = FontWeight.Bold)
+            if (textStr.isNotBlank()) Text(textStr, style = textStyle.copy(textDirection = TextDirection.Ltr))
+        }
+    }
+}
+
 @Suppress("DEPRECATION")
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -81,8 +113,13 @@ fun HomeScreen(
     var showWelcomeDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(userName) {
-        if (userName.isBlank()) {
-            showWelcomeDialog = true
+        if (userName.isNotBlank()) {
+            showWelcomeDialog = false
+        } else {
+            delay(150.milliseconds)
+            if (userName.isBlank()) {
+                showWelcomeDialog = true
+            }
         }
     }
 
@@ -121,11 +158,10 @@ fun HomeScreen(
 
     val shortcutAction by viewModel.shortcutAction.collectAsState()
 
-    // Listen for App Shortcuts from the Home Screen
     LaunchedEffect(shortcutAction) {
         if (shortcutAction == "com.example.loom.ACTION_QUICK_TASK") {
             showTaskDialog = true
-            viewModel.clearShortcutAction() // Reset it so it doesn't trigger again on rotation
+            viewModel.clearShortcutAction()
         }
     }
 
@@ -144,11 +180,15 @@ fun HomeScreen(
         var nameInput by remember { mutableStateOf("") }
 
         AlertDialog(
-            onDismissRequest = { /* Force them to enter a name to proceed */ },
+            onDismissRequest = { },
             title = { Text("Welcome to Loom 👋", fontWeight = FontWeight.Bold) },
             text = {
                 Column {
-                    Text("What should we call you?", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        "What should we call you?",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                     Spacer(modifier = Modifier.height(16.dp))
                     OutlinedTextField(
                         value = nameInput,
@@ -181,12 +221,19 @@ fun HomeScreen(
             containerColor = MaterialTheme.colorScheme.surface,
             tonalElevation = 0.dp
         ) {
-            // --- FIX: Scrollable column to prevent overflow if you have many pinned cards ---
             LazyColumn(modifier = Modifier.padding(horizontal = 24.dp).padding(bottom = 32.dp)) {
                 item {
-                    Text("Customize Dashboard", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    Text(
+                        "Customize Dashboard",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
+                    )
                     Spacer(modifier = Modifier.height(4.dp))
-                    Text("Select which modules appear on your Home tab.", color = Color.Gray, style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        "Select which modules appear on your Home tab.",
+                        color = Color.Gray,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
                     Spacer(modifier = Modifier.height(24.dp))
                 }
 
@@ -210,11 +257,15 @@ fun HomeScreen(
                     }
                 }
 
-                // --- NEW: Pinned Space Cards Visibility Section ---
                 if (pinnedCards.isNotEmpty()) {
                     item {
                         HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
-                        Text("Pinned Space Cards", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                        Text(
+                            "Pinned Space Cards",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
                         Spacer(modifier = Modifier.height(8.dp))
                     }
 
@@ -226,7 +277,12 @@ fun HomeScreen(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable { viewModel.toggleHomeCardVisibility(cardKey, !isVisible) }
+                                .clickable {
+                                    viewModel.toggleHomeCardVisibility(
+                                        cardKey,
+                                        !isVisible
+                                    )
+                                }
                                 .padding(vertical = 16.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween
@@ -253,17 +309,31 @@ fun HomeScreen(
 
     if (showNutritionDialog) {
         var foodDropdownExpanded by remember { mutableStateOf(false) }
-        var selectedFood by remember { mutableStateOf<FoodItem?>(null) }
+        var localSearchText by remember { mutableStateOf("") }
+        var selectedFoodName by remember { mutableStateOf<String?>(null) }
+        var selectedVariant by remember { mutableStateOf<FoodItem?>(null) }
         var servingsStr by remember { mutableStateOf("1") }
+
+        val variants by viewModel.selectedFoodVariants.collectAsState()
 
         AlertDialog(
             onDismissRequest = { showNutritionDialog = false },
             title = { Text("Log Meal") },
             text = {
                 Column {
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        Text(if (isManualEntry) "Manual Entry" else "From Pantry", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
-                        TextButton(onClick = { isManualEntry = !isManualEntry }) { Text(if (isManualEntry) "Use Pantry" else "Manual Entry") }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            if (isManualEntry) "Manual Entry" else "From Pantry",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        TextButton(onClick = {
+                            isManualEntry = !isManualEntry
+                        }) { Text(if (isManualEntry) "Use Pantry" else "Manual Entry") }
                     }
                     Spacer(modifier = Modifier.height(8.dp))
 
@@ -273,160 +343,223 @@ fun HomeScreen(
                         var inputCarbs by remember { mutableStateOf("") }
                         var inputFats by remember { mutableStateOf("") }
 
-                        OutlinedTextField(value = inputCalories, onValueChange = { inputCalories = it }, label = { Text("Calories") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
+                        OutlinedTextField(
+                            value = inputCalories,
+                            onValueChange = { inputCalories = it },
+                            label = { Text("Calories") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier.fillMaxWidth()
+                        )
                         Spacer(modifier = Modifier.height(8.dp))
-                        OutlinedTextField(value = inputProtein, onValueChange = { inputProtein = it }, label = { Text("Protein (g)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
+                        OutlinedTextField(
+                            value = inputProtein,
+                            onValueChange = { inputProtein = it },
+                            label = { Text("Protein (g)") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier.fillMaxWidth()
+                        )
                         Spacer(modifier = Modifier.height(8.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedTextField(value = inputCarbs, onValueChange = { inputCarbs = it }, label = { Text("Carbs (g)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
-                            OutlinedTextField(value = inputFats, onValueChange = { inputFats = it }, label = { Text("Fats (g)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
+                            OutlinedTextField(
+                                value = inputCarbs,
+                                onValueChange = { inputCarbs = it },
+                                label = { Text("Carbs (g)") },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                modifier = Modifier.weight(1f)
+                            )
+                            OutlinedTextField(
+                                value = inputFats,
+                                onValueChange = { inputFats = it },
+                                label = { Text("Fats (g)") },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                modifier = Modifier.weight(1f)
+                            )
                         }
 
                         Spacer(modifier = Modifier.height(16.dp))
                         Button(onClick = {
-                            viewModel.logManualMeal(inputCalories.toIntOrNull() ?: 0, inputProtein.toIntOrNull() ?: 0, inputCarbs.toIntOrNull() ?: 0, inputFats.toIntOrNull() ?: 0)
+                            viewModel.logManualMeal(
+                                inputCalories.toIntOrNull() ?: 0,
+                                inputProtein.toIntOrNull() ?: 0,
+                                inputCarbs.toIntOrNull() ?: 0,
+                                inputFats.toIntOrNull() ?: 0
+                            )
                             showNutritionDialog = false
                         }, modifier = Modifier.fillMaxWidth()) { Text("Add Macros") }
                     } else {
-                        val currentSearchQuery by viewModel.foodSearchQuery.collectAsState()
                         val searchedFoods by viewModel.searchedFoodItems.collectAsState()
 
-                        if (currentSearchQuery.isBlank() && selectedFood == null && searchedFoods.isNotEmpty()) {
-                            Text("Quick Picks", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
-                            Spacer(modifier = Modifier.height(8.dp))
-                            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                items(searchedFoods.take(8), key = { it.id }) { food ->
-                                    Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), modifier = Modifier.clickable { selectedFood = food }) {
-                                        Column(modifier = Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                            Text(food.name, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-                                            Text("${food.calories} kcal", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                        }
-                                    }
-                                }
-                            }
-                            Spacer(modifier = Modifier.height(16.dp))
-                        }
-
-                        ExposedDropdownMenuBox(expanded = foodDropdownExpanded, onExpandedChange = { foodDropdownExpanded = it }) {
+                        ExposedDropdownMenuBox(
+                            expanded = foodDropdownExpanded,
+                            onExpandedChange = { foodDropdownExpanded = it }) {
                             OutlinedTextField(
-                                value = selectedFood?.name ?: currentSearchQuery,
-                                onValueChange = { viewModel.updateFoodSearchQuery(it); foodDropdownExpanded = true; selectedFood = null },
+                                value = localSearchText,
+                                onValueChange = {
+                                    localSearchText = it
+                                    viewModel.updateFoodSearchQuery(it)
+                                    foodDropdownExpanded = true
+                                    selectedFoodName = null
+                                    selectedVariant = null
+                                    viewModel.clearFoodVariants()
+                                },
                                 placeholder = { Text("Search Persian & global foods...") },
-                                modifier = Modifier.menuAnchor().fillMaxWidth(), singleLine = true,
+                                modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryEditable, true)
+                                    .fillMaxWidth(),
+                                singleLine = true,
                                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = foodDropdownExpanded) }
                             )
 
                             if (searchedFoods.isNotEmpty() && foodDropdownExpanded) {
-                                ExposedDropdownMenu(expanded = true, onDismissRequest = { foodDropdownExpanded = false }, modifier = Modifier.heightIn(max = 250.dp)) {
+                                ExposedDropdownMenu(
+                                    expanded = true,
+                                    onDismissRequest = { foodDropdownExpanded = false },
+                                    modifier = Modifier.heightIn(max = 280.dp)
+                                ) {
                                     searchedFoods.forEachIndexed { index, food ->
                                         DropdownMenuItem(
-                                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
                                             text = {
-                                                Column(modifier = Modifier.fillMaxWidth()) {
-                                                    Text(text = food.name, fontWeight = FontWeight.Bold)
-                                                    Text(text = "P: ${food.protein}g • C: ${food.carbs}g • F: ${food.fats}g", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-                                                    Spacer(modifier = Modifier.height(4.dp))
-
-                                                    val uText = food.servingUnit.trim()
-                                                    val mResult = "\\d+(\\.\\d+)?".toRegex().find(uText)
-                                                    val numStr = mResult?.value ?: ""
-                                                    val textStr = if (mResult != null) uText.replaceFirst(numStr, "").trim() else uText
-
-                                                    Row(
-                                                        modifier = Modifier.fillMaxWidth(),
-                                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                                        verticalAlignment = Alignment.CenterVertically
-                                                    ) {
-                                                        Text(
-                                                            text = "${food.calories} kcal",
-                                                            style = MaterialTheme.typography.bodySmall,
-                                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                                        )
-
-                                                        Surface(shape = RoundedCornerShape(6.dp), color = MaterialTheme.colorScheme.secondaryContainer) {
-                                                            Row(
-                                                                verticalAlignment = Alignment.CenterVertically,
-                                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                                            ) {
-                                                                if (textStr.isNotBlank()) {
-                                                                    Text(text = textStr, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSecondaryContainer, fontWeight = FontWeight.Bold)
-                                                                    Spacer(modifier = Modifier.width(4.dp))
-                                                                }
-                                                                if (numStr.isNotBlank()) {
-                                                                    Text(text = numStr, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSecondaryContainer, fontWeight = FontWeight.Bold)
-                                                                }
-                                                            }
-                                                        }
-                                                    }
-                                                }
+                                                val isNamePersian = Regex("[\\u0600-\\u06FF]").containsMatchIn(food.name)
+                                                Text(
+                                                    text = food.name,
+                                                    style = MaterialTheme.typography.titleMedium.copy(
+                                                        textDirection = if (isNamePersian) TextDirection.Rtl else TextDirection.Ltr
+                                                    ),
+                                                    fontWeight = FontWeight.Medium
+                                                )
                                             },
-                                            onClick = { selectedFood = food; foodDropdownExpanded = false; viewModel.updateFoodSearchQuery("") }
+                                            onClick = {
+                                                localSearchText = food.name
+                                                selectedFoodName = food.name
+                                                viewModel.fetchFoodVariants(food.name)
+                                                foodDropdownExpanded = false
+                                            }
                                         )
-                                        if (index < searchedFoods.size - 1) HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.surfaceVariant)
+                                        if (index < searchedFoods.size - 1) HorizontalDivider(
+                                            modifier = Modifier.padding(horizontal = 16.dp),
+                                            color = MaterialTheme.colorScheme.surfaceVariant
+                                        )
                                     }
                                 }
                             }
                         }
 
-                        if (selectedFood != null) {
+                        if (selectedFoodName != null) {
                             Spacer(modifier = Modifier.height(16.dp))
+                            Text(
+                                "Select Serving Size",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
 
-                            val currentMultiplier = servingsStr.toFloatOrNull() ?: 1f
-                            val dynamicCals = selectedFood!!.calories * currentMultiplier
-                            val unitText = selectedFood!!.servingUnit.trim()
-                            val numberRegex = "\\d+(\\.\\d+)?".toRegex()
-                            val matchResult = numberRegex.find(unitText)
-                            val textPart: String
-                            val formattedNum: String
-
-                            if (matchResult != null) {
-                                val baseNum = matchResult.value.toFloat()
-                                val calculatedNum = baseNum * currentMultiplier
-                                formattedNum = if (calculatedNum % 1f == 0f) calculatedNum.toInt().toString() else String.format(Locale.US, "%.1f", calculatedNum)
-                                textPart = unitText.replaceFirst(matchResult.value, "").trim()
-                            } else {
-                                formattedNum = if (currentMultiplier % 1f == 0f) currentMultiplier.toInt().toString() else String.format(Locale.US, "%.1f", currentMultiplier)
-                                textPart = unitText
-                            }
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                                horizontalArrangement = Arrangement.Center,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                if (textPart.isNotBlank()) {
-                                    Text(text = textPart, style = MaterialTheme.typography.bodyLarge)
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                }
-                                Text(text = formattedNum, style = MaterialTheme.typography.bodyLarge)
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Text(text = "=", style = MaterialTheme.typography.bodyLarge)
-                                Spacer(modifier = Modifier.width(12.dp))
-
-                                val calsStr = if (dynamicCals % 1f == 0f) dynamicCals.toInt().toString() else String.format(Locale.US, "%.1f", dynamicCals)
-                                Surface(shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.secondaryContainer) {
-                                    Text(
-                                        text = "$calsStr kcal",
-                                        style = MaterialTheme.typography.labelLarge,
-                                        color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                        fontWeight = FontWeight.Bold,
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                items(variants) { variant ->
+                                    FilterChip(
+                                        selected = selectedVariant == variant,
+                                        onClick = { selectedVariant = variant },
+                                        label = { ServingUnitDisplay(variant.servingUnit, MaterialTheme.typography.labelMedium) },
+                                        colors = FilterChipDefaults.filterChipColors(
+                                            selectedContainerColor = MaterialTheme.colorScheme.primary,
+                                            selectedLabelColor = MaterialTheme.colorScheme.onPrimary
+                                        )
                                     )
                                 }
                             }
+                        }
+
+                        if (selectedVariant != null) {
+                            Spacer(modifier = Modifier.height(16.dp))
+
+                            val currentMultiplier = servingsStr.toFloatOrNull() ?: 1f
+                            val dynamicCals = selectedVariant!!.calories * currentMultiplier
+                            val dynamicPro = selectedVariant!!.protein * currentMultiplier
+                            val dynamicCarbs = selectedVariant!!.carbs * currentMultiplier
+                            val dynamicFats = selectedVariant!!.fats * currentMultiplier
+
+                            OutlinedTextField(
+                                value = servingsStr,
+                                onValueChange = { servingsStr = it },
+                                label = { Text("Multiplier (e.g., 2 or 0.5)") },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                modifier = Modifier.fillMaxWidth()
+                            )
 
                             Spacer(modifier = Modifier.height(16.dp))
-                            OutlinedTextField(value = servingsStr, onValueChange = { servingsStr = it }, label = { Text("Multiplier (e.g., 2 or 0.5)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
+
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(modifier = Modifier.padding(16.dp)) {
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.Center,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(text = currentMultiplier.formatWeight(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(text = "×", style = MaterialTheme.typography.titleMedium)
+                                        Spacer(modifier = Modifier.width(6.dp))
+
+                                        // --- RTL FIX: Apply the flawless unit display ---
+                                        ServingUnitDisplay(selectedVariant!!.servingUnit, MaterialTheme.typography.titleMedium)
+
+                                        Spacer(modifier = Modifier.width(12.dp))
+                                        Text(text = "=", style = MaterialTheme.typography.titleMedium)
+                                        Spacer(modifier = Modifier.width(12.dp))
+
+                                        Text(
+                                            text = "${dynamicCals.formatWeight()} kcal",
+                                            style = MaterialTheme.typography.titleLarge,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+
+                                    Spacer(modifier = Modifier.height(16.dp))
+                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Text("${dynamicPro.formatWeight()}g", fontWeight = FontWeight.Bold, color = Color(0xFFE57373))
+                                            Text("Protein", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        }
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Text("${dynamicCarbs.formatWeight()}g", fontWeight = FontWeight.Bold, color = Color(0xFF64B5F6))
+                                            Text("Carbs", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        }
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Text("${dynamicFats.formatWeight()}g", fontWeight = FontWeight.Bold, color = Color(0xFFFFB74D))
+                                            Text("Fats", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        }
+                                    }
+                                }
+                            }
+
                             Spacer(modifier = Modifier.height(16.dp))
-                            Button(onClick = { viewModel.logFoodItem(selectedFood!!, servingsStr.toFloatOrNull() ?: 1f); showNutritionDialog = false }, modifier = Modifier.fillMaxWidth()) { Text("Log Food") }
+                            Button(onClick = {
+                                viewModel.logFoodItem(
+                                    selectedVariant!!,
+                                    servingsStr.toFloatOrNull() ?: 1f
+                                ); showNutritionDialog = false
+                            }, modifier = Modifier.fillMaxWidth()) { Text("Log Food") }
                         } else {
                             Spacer(modifier = Modifier.height(16.dp))
-                            TextButton(onClick = { showNewFoodDialog = true }, modifier = Modifier.fillMaxWidth()) { Text("+ Add New Food to Pantry") }
+                            TextButton(
+                                onClick = { showNewFoodDialog = true },
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text("+ Add New Food to Pantry") }
                         }
                     }
                 }
             },
-            confirmButton = {}, dismissButton = { TextButton(onClick = { showNutritionDialog = false }) { Text("Cancel") } }
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = {
+                    showNutritionDialog = false
+                }) { Text("Cancel") }
+            }
         )
     }
 
@@ -443,18 +576,52 @@ fun HomeScreen(
             text = {
                 LazyColumn {
                     item {
-                        OutlinedTextField(value = inputName, onValueChange = { inputName = it }, label = { Text("Food Name") }, modifier = Modifier.fillMaxWidth())
+                        OutlinedTextField(
+                            value = inputName,
+                            onValueChange = { inputName = it },
+                            label = { Text("Food Name") },
+                            modifier = Modifier.fillMaxWidth()
+                        )
                         Spacer(modifier = Modifier.height(8.dp))
-                        OutlinedTextField(value = inputServing, onValueChange = { inputServing = it }, label = { Text("Serving Unit") }, modifier = Modifier.fillMaxWidth())
+                        OutlinedTextField(
+                            value = inputServing,
+                            onValueChange = { inputServing = it },
+                            label = { Text("Serving Unit") },
+                            modifier = Modifier.fillMaxWidth()
+                        )
                         Spacer(modifier = Modifier.height(8.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedTextField(value = inputCals, onValueChange = { inputCals = it }, label = { Text("Kcal") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
-                            OutlinedTextField(value = inputPro, onValueChange = { inputPro = it }, label = { Text("Pro (g)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
+                            OutlinedTextField(
+                                value = inputCals,
+                                onValueChange = { inputCals = it },
+                                label = { Text("Kcal") },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                modifier = Modifier.weight(1f)
+                            )
+                            OutlinedTextField(
+                                value = inputPro,
+                                onValueChange = { inputPro = it },
+                                label = { Text("Pro (g)") },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                modifier = Modifier.weight(1f)
+                            )
                         }
                         Spacer(modifier = Modifier.height(8.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedTextField(value = inputCarbs, onValueChange = { inputCarbs = it }, label = { Text("Carb (g)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
-                            OutlinedTextField(value = inputFats, onValueChange = { inputFats = it }, label = { Text("Fat (g)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
+                            OutlinedTextField(
+                                value = inputCarbs,
+                                onValueChange = { inputCarbs = it },
+                                label = { Text("Carb (g)") },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                modifier = Modifier.weight(1f)
+                            )
+                            OutlinedTextField(
+                                value = inputFats,
+                                onValueChange = { inputFats = it },
+                                label = { Text("Fat (g)") },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                modifier = Modifier.weight(1f)
+                            )
                         }
                     }
                 }
@@ -462,12 +629,25 @@ fun HomeScreen(
             confirmButton = {
                 Button(onClick = {
                     if (inputName.isNotBlank() && inputCals.isNotBlank()) {
-                        viewModel.addFoodItemToPantry(FoodItem(name = inputName, servingUnit = inputServing, calories = inputCals.toFloatOrNull() ?: 0f, protein = inputPro.toFloatOrNull() ?: 0f, carbs = inputCarbs.toFloatOrNull() ?: 0f, fats = inputFats.toFloatOrNull() ?: 0f))
+                        viewModel.addFoodItemToPantry(
+                            FoodItem(
+                                name = inputName,
+                                servingUnit = inputServing,
+                                calories = inputCals.toFloatOrNull() ?: 0f,
+                                protein = inputPro.toFloatOrNull() ?: 0f,
+                                carbs = inputCarbs.toFloatOrNull() ?: 0f,
+                                fats = inputFats.toFloatOrNull() ?: 0f
+                            )
+                        )
                         showNewFoodDialog = false
                     }
                 }) { Text("Save Food") }
             },
-            dismissButton = { TextButton(onClick = { showNewFoodDialog = false }) { Text("Cancel") } }
+            dismissButton = {
+                TextButton(onClick = {
+                    showNewFoodDialog = false
+                }) { Text("Cancel") }
+            }
         )
     }
 
@@ -475,7 +655,14 @@ fun HomeScreen(
         AlertDialog(
             onDismissRequest = { sectionToDelete = null }, title = { Text("Delete Section?") },
             text = { Text("Are you sure you want to delete '${sectionToDelete?.name}'? Tasks in this section will be orphaned.") },
-            confirmButton = { Button(onClick = { viewModel.deleteTaskSection(sectionToDelete!!); sectionToDelete = null }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) { Text("Delete") } },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.deleteTaskSection(sectionToDelete!!); sectionToDelete = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) { Text("Delete") }
+            },
             dismissButton = { TextButton(onClick = { sectionToDelete = null }) { Text("Cancel") } }
         )
     }
@@ -484,8 +671,14 @@ fun HomeScreen(
         CreateTaskDialog(
             sections = sections, tags = tags, initialTask = taskToEdit,
             onDismiss = { showTaskDialog = false; taskToEdit = null },
-            onSave = { newTask -> if (taskToEdit != null) viewModel.updateTask(newTask) else viewModel.addTask(newTask); showTaskDialog = false; taskToEdit = null },
-            onDelete = { taskToDelete -> viewModel.deleteTask(taskToDelete); showTaskDialog = false; taskToEdit = null },
+            onSave = { newTask ->
+                if (taskToEdit != null) viewModel.updateTask(newTask) else viewModel.addTask(
+                    newTask
+                ); showTaskDialog = false; taskToEdit = null
+            },
+            onDelete = { taskToDelete ->
+                viewModel.deleteTask(taskToDelete); showTaskDialog = false; taskToEdit = null
+            },
             onAddSection = { name -> viewModel.addTaskSection(name) },
             onDeleteSection = { section -> viewModel.deleteTaskSection(section) },
             onAddTag = { name, color -> viewModel.addNoteTag(name, color) },
@@ -505,7 +698,11 @@ fun HomeScreen(
                         modifier = Modifier.size(36.dp)
                     ) {
                         IconButton(onClick = { showDashboardConfig = true }) {
-                            Icon(Icons.Default.Tune, "Dashboard Config", modifier = Modifier.size(20.dp))
+                            Icon(
+                                Icons.Default.Tune,
+                                "Dashboard Config",
+                                modifier = Modifier.size(20.dp)
+                            )
                         }
                     }
                     Spacer(modifier = Modifier.width(8.dp))
@@ -515,7 +712,11 @@ fun HomeScreen(
                         modifier = Modifier.size(36.dp)
                     ) {
                         IconButton(onClick = onNavigateToSettings) {
-                            Icon(Icons.Default.Settings, "Settings", modifier = Modifier.size(20.dp))
+                            Icon(
+                                Icons.Default.Settings,
+                                "Settings",
+                                modifier = Modifier.size(20.dp)
+                            )
                         }
                     }
                     Spacer(modifier = Modifier.width(8.dp))
@@ -530,7 +731,6 @@ fun HomeScreen(
         },
     ) { paddingValues ->
 
-        // --- FIX: High-performance cached filtering of visible pinned cards ---
         val visiblePinnedCards = remember(pinnedCards, hiddenHomeCards) {
             pinnedCards.filter { (_, card) -> !hiddenHomeCards.contains("pinned_${card.id}") }
         }
@@ -573,14 +773,17 @@ fun HomeScreen(
             }
         } else {
             LazyColumn(
-                modifier = Modifier.fillMaxSize().padding(paddingValues).padding(horizontal = 20.dp),
+                modifier = Modifier.fillMaxSize().padding(paddingValues)
+                    .padding(horizontal = 20.dp),
                 contentPadding = PaddingValues(top = 12.dp, bottom = 80.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
 
                 if (!hiddenHomeCards.contains("Agenda")) {
                     item {
-                        AgendaCard(agendaText = agendaText, onUpdateText = { viewModel.updateAgendaText(it) })
+                        AgendaCard(
+                            agendaText = agendaText,
+                            onUpdateText = { viewModel.updateAgendaText(it) })
                     }
                 }
 
@@ -600,28 +803,48 @@ fun HomeScreen(
                 if (!hiddenHomeCards.contains("Nutrition")) {
                     item {
                         NutritionLogCard(
-                            todayRecord = todayRecord, targetCaloriesInt = targetCaloriesInt, targetProteinInt = targetProteinInt, targetCarbsInt = targetCarbsInt, targetFatsInt = targetFatsInt,
-                            consumedList = consumedList, viewModel = viewModel, onLogMealClick = { showNutritionDialog = true }
+                            todayRecord = todayRecord,
+                            targetCaloriesInt = targetCaloriesInt,
+                            targetProteinInt = targetProteinInt,
+                            targetCarbsInt = targetCarbsInt,
+                            targetFatsInt = targetFatsInt,
+                            consumedList = consumedList,
+                            viewModel = viewModel,
+                            onLogMealClick = { showNutritionDialog = true }
                         )
                     }
                 }
 
                 if (!hiddenHomeCards.contains("Hydration")) {
                     item {
-                        HydrationCard(todayRecord = todayRecord, dailyGoal = dailyGoal, defaultWaterIncrement = defaultWaterIncrement, viewModel = viewModel)
+                        HydrationCard(
+                            todayRecord = todayRecord,
+                            dailyGoal = dailyGoal,
+                            defaultWaterIncrement = defaultWaterIncrement,
+                            viewModel = viewModel
+                        )
                     }
                 }
 
                 if (!hiddenHomeCards.contains("Skincare")) {
                     item {
-                        SkincareRoutinesCard(pinnedRoutines = pinnedRoutines, completedRoutines = completedRoutines, completedSteps = completedSteps, viewModel = viewModel)
+                        SkincareRoutinesCard(
+                            pinnedRoutines = pinnedRoutines,
+                            completedRoutines = completedRoutines,
+                            completedSteps = completedSteps,
+                            viewModel = viewModel
+                        )
                     }
                 }
 
                 if (!hiddenHomeCards.contains("Tasks")) {
                     item {
                         TasksAndDeadlinesCard(
-                            sections = sections, allTasks = allTasks, tags = tags, isKanbanView = isKanbanView, viewModel = viewModel,
+                            sections = sections,
+                            allTasks = allTasks,
+                            tags = tags,
+                            isKanbanView = isKanbanView,
+                            viewModel = viewModel,
                             onToggleKanban = { isKanbanView = !isKanbanView },
                             onAddTask = { taskToEdit = null; showTaskDialog = true },
                             onEditTask = { taskToEdit = it; showTaskDialog = true },

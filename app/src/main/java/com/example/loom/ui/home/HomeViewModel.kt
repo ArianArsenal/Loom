@@ -94,7 +94,7 @@ class HomeViewModel @Inject constructor(
     private val sandboxDao: SandboxDao
 ) : ViewModel() {
 
-    // --- NEW: User Name State ---
+    // --- User Name State ---
     val userName: StateFlow<String> = userPreferences.userNameFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
 
@@ -102,11 +102,10 @@ class HomeViewModel @Inject constructor(
         userPreferences.saveUserName(name)
     }
 
-    // --- NEW: Dashboard State ---
+    // --- Dashboard State ---
     val hiddenHomeCards: StateFlow<Set<String>> = userPreferences.hiddenHomeCardsFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptySet())
 
-    // --- NEW: Dashboard State ---
     val agendaText: StateFlow<String> = userPreferences.agendaTextFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
 
@@ -200,7 +199,6 @@ class HomeViewModel @Inject constructor(
     fun setDiaryViewMode(mode: Int) { _diaryViewMode.value = mode }
 
     private val _foodSearchQuery = MutableStateFlow("")
-    val foodSearchQuery: StateFlow<String> = _foodSearchQuery.asStateFlow()
 
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
@@ -208,14 +206,26 @@ class HomeViewModel @Inject constructor(
     val waterDailyGoal: StateFlow<Int> = userPreferences.waterDailyGoalFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 3000)
 
+    // --- NEW: Hierarchical Pantry State ---
+    private val _selectedFoodVariants = MutableStateFlow<List<FoodItem>>(emptyList())
+    val selectedFoodVariants: StateFlow<List<FoodItem>> = _selectedFoodVariants.asStateFlow()
+
+    fun fetchFoodVariants(foodName: String) = viewModelScope.launch(Dispatchers.IO) {
+        _selectedFoodVariants.value = trackerDao.getFoodVariantsSync(foodName)
+    }
+
+    fun clearFoodVariants() {
+        _selectedFoodVariants.value = emptyList()
+    }
+
     @OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
     val searchedFoodItems: StateFlow<List<FoodItem>> = _foodSearchQuery
         .debounce(300.milliseconds)
         .flatMapLatest { query ->
             if (query.isBlank()) {
-                repository.searchFoodItems("مرغ")
+                trackerDao.searchFoodItemsGrouped("مرغ")
             } else {
-                repository.searchFoodItems(query)
+                trackerDao.searchFoodItemsGrouped(query)
             }
         }
         .flowOn(Dispatchers.IO)
@@ -227,7 +237,7 @@ class HomeViewModel @Inject constructor(
             repository.prepopulateTemplatesIfEmpty()
             repository.prepopulateTagsIfEmpty()
             repository.prepopulateTaskSectionsIfEmpty()
-            repository.prepopulateSkincareProductsIfEmpty() // --- FIX: Added missing prepopulate ---
+            repository.prepopulateSkincareProductsIfEmpty()
         }
     }
 
@@ -333,7 +343,7 @@ class HomeViewModel @Inject constructor(
                     userPreferences.saveAppTheme(backup.appTheme)
                     userPreferences.setBiometricEnabled(backup.isBiometricEnabled)
 
-                    // 5. FILL GAPS (If backup was from an older version missing new default features)
+                    // 5. FILL GAPS
                     repository.initializeTodayRecord()
                     repository.prepopulateTemplatesIfEmpty()
                     repository.prepopulateTagsIfEmpty()
@@ -376,7 +386,7 @@ class HomeViewModel @Inject constructor(
                 repository.prepopulateTemplatesIfEmpty()
                 repository.prepopulateTagsIfEmpty()
                 repository.prepopulateTaskSectionsIfEmpty()
-                repository.prepopulateSkincareProductsIfEmpty() // --- FIX: Added missing prepopulate ---
+                repository.prepopulateSkincareProductsIfEmpty()
 
                 launch(Dispatchers.Main) { onSuccess() }
             } catch (e: Exception) {
@@ -561,7 +571,7 @@ class HomeViewModel @Inject constructor(
         repository.logConsumedFood(-log.calories, -log.protein, -log.carbs, -log.fats, Json.encodeToString(updatedLogs))
     }
 
-    // --- NEW: App Shortcut State ---
+    // --- App Shortcut State ---
     private val _shortcutAction = MutableStateFlow<String?>(null)
     val shortcutAction: StateFlow<String?> = _shortcutAction.asStateFlow()
 

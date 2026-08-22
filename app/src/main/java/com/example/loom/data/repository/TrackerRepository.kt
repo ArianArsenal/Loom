@@ -11,13 +11,13 @@ import com.example.loom.data.local.entity.SkincareProduct
 import com.example.loom.data.local.entity.SkincareRoutine
 import com.example.loom.data.local.entity.Task
 import com.example.loom.data.local.entity.TaskSection
-import com.example.loom.data.local.entity.WaterLog // --- FIX: Extracted for clean code ---
+import com.example.loom.data.local.entity.WaterLog
 import com.example.loom.data.local.entity.WorkoutPreset
 import com.example.loom.util.DateUtils
 import kotlinx.coroutines.flow.Flow
 import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json // --- FIX: Extracted for clean code ---
-import java.util.UUID // --- FIX: Extracted for clean code ---
+import kotlinx.serialization.json.Json
+import java.util.UUID
 import javax.inject.Inject
 
 class TrackerRepository @Inject constructor(private val dao: TrackerDao) {
@@ -43,7 +43,7 @@ class TrackerRepository @Inject constructor(private val dao: TrackerDao) {
         val record = dao.getDailyRecordSync(DateUtils.getTodayDateId())
         if (record != null) {
             // Calculate total net hydration from logs
-            val logsList = try { Json.decodeFromString<List<WaterLog>>(logsJson) } catch (_: Exception) { emptyList() } // --- FIX: Unused 'e' & Cleaned qualifier ---
+            val logsList = try { Json.decodeFromString<List<WaterLog>>(logsJson) } catch (_: Exception) { emptyList() }
             var netHydration = 0f
             logsList.forEach { netHydration += (it.amountMl * it.hydrationFactor) }
 
@@ -57,7 +57,7 @@ class TrackerRepository @Inject constructor(private val dao: TrackerDao) {
     suspend fun addWater(amountMl: Int, targetDateId: String = DateUtils.getTodayDateId()) {
         val record = dao.getDailyRecordSync(targetDateId)
         if (record != null) {
-            val currentLogs = try { Json.decodeFromString<List<WaterLog>>(record.waterLogsJson) } catch (_: Exception) { emptyList() } // --- FIX: Unused 'e' & Cleaned qualifier ---
+            val currentLogs = try { Json.decodeFromString<List<WaterLog>>(record.waterLogsJson) } catch (_: Exception) { emptyList() }
 
             // Find matching container name/icon based on volume, or fallback nicely
             val containerName = when (amountMl) {
@@ -74,14 +74,14 @@ class TrackerRepository @Inject constructor(private val dao: TrackerDao) {
             }
 
             val newLog = WaterLog(
-                id = UUID.randomUUID().toString(), // --- FIX: Cleaned qualifier ---
+                id = UUID.randomUUID().toString(),
                 containerName = containerName,
                 emoji = iconKey,
                 amountMl = amountMl,
                 hydrationFactor = 1.0f,
                 timestamp = System.currentTimeMillis()
             )
-            val updatedJson = Json.encodeToString(currentLogs + newLog) // --- FIX: Cleaned qualifier ---
+            val updatedJson = Json.encodeToString(currentLogs + newLog)
 
             record.waterLogsJson = updatedJson
             record.waterIntakeMl += amountMl
@@ -92,24 +92,15 @@ class TrackerRepository @Inject constructor(private val dao: TrackerDao) {
     suspend fun removeWater(amountMl: Int, targetDateId: String = DateUtils.getTodayDateId()) {
         val record = dao.getDailyRecordSync(targetDateId)
         if (record != null) {
-            val currentLogs = try { Json.decodeFromString<List<WaterLog>>(record.waterLogsJson) } catch (_: Exception) { emptyList() }.toMutableList() // --- FIX: Unused 'e' & Cleaned qualifier ---
+            val currentLogs = try { Json.decodeFromString<List<WaterLog>>(record.waterLogsJson) } catch (_: Exception) { emptyList() }.toMutableList()
             if (currentLogs.isNotEmpty()) {
-                // FIXED: Using removeAt to avoid API 35 conflicts
                 val removedLog = currentLogs.removeAt(currentLogs.lastIndex)
-                val updatedJson = Json.encodeToString(currentLogs) // --- FIX: Cleaned qualifier ---
+                val updatedJson = Json.encodeToString(currentLogs)
                 record.waterLogsJson = updatedJson
                 record.waterIntakeMl = (record.waterIntakeMl - (removedLog.amountMl * removedLog.hydrationFactor).toInt()).coerceAtLeast(0)
             } else {
                 record.waterIntakeMl = (record.waterIntakeMl - amountMl).coerceAtLeast(0)
             }
-            dao.updateDailyRecord(record)
-        }
-    }
-
-    suspend fun updateDiaryNote(note: String) {
-        val record = dao.getDailyRecordSync(DateUtils.getTodayDateId())
-        if (record != null) {
-            record.diaryEntry = note
             dao.updateDailyRecord(record)
         }
     }
@@ -145,7 +136,7 @@ class TrackerRepository @Inject constructor(private val dao: TrackerDao) {
     }
 
     // --- FOOD PANTRY ---
-    fun searchFoodItems(query: String): Flow<List<FoodItem>> = dao.searchFoodItems(query)
+    fun searchFoodItems(query: String): Flow<List<FoodItem>> = dao.searchFoodItemsGrouped(query) // --- FIX: Point to the new optimized DAO method! ---
     suspend fun insertFoodItem(food: FoodItem) = dao.insertFoodItem(food)
     suspend fun deleteFoodItem(food: FoodItem) = dao.deleteFoodItem(food)
 
@@ -159,7 +150,6 @@ class TrackerRepository @Inject constructor(private val dao: TrackerDao) {
 
     // --- Tasks Engine ---
     fun getAllTasks(): Flow<List<Task>> = dao.getAllTasks()
-    fun getTasksForDate(date: String): Flow<List<Task>> = dao.getTasksForDate(date)
     suspend fun insertTask(task: Task) = dao.insertTask(task)
     suspend fun updateTask(task: Task) = dao.updateTask(task)
     suspend fun deleteTask(task: Task) = dao.deleteTask(task)
@@ -262,7 +252,7 @@ class TrackerRepository @Inject constructor(private val dao: TrackerDao) {
     }
     suspend fun deleteNoteTag(tag: NoteTag) = dao.deleteNoteTag(tag)
 
-    // --- NEW: Skincare Engine ---
+    // --- Skincare Engine ---
     fun getAllSkincareRoutines(): Flow<List<SkincareRoutine>> = dao.getAllSkincareRoutines()
     fun getPinnedSkincareRoutines(): Flow<List<SkincareRoutine>> = dao.getPinnedSkincareRoutines()
     suspend fun insertSkincareRoutine(routine: SkincareRoutine) = dao.insertSkincareRoutine(routine)
@@ -270,8 +260,6 @@ class TrackerRepository @Inject constructor(private val dao: TrackerDao) {
 
     fun getAllSkincareProducts(): Flow<List<SkincareProduct>> = dao.getAllSkincareProducts()
     suspend fun insertSkincareProduct(product: SkincareProduct) = dao.insertSkincareProduct(product)
-
-    suspend fun updateSkincareProduct(product: SkincareProduct) = dao.updateSkincareProduct(product)
 
     suspend fun prepopulateSkincareProductsIfEmpty() {
         if (dao.getSkincareProductCount() == 0) {
@@ -293,8 +281,6 @@ class TrackerRepository @Inject constructor(private val dao: TrackerDao) {
     }
 
     suspend fun updateDailyRecord(record: DailyRecord) = dao.updateDailyRecord(record)
-
-    suspend fun deleteSkincareProduct(product: SkincareProduct) = dao.deleteSkincareProduct(product)
 
     fun getExercisesForMonth(monthPrefix: String): Flow<List<Exercise>> = dao.getExercisesForMonth(monthPrefix)
 }

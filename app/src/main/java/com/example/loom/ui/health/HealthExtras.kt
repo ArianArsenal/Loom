@@ -49,7 +49,7 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import kotlinx.serialization.json.Json
 import java.util.Locale
-import kotlin.time.Duration.Companion.milliseconds // --- FIX ---
+import kotlin.time.Duration.Companion.milliseconds
 
 @Composable
 fun FastingTimerCard(viewModel: HealthViewModel) {
@@ -61,7 +61,7 @@ fun FastingTimerCard(viewModel: HealthViewModel) {
     var selectedGoal by remember { mutableIntStateOf(goalHours) }
 
     LaunchedEffect(goalHours) { selectedGoal = goalHours }
-    LaunchedEffect(isFasting) { while (isFasting) { delay(1000.milliseconds); currentTime = System.currentTimeMillis() } } // --- FIX ---
+    LaunchedEffect(isFasting) { while (isFasting) { delay(1000.milliseconds); currentTime = System.currentTimeMillis() } }
 
     ElevatedCard(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp), colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)) {
         Column(modifier = Modifier.padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -231,7 +231,6 @@ fun SleepRecoveryCard(viewModel: HealthViewModel) {
 fun BodyMeasurementsCard(viewModel: HealthViewModel) {
     val todayRecord by viewModel.todayRecord.collectAsState()
     val rawJson = todayRecord?.measurementsJson ?: "{}"
-    // --- FIX: Using ifBlank directly inside the block! ---
     val measurements = remember(rawJson) { try { Json.decodeFromString<Map<String, Float>>(rawJson.ifBlank { "{}" }) } catch (_: Exception) { emptyMap() } }
 
     var showDialog by remember { mutableStateOf(false) }
@@ -300,19 +299,19 @@ fun BodyMeasurementsCard(viewModel: HealthViewModel) {
 }
 
 val supplementTemplates = listOf(
-    SupplementItem("t1","Vitamin D3","2000 IU","Supplement","Morning","DAILY","","With Food"),
-    SupplementItem("t2","Vitamin C","500mg","Supplement","Anytime","DAILY","","None"),
-    SupplementItem("t3","Magnesium","200mg","Supplement","Before Bed","DAILY","","None"),
-    SupplementItem("t4","Zinc","15mg","Supplement","Evening","DAILY","","With Food"),
-    SupplementItem("t5","Omega-3 Fish Oil","1000mg","Supplement","Morning","DAILY","","With Food"),
-    SupplementItem("t6","Creatine","5g","Supplement","Anytime","DAILY","","With Water"),
-    SupplementItem("t7","Whey Protein","30g","Supplement","Anytime","DAILY","","With Water"),
-    SupplementItem("t8","Multivitamin","1 pill","Supplement","Morning","DAILY","","With Food"),
-    SupplementItem("t9","B-Complex","1 cap","Supplement","Morning","DAILY","","With Food"),
-    SupplementItem("t10","Iron","18mg","Supplement","Anytime","DAILY","","With Food"),
-    SupplementItem("t11","Vitamin B12","1000mcg","Supplement","Morning","DAILY","","None"),
-    SupplementItem("t12","Ashwagandha","500mg","Supplement","Evening","DAILY","","None"),
-    SupplementItem("t13","Probiotics","1 cap","Supplement","Morning","DAILY","","Empty Stomach")
+    SupplementItem("t1","Vitamin D3","2000 IU","Supplement","Morning","DAILY","","With Food", false),
+    SupplementItem("t2","Vitamin C","500mg","Supplement","Anytime","DAILY","","None", false),
+    SupplementItem("t3","Magnesium","200mg","Supplement","Before Bed","DAILY","","None", false),
+    SupplementItem("t4","Zinc","15mg","Supplement","Evening","DAILY","","With Food", false),
+    SupplementItem("t5","Omega-3 Fish Oil","1000mg","Supplement","Morning","DAILY","","With Food", false),
+    SupplementItem("t6","Creatine","5g","Supplement","Anytime","DAILY","","With Water", false),
+    SupplementItem("t7","Whey Protein","30g","Supplement","Anytime","DAILY","","With Water", false),
+    SupplementItem("t8","Multivitamin","1 pill","Supplement","Morning","DAILY","","With Food", false),
+    SupplementItem("t9","B-Complex","1 cap","Supplement","Morning","DAILY","","With Food", false),
+    SupplementItem("t10","Iron","18mg","Supplement","Anytime","DAILY","","With Food", false),
+    SupplementItem("t11","Vitamin B12","1000mcg","Supplement","Morning","DAILY","","None", false),
+    SupplementItem("t12","Ashwagandha","500mg","Supplement","Evening","DAILY","","None", false),
+    SupplementItem("t13","Probiotics","1 cap","Supplement","Morning","DAILY","","Empty Stomach", false)
 )
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -411,7 +410,9 @@ fun SupplementsCard(viewModel: HealthViewModel) {
         var timeExpanded by remember { mutableStateOf(false) }
         var instExpanded by remember { mutableStateOf(false) }
 
-        val allOptions = (supplementTemplates + roster).distinctBy { it.name.lowercase() }
+        val allOptions = remember(supplementTemplates, roster) {
+            (supplementTemplates + roster).distinctBy { it.name.lowercase() }
+        }
 
         AlertDialog(
             onDismissRequest = { editingItem = null },
@@ -503,8 +504,9 @@ fun SupplementsCard(viewModel: HealthViewModel) {
             },
             confirmButton = {
                 Button(onClick = {
-                    val idToSave = editingItem!!.id.ifEmpty { java.util.UUID.randomUUID().toString() } // --- FIX ---
-                    viewModel.saveSupplementItem(SupplementItem(idToSave, editName, editDosage, editCategory, editTime, editRecurrenceType, editRecurrenceVal, editInstruction))
+                    val idToSave = editingItem!!.id.ifEmpty { java.util.UUID.randomUUID().toString() }
+                    // --- FIX: Preserve isActive state when saving ---
+                    viewModel.saveSupplementItem(SupplementItem(idToSave, editName, editDosage, editCategory, editTime, editRecurrenceType, editRecurrenceVal, editInstruction, isActive = editingItem?.isActive ?: true))
                     editingItem = null
                 }) { Text("Save") }
             },
@@ -522,30 +524,50 @@ fun SupplementsCard(viewModel: HealthViewModel) {
         )
     }
 
+    // --- FIX: The Manage Dialog now shows ALL master templates with Toggle Switches ---
     if (showManageDialog && editingItem == null) {
+        val allOptions = remember(supplementTemplates, roster) {
+            (supplementTemplates + roster).distinctBy { it.name.lowercase() }
+        }
+
         AlertDialog(
             onDismissRequest = { showManageDialog = false },
-            title = { Text("Medication & Supplements", fontWeight = FontWeight.Bold) },
+            title = { Text("Manage Your Stack", fontWeight = FontWeight.Bold) },
             text = {
-                LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 400.dp)) {
-                    val groupedRoster = roster.groupBy { it.category }
-                    groupedRoster.forEach { (cat, items) ->
-                        item {
-                            Text(cat, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 12.dp, bottom = 4.dp))
-                            HorizontalDivider(color = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f))
-                        }
-                        items(items, key = { it.id }) { item ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { editingItem = item }
-                                    .padding(vertical = 12.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(item.name, fontWeight = FontWeight.Bold)
-                                    Text("${item.dosage} • ${if(item.recurrenceType=="DAILY") "Daily" else "Scheduled"}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Column {
+                    Text("Turn on the items you want to see in your daily schedule.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 400.dp)) {
+                        val groupedRoster = allOptions.groupBy { it.category }
+                        groupedRoster.forEach { (cat, items) ->
+                            item {
+                                Text(cat, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 12.dp, bottom = 4.dp))
+                                HorizontalDivider(color = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f))
+                            }
+                            items(items, key = { it.name }) { item ->
+                                val isItemActive = roster.find { it.name.equals(item.name, ignoreCase = true) }?.isActive == true
+
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 8.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(
+                                        modifier = Modifier.weight(1f).clickable { editingItem = item }
+                                    ) {
+                                        Text(item.name, fontWeight = FontWeight.Bold)
+                                        Text("${item.dosage} • ${if(item.recurrenceType=="DAILY") "Daily" else "Scheduled"}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                    Switch(
+                                        checked = isItemActive,
+                                        onCheckedChange = {
+                                            val existingItem = roster.find { it.name.equals(item.name, ignoreCase = true) } ?: item
+                                            viewModel.toggleSupplementActive(existingItem)
+                                        }
+                                    )
                                 }
                             }
                         }
@@ -585,7 +607,7 @@ fun SupplementsCard(viewModel: HealthViewModel) {
             Spacer(modifier = Modifier.height(16.dp))
 
             if (todayScheduled.isEmpty()) {
-                Text("Nothing scheduled for today.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Nothing scheduled for today. Tap the edit icon to setup your stack.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
                 val progress = completed.count { id -> todayScheduled.any { it.id == id } }.toFloat() / todayScheduled.size.toFloat()
 
