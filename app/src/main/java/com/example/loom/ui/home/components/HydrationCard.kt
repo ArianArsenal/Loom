@@ -26,7 +26,6 @@ import java.util.Locale
 
 @Composable
 fun AnimatedWaterGlassIcon(intakeMl: Int, goalMl: Int, modifier: Modifier = Modifier) {
-    // Avoid division by zero just in case
     val safeGoal = if (goalMl > 0) goalMl else 3000
     val targetProgress = (intakeMl.toFloat() / safeGoal.toFloat()).coerceIn(0f, 1f)
 
@@ -48,9 +47,10 @@ fun AnimatedWaterGlassIcon(intakeMl: Int, goalMl: Int, modifier: Modifier = Modi
                 val path = Path().apply {
                     moveTo(stroke / 2f, 0f)
                     lineTo(stroke / 2f, size.height - corner)
-                    quadraticBezierTo(stroke / 2f, size.height - stroke / 2f, corner, size.height - stroke / 2f)
+                    // --- FIX: Updated deprecated quadraticBezierTo to quadraticTo ---
+                    quadraticTo(stroke / 2f, size.height - stroke / 2f, corner, size.height - stroke / 2f)
                     lineTo(size.width - corner, size.height - stroke / 2f)
-                    quadraticBezierTo(size.width - stroke / 2f, size.height - stroke / 2f, size.width - stroke / 2f, size.height - corner)
+                    quadraticTo(size.width - stroke / 2f, size.height - stroke / 2f, size.width - stroke / 2f, size.height - corner)
                     lineTo(size.width - stroke / 2f, 0f)
                 }
                 drawPath(path = path, color = glassColor, style = Stroke(width = stroke, cap = StrokeCap.Round))
@@ -84,7 +84,7 @@ fun HydrationCard(todayRecord: DailyRecord?, dailyGoal: Int, defaultWaterIncreme
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     AnimatedWaterGlassIcon(
                         intakeMl = todayRecord?.waterIntakeMl ?: 0,
-                        goalMl = dailyGoal, // Now dynamically tracks the Health tab goal!
+                        goalMl = dailyGoal,
                         modifier = Modifier.padding(end = 8.dp)
                     )
                     Text("Hydration", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)

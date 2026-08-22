@@ -1,12 +1,15 @@
-package com.example.loom.utils
+package com.example.loom.util // --- FIX: Corrected package path ---
 
 import android.content.Context
+import androidx.annotation.Keep
+import androidx.core.content.edit // --- FIX: Imported KTX edit extension ---
 import com.example.loom.data.models.BlockType
 import com.example.loom.data.models.SandboxBlock
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import java.util.UUID
 
+@Keep
 data class SpaceTemplate(
     val id: String,
     val name: String,
@@ -15,12 +18,14 @@ data class SpaceTemplate(
     val isAppDefault: Boolean
 )
 
+@Keep
 object TemplateManager {
     private const val PREFS_NAME = "loom_templates"
     private const val KEY_CUSTOM_TEMPLATES = "custom_templates"
     private const val KEY_TRASHED_CUSTOM_TEMPLATES = "trashed_custom_templates"
     private val gson = Gson()
 
+    @Suppress("SpellCheckingInspection") // --- FIX: Tell compiler Quera is not a typo ---
     val appTemplates = listOf(
         SpaceTemplate(
             id = "empty",
@@ -75,12 +80,10 @@ object TemplateManager {
         )
     )
 
-    // --- APP TEMPLATES LOGIC ---
     fun getActiveAppTemplates(context: Context): List<SpaceTemplate> {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val deletedIds = prefs.getStringSet("deleted_app_templates", emptySet()) ?: emptySet()
         val permDeletedIds = prefs.getStringSet("perm_deleted_app_templates", emptySet()) ?: emptySet()
-        // ALWAYS keep "empty" safe!
         return appTemplates.filter { it.id == "empty" || (it.id !in deletedIds && it.id !in permDeletedIds) }
     }
 
@@ -95,36 +98,41 @@ object TemplateManager {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val deletedIds = prefs.getStringSet("deleted_app_templates", emptySet())?.toMutableSet() ?: mutableSetOf()
         deletedIds.add(templateId)
-        prefs.edit().putStringSet("deleted_app_templates", deletedIds).apply()
+        prefs.edit { putStringSet("deleted_app_templates", deletedIds) } // --- FIX: Fast KTX Edit ---
     }
 
     fun restoreAppTemplate(context: Context, templateId: String) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val deletedIds = prefs.getStringSet("deleted_app_templates", emptySet())?.toMutableSet() ?: mutableSetOf()
         deletedIds.remove(templateId)
-        prefs.edit().putStringSet("deleted_app_templates", deletedIds).apply()
+        prefs.edit { putStringSet("deleted_app_templates", deletedIds) }
     }
 
     fun permanentlyDeleteAppTemplate(context: Context, templateId: String) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val permDeletedIds = prefs.getStringSet("perm_deleted_app_templates", emptySet())?.toMutableSet() ?: mutableSetOf()
         permDeletedIds.add(templateId)
-        prefs.edit().putStringSet("perm_deleted_app_templates", permDeletedIds).apply()
+        prefs.edit { putStringSet("perm_deleted_app_templates", permDeletedIds) }
     }
 
-    // --- CUSTOM TEMPLATES LOGIC ---
     fun getCustomTemplates(context: Context): List<SpaceTemplate> {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val jsonStr = prefs.getString(KEY_CUSTOM_TEMPLATES, "[]") ?: "[]"
-        val type = object : TypeToken<List<SpaceTemplate>>() {}.type
-        return try { gson.fromJson(jsonStr, type) ?: emptyList() } catch (e: Exception) { emptyList() }
+
+        // --- FIX: R8-Proof Type Token ---
+        val type = TypeToken.getParameterized(List::class.java, SpaceTemplate::class.java).type
+
+        return try { gson.fromJson(jsonStr, type) ?: emptyList() } catch (_: Exception) { emptyList() }
     }
 
     fun getTrashedCustomTemplates(context: Context): List<SpaceTemplate> {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val jsonStr = prefs.getString(KEY_TRASHED_CUSTOM_TEMPLATES, "[]") ?: "[]"
-        val type = object : TypeToken<List<SpaceTemplate>>() {}.type
-        return try { gson.fromJson(jsonStr, type) ?: emptyList() } catch (e: Exception) { emptyList() }
+
+        // --- FIX: R8-Proof Type Token ---
+        val type = TypeToken.getParameterized(List::class.java, SpaceTemplate::class.java).type
+
+        return try { gson.fromJson(jsonStr, type) ?: emptyList() } catch (_: Exception) { emptyList() }
     }
 
     fun saveCustomTemplate(context: Context, name: String, icon: String, blocks: List<SandboxBlock>) {
@@ -139,7 +147,7 @@ object TemplateManager {
             isAppDefault = false
         )
         current.add(newTemplate)
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit().putString(KEY_CUSTOM_TEMPLATES, gson.toJson(current)).apply()
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit { putString(KEY_CUSTOM_TEMPLATES, gson.toJson(current)) }
     }
 
     fun deleteCustomTemplate(context: Context, templateName: String) {
@@ -149,11 +157,11 @@ object TemplateManager {
         val toTrash = currentActive.find { it.name == templateName } ?: return
 
         currentActive.remove(toTrash)
-        prefs.edit().putString(KEY_CUSTOM_TEMPLATES, gson.toJson(currentActive)).apply()
+        prefs.edit { putString(KEY_CUSTOM_TEMPLATES, gson.toJson(currentActive)) }
 
         val currentTrashed = getTrashedCustomTemplates(context).toMutableList()
         currentTrashed.add(toTrash)
-        prefs.edit().putString(KEY_TRASHED_CUSTOM_TEMPLATES, gson.toJson(currentTrashed)).apply()
+        prefs.edit { putString(KEY_TRASHED_CUSTOM_TEMPLATES, gson.toJson(currentTrashed)) }
     }
 
     fun restoreCustomTemplate(context: Context, templateName: String) {
@@ -163,21 +171,20 @@ object TemplateManager {
         val toRestore = currentTrashed.find { it.name == templateName } ?: return
 
         currentTrashed.remove(toRestore)
-        prefs.edit().putString(KEY_TRASHED_CUSTOM_TEMPLATES, gson.toJson(currentTrashed)).apply()
+        prefs.edit { putString(KEY_TRASHED_CUSTOM_TEMPLATES, gson.toJson(currentTrashed)) }
 
         val currentActive = getCustomTemplates(context).toMutableList()
         currentActive.add(toRestore)
-        prefs.edit().putString(KEY_CUSTOM_TEMPLATES, gson.toJson(currentActive)).apply()
+        prefs.edit { putString(KEY_CUSTOM_TEMPLATES, gson.toJson(currentActive)) }
     }
 
     fun permanentlyDeleteCustomTemplate(context: Context, templateName: String) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val currentTrashed = getTrashedCustomTemplates(context).toMutableList()
         currentTrashed.removeAll { it.name == templateName }
-        prefs.edit().putString(KEY_TRASHED_CUSTOM_TEMPLATES, gson.toJson(currentTrashed)).apply()
+        prefs.edit { putString(KEY_TRASHED_CUSTOM_TEMPLATES, gson.toJson(currentTrashed)) }
     }
 
-    // --- EMPTY ALL TEMPLATE TRASH ---
     fun emptyTemplateTrash(context: Context) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
@@ -185,10 +192,10 @@ object TemplateManager {
         val permDeletedIds = prefs.getStringSet("perm_deleted_app_templates", emptySet())?.toMutableSet() ?: mutableSetOf()
         permDeletedIds.addAll(deletedIds)
 
-        prefs.edit()
-            .putStringSet("perm_deleted_app_templates", permDeletedIds) // Lock out app defaults forever
-            .putStringSet("deleted_app_templates", emptySet()) // Clear soft delete
-            .putString(KEY_TRASHED_CUSTOM_TEMPLATES, "[]") // Wipe custom trash
-            .apply()
+        prefs.edit {
+            putStringSet("perm_deleted_app_templates", permDeletedIds)
+            putStringSet("deleted_app_templates", emptySet())
+            putString(KEY_TRASHED_CUSTOM_TEMPLATES, "[]")
+        }
     }
 }

@@ -29,7 +29,8 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-private val timelineDateFormatter = SimpleDateFormat("h:mm a", Locale.getDefault())
+// --- FIX: Dynamic Locale generation ---
+private fun getTimelineDateFormatter() = SimpleDateFormat("h:mm a", Locale.getDefault())
 
 private fun Float.formatWeight(): String {
     return if (this % 1f == 0f) this.toInt().toString() else this.toString()
@@ -51,7 +52,7 @@ fun NutritionLogCard(
 
     if (logDetailsToShow != null) {
         val log = logDetailsToShow!!
-        val timeStr = timelineDateFormatter.format(Date(log.timestamp))
+        val timeStr = getTimelineDateFormatter().format(Date(log.timestamp))
         AlertDialog(
             onDismissRequest = { logDetailsToShow = null },
             title = { Text("Meal Details") },
@@ -151,7 +152,6 @@ fun NutritionLogCard(
             }
             Spacer(modifier = Modifier.height(16.dp))
 
-            // --- RESTORED LINEAR PROGRESS BARS ---
             val currentCals = todayRecord?.calories ?: 0
             val calProg = if (targetCaloriesInt > 0) (currentCals.toFloat() / targetCaloriesInt).coerceIn(0f, 1f) else 0f
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -219,7 +219,7 @@ fun NutritionLogCard(
                                 }
                             }
                         ) {
-                            val timeStr = timelineDateFormatter.format(Date(log.timestamp))
+                            val timeStr = getTimelineDateFormatter().format(Date(log.timestamp))
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -245,7 +245,6 @@ fun NutritionLogCard(
                                     val servingDisplay = log.servings.formatWeight()
                                     val unitDisplay = log.servingUnit.ifBlank { "serving" }
 
-                                    // --- Dynamic Math Fix ---
                                     val uText = unitDisplay.trim()
                                     val mResult = "\\d+(\\.\\d+)?".toRegex().find(uText)
 
@@ -266,7 +265,6 @@ fun NutritionLogCard(
                                     }
 
                                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                                        // Colored Tag Box for Serving
                                         Surface(
                                             shape = RoundedCornerShape(6.dp),
                                             color = MaterialTheme.colorScheme.secondaryContainer
@@ -275,7 +273,6 @@ fun NutritionLogCard(
                                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                                                 verticalAlignment = Alignment.CenterVertically
                                             ) {
-                                                // RTL FIX: Text on the left, Number on the right
                                                 if (finalUnitText.isNotBlank()) {
                                                     Text(finalUnitText, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSecondaryContainer)
                                                     Spacer(modifier = Modifier.width(4.dp))
@@ -290,7 +287,6 @@ fun NutritionLogCard(
 
                                         Spacer(modifier = Modifier.width(8.dp))
 
-                                        // Food Name
                                         Text(
                                             text = log.foodName,
                                             fontWeight = FontWeight.Bold,

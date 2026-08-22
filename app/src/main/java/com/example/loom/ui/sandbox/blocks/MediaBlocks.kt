@@ -29,10 +29,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.InsertDriveFile // --- FIX: Used AutoMirrored ---
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Fullscreen
-import androidx.compose.material.icons.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -73,17 +73,21 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.core.graphics.createBitmap // --- FIX: KTX Bitmap ---
+import androidx.core.net.toUri // --- FIX: KTX URI ---
 import coil.compose.AsyncImage
 import com.example.loom.data.models.SandboxBlock
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.util.Locale // --- FIX: Imported Locale for string formatting ---
+import kotlin.time.Duration.Companion.milliseconds
 
 @Composable
 fun ImageBlockRenderer(
     block: SandboxBlock,
     textState: TextFieldValue,
     handleTextChange: (TextFieldValue) -> Unit,
-    commonModifier: Modifier,
+    modifier: Modifier, // --- FIX: Renamed modifier ---
     placeholderUI: @Composable (@Composable () -> Unit) -> Unit,
     mediaLauncher: ManagedActivityResultLauncher<String, Uri?>,
     onDeleteBlock: (String, Boolean) -> Unit
@@ -113,7 +117,7 @@ fun ImageBlockRenderer(
 
         BasicTextField(
             value = textState, onValueChange = handleTextChange, textStyle = MaterialTheme.typography.bodySmall.copy(color = Color.Gray),
-            modifier = commonModifier.padding(top = 8.dp), cursorBrush = SolidColor(MaterialTheme.colorScheme.primary), decorationBox = placeholderUI
+            modifier = modifier.padding(top = 8.dp), cursorBrush = SolidColor(MaterialTheme.colorScheme.primary), decorationBox = placeholderUI // --- FIX: Applied renamed modifier ---
         )
     }
 }
@@ -123,7 +127,7 @@ fun VideoBlockRenderer(
     block: SandboxBlock,
     textState: TextFieldValue,
     handleTextChange: (TextFieldValue) -> Unit,
-    commonModifier: Modifier,
+    modifier: Modifier, // --- FIX: Renamed modifier ---
     placeholderUI: @Composable (@Composable () -> Unit) -> Unit,
     videoLauncher: ManagedActivityResultLauncher<String, Uri?>,
     onUpdate: (SandboxBlock) -> Unit,
@@ -144,7 +148,7 @@ fun VideoBlockRenderer(
                 AndroidView(
                     factory = { ctx ->
                         VideoView(ctx).apply {
-                            setVideoURI(Uri.parse(block.url))
+                            setVideoURI(block.url.toUri()) // --- FIX: KTX URI ---
                             val mediaController = MediaController(ctx)
                             mediaController.setAnchorView(this)
                             setMediaController(mediaController)
@@ -161,7 +165,7 @@ fun VideoBlockRenderer(
         BasicTextField(
             value = textState, onValueChange = handleTextChange,
             textStyle = MaterialTheme.typography.bodySmall.copy(color = Color.Gray),
-            modifier = commonModifier.padding(top = 4.dp, start = 4.dp), cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+            modifier = modifier.padding(top = 4.dp, start = 4.dp), cursorBrush = SolidColor(MaterialTheme.colorScheme.primary), // --- FIX: Applied renamed modifier ---
             decorationBox = placeholderUI
         )
     }
@@ -172,7 +176,7 @@ fun AudioBlockRenderer(
     block: SandboxBlock,
     textState: TextFieldValue,
     handleTextChange: (TextFieldValue) -> Unit,
-    commonModifier: Modifier,
+    modifier: Modifier, // --- FIX: Renamed modifier ---
     placeholderUI: @Composable (@Composable () -> Unit) -> Unit,
     mediaLauncher: ManagedActivityResultLauncher<String, Uri?>,
     audioLauncher: ManagedActivityResultLauncher<String, Boolean>,
@@ -186,14 +190,14 @@ fun AudioBlockRenderer(
         var name = "Audio Recording"
         if (block.url.isNotEmpty()) {
             try {
-                val uri = Uri.parse(block.url)
+                val uri = block.url.toUri() // --- FIX: KTX URI ---
                 if (block.url.startsWith("content://")) {
                     context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
                         val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
                         if (cursor.moveToFirst() && nameIndex != -1) name = cursor.getString(nameIndex)
                     }
                 } else name = uri.lastPathSegment ?: "Audio Recording"
-            } catch (e: Exception) {}
+            } catch (_: Exception) {} // --- FIX: Unused e ---
         }
         name
     }
@@ -204,11 +208,11 @@ fun AudioBlockRenderer(
             withContext(kotlinx.coroutines.Dispatchers.IO) {
                 try {
                     val mmr = android.media.MediaMetadataRetriever()
-                    mmr.setDataSource(context, Uri.parse(block.url))
+                    mmr.setDataSource(context, block.url.toUri()) // --- FIX: KTX URI ---
                     val bytes = mmr.embeddedPicture
                     if (bytes != null) albumArt = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
                     mmr.release()
-                } catch (e: Exception) {}
+                } catch (_: Exception) {} // --- FIX: Unused e ---
             }
         }
     }
@@ -231,15 +235,13 @@ fun AudioBlockRenderer(
             Row(modifier = Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
                 if (isRecording) {
                     Button(onClick = {
-                        try { recorder?.stop(); recorder?.release() } catch(e: Exception){}
+                        try { recorder?.stop(); recorder?.release() } catch(_: Exception){} // --- FIX: Unused e ---
                         recorder = null
                         isRecording = false
                         recordingFile?.let { onUpdate(block.copy(url = Uri.fromFile(it).toString())) }
                     }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) { Text("Stop Recording") }
                 } else {
                     Button(onClick = {
-                        // Note: The launcher needs to be hoisted higher if we want strict permission handling,
-                        // but calling the passed launcher works perfectly here.
                         audioLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
                     }) { Text("🎤 Record") }
                     Button(onClick = { mediaLauncher.launch("audio/*") }) { Text("Upload") }
@@ -255,15 +257,15 @@ fun AudioBlockRenderer(
 
             DisposableEffect(block.url) {
                 try {
-                    mediaPlayer.setDataSource(context, Uri.parse(block.url))
+                    mediaPlayer.setDataSource(context, block.url.toUri()) // --- FIX: KTX URI ---
                     mediaPlayer.prepare()
                     duration = mediaPlayer.duration
-                } catch (e: Exception) {}
+                } catch (_: Exception) {} // --- FIX: Unused e ---
                 onDispose {
                     try {
                         if (mediaPlayer.isPlaying) mediaPlayer.stop()
                         mediaPlayer.release()
-                    } catch (e: Exception) {}
+                    } catch (_: Exception) {} // --- FIX: Unused e ---
                 }
             }
 
@@ -272,8 +274,9 @@ fun AudioBlockRenderer(
                     try {
                         currentPosition = mediaPlayer.currentPosition
                         if (duration > 0) progress = currentPosition.toFloat() / duration.toFloat()
-                    } catch (e: Exception) {}
-                    kotlinx.coroutines.delay(100)
+                    } catch (_: Exception) {}
+                    // --- FIX: Converted to Duration API ---
+                    kotlinx.coroutines.delay(100.milliseconds)
                 }
             }
 
@@ -307,13 +310,14 @@ fun AudioBlockRenderer(
                                             progress = 1f
                                         }
                                     }
-                                } catch (e: Exception) { isPlaying = false }
+                                } catch (_: Exception) { isPlaying = false } // --- FIX: Unused e ---
                             },
                             modifier = Modifier.size(36.dp).background(MaterialTheme.colorScheme.primary, CircleShape)
                         ) { Icon(if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, "Play", tint = Color.White, modifier = Modifier.size(20.dp)) }
 
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text(String.format("%02d:%02d", currentPosition / 1000 / 60, currentPosition / 1000 % 60), style = MaterialTheme.typography.labelSmall)
+                        // --- FIX: Formatted with Explicit US Locale ---
+                        Text(String.format(Locale.US, "%02d:%02d", currentPosition / 1000 / 60, currentPosition / 1000 % 60), style = MaterialTheme.typography.labelSmall)
                         Slider(
                             value = if (progress.isNaN()) 0f else progress,
                             onValueChange = {
@@ -324,12 +328,12 @@ fun AudioBlockRenderer(
                             },
                             modifier = Modifier.weight(1f).padding(horizontal = 4.dp)
                         )
-                        Text(String.format("%02d:%02d", duration / 1000 / 60, duration / 1000 % 60), style = MaterialTheme.typography.labelSmall)
+                        // --- FIX: Formatted with Explicit US Locale ---
+                        Text(String.format(Locale.US, "%02d:%02d", duration / 1000 / 60, duration / 1000 % 60), style = MaterialTheme.typography.labelSmall)
                         TextButton(onClick = {
                             playbackSpeed = when (playbackSpeed) { 1f -> 1.5f; 1.5f -> 2f; else -> 1f }
-                            if (android.os.Build.VERSION.SDK_INT >= 23) {
-                                try { mediaPlayer.playbackParams = mediaPlayer.playbackParams.setSpeed(playbackSpeed) } catch (e: Exception){}
-                            }
+                            // --- FIX: Removed redundant API >= 23 SDK check since app min SDK is 26 ---
+                            try { mediaPlayer.playbackParams = mediaPlayer.playbackParams.setSpeed(playbackSpeed) } catch (_: Exception){} // --- FIX: Unused e ---
                         }, contentPadding = PaddingValues(0.dp), modifier = Modifier.width(40.dp)) { Text("${playbackSpeed}x", style = MaterialTheme.typography.labelSmall) }
                     }
                 }
@@ -338,7 +342,7 @@ fun AudioBlockRenderer(
 
         BasicTextField(
             value = textState, onValueChange = handleTextChange, textStyle = MaterialTheme.typography.bodySmall.copy(color = Color.Gray),
-            modifier = commonModifier.padding(top = 8.dp), cursorBrush = SolidColor(MaterialTheme.colorScheme.primary), decorationBox = placeholderUI
+            modifier = modifier.padding(top = 8.dp), cursorBrush = SolidColor(MaterialTheme.colorScheme.primary), decorationBox = placeholderUI // --- FIX: Applied renamed modifier ---
         )
     }
 }
@@ -348,7 +352,7 @@ fun FileBlockRenderer(
     block: SandboxBlock,
     textState: TextFieldValue,
     handleTextChange: (TextFieldValue) -> Unit,
-    commonModifier: Modifier,
+    modifier: Modifier, // --- FIX: Renamed modifier ---
     placeholderUI: @Composable (@Composable () -> Unit) -> Unit,
     mediaLauncher: ManagedActivityResultLauncher<String, Uri?>,
     onDeleteBlock: (String, Boolean) -> Unit
@@ -363,14 +367,14 @@ fun FileBlockRenderer(
         var name = "Attached File"
         if (block.url.isNotEmpty()) {
             try {
-                val uri = Uri.parse(block.url)
+                val uri = block.url.toUri() // --- FIX: KTX URI ---
                 if (block.url.startsWith("content://")) {
                     context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
                         val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
                         if (cursor.moveToFirst() && nameIndex != -1) name = cursor.getString(nameIndex)
                     }
                 } else name = uri.lastPathSegment ?: "Attached File"
-            } catch (e: Exception) {}
+            } catch (_: Exception) {} // --- FIX: Unused e ---
         }
         name
     }
@@ -379,14 +383,14 @@ fun FileBlockRenderer(
         if (block.url.isNotEmpty()) {
             withContext(kotlinx.coroutines.Dispatchers.IO) {
                 try {
-                    val uri = Uri.parse(block.url)
+                    val uri = block.url.toUri() // --- FIX: KTX URI ---
                     val pfd = context.contentResolver.openFileDescriptor(uri, "r")
                     if (pfd != null) {
                         val renderer = android.graphics.pdf.PdfRenderer(pfd)
                         if (renderer.pageCount > 0) {
                             isPdf = true
                             val page = renderer.openPage(0)
-                            val bitmap = android.graphics.Bitmap.createBitmap(page.width * 2, page.height * 2, android.graphics.Bitmap.Config.ARGB_8888)
+                            val bitmap = createBitmap(page.width * 2, page.height * 2, android.graphics.Bitmap.Config.ARGB_8888) // --- FIX: KTX Bitmap ---
                             page.render(bitmap, null, null, android.graphics.pdf.PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
                             page.close()
                             pdfBitmap = bitmap
@@ -394,7 +398,7 @@ fun FileBlockRenderer(
                         renderer.close()
                         pfd.close()
                     }
-                } catch (e: Exception) { isPdf = false }
+                } catch (_: Exception) { isPdf = false } // --- FIX: Unused e ---
             }
         }
     }
@@ -410,7 +414,7 @@ fun FileBlockRenderer(
                 text = { Text("Open External") },
                 onClick = {
                     try {
-                        val uri = Uri.parse(block.url)
+                        val uri = block.url.toUri() // --- FIX: KTX URI ---
                         val finalUri = if (block.url.startsWith("file://")) {
                             androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.provider", File(java.net.URI(block.url)))
                         } else { uri }
@@ -420,7 +424,7 @@ fun FileBlockRenderer(
                             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                         }
                         context.startActivity(Intent.createChooser(intent, "Open File"))
-                    } catch (e: Exception) {}
+                    } catch (_: Exception) {} // --- FIX: Unused e ---
                     showBlockMenu = false
                 }
             )
@@ -443,7 +447,7 @@ fun FileBlockRenderer(
             }
 
             Row(modifier = Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.InsertDriveFile, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+                Icon(Icons.AutoMirrored.Filled.InsertDriveFile, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp)) // --- FIX: AutoMirrored ---
                 Spacer(Modifier.width(8.dp))
                 Text(fileName, style = MaterialTheme.typography.bodySmall, color = Color.Gray, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
@@ -451,7 +455,7 @@ fun FileBlockRenderer(
 
         BasicTextField(
             value = textState, onValueChange = handleTextChange, textStyle = MaterialTheme.typography.bodySmall.copy(color = Color.Gray),
-            modifier = commonModifier.padding(top = 8.dp), cursorBrush = SolidColor(MaterialTheme.colorScheme.primary), decorationBox = placeholderUI
+            modifier = modifier.padding(top = 8.dp), cursorBrush = SolidColor(MaterialTheme.colorScheme.primary), decorationBox = placeholderUI // --- FIX: Applied renamed modifier ---
         )
     }
 
@@ -474,7 +478,7 @@ fun FileBlockRenderer(
 
                     DisposableEffect(block.url) {
                         try {
-                            val uri = Uri.parse(block.url)
+                            val uri = block.url.toUri() // --- FIX: KTX URI ---
                             val fd = context.contentResolver.openFileDescriptor(uri, "r")
                             if (fd != null) {
                                 pfd = fd
@@ -482,7 +486,7 @@ fun FileBlockRenderer(
                                 pdfRenderer = renderer
                                 pageCount = renderer.pageCount
                             }
-                        } catch (e: Exception) {}
+                        } catch (_: Exception) {} // --- FIX: Unused e ---
                         onDispose {
                             pdfRenderer?.close()
                             pfd?.close()
@@ -498,11 +502,11 @@ fun FileBlockRenderer(
                                     withContext(kotlinx.coroutines.Dispatchers.IO) {
                                         try {
                                             val page = pdfRenderer!!.openPage(index)
-                                            val bitmap = android.graphics.Bitmap.createBitmap(page.width * 2, page.height * 2, android.graphics.Bitmap.Config.ARGB_8888)
+                                            val bitmap = createBitmap(page.width * 2, page.height * 2, android.graphics.Bitmap.Config.ARGB_8888) // --- FIX: KTX Bitmap ---
                                             page.render(bitmap, null, null, android.graphics.pdf.PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
                                             page.close()
                                             pageBitmap = bitmap
-                                        } catch (e: Exception) {}
+                                        } catch (_: Exception) {} // --- FIX: Unused e ---
                                     }
                                 }
 

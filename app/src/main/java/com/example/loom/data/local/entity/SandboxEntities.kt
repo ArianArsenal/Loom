@@ -30,7 +30,7 @@ data class NotionSpaceEntity(
     fun toDomainModelWithoutBlocks(): SandboxSpace {
         return SandboxSpace(
             id = id, title = title, icon = icon, bannerUrl = bannerUrl, updatedAt = updatedAt,
-            isPinned = isPinned, tags = try { Json.decodeFromString(tagsJson) } catch (e: Exception) { emptyList() },
+            isPinned = isPinned, tags = try { Json.decodeFromString(tagsJson) } catch (_: Exception) { emptyList() }, // --- FIX: Unused e ---
             isPrivate = isPrivate, isDeleted = isDeleted, blocks = emptyList() // Will be injected by the Relation
         )
     }
@@ -86,16 +86,16 @@ data class SandboxBlockEntity(
     fun toDomainModel(): SandboxBlock {
         return SandboxBlock(
             id = id, type = BlockType.valueOf(type), content = content,
-            textFormats = try { Json.decodeFromString(textFormatsJson) } catch(e:Exception){ emptyList() },
+            textFormats = try { Json.decodeFromString(textFormatsJson) } catch(_: Exception){ emptyList() }, // --- FIX: Unused e ---
             secondaryContent = secondaryContent, icon = icon, url = url, isChecked = isChecked,
             isExpanded = isExpanded, progress = progress,
-            tableData = try { Json.decodeFromString(tableDataJson) } catch(e:Exception){ emptyList() },
-            colWidths = try { Json.decodeFromString(colWidthsJson) } catch(e:Exception){ emptyList() },
-            rowHeights = try { Json.decodeFromString(rowHeightsJson) } catch(e:Exception){ emptyList() },
-            calendarEvents = try { Json.decodeFromString(calendarEventsJson) } catch(e:Exception){ emptyMap() },
-            kanbanColumns = try { Json.decodeFromString(kanbanColumnsJson) } catch(e:Exception){ emptyList() },
-            sketchStrokes = try { Json.decodeFromString(sketchStrokesJson) } catch(e:Exception){ emptyList() },
-            galleryItems = try { Json.decodeFromString(galleryItemsJson) } catch(e:Exception){ emptyList() },
+            tableData = try { Json.decodeFromString(tableDataJson) } catch(_: Exception){ emptyList() }, // --- FIX: Unused e ---
+            colWidths = try { Json.decodeFromString(colWidthsJson) } catch(_: Exception){ emptyList() }, // --- FIX: Unused e ---
+            rowHeights = try { Json.decodeFromString(rowHeightsJson) } catch(_: Exception){ emptyList() }, // --- FIX: Unused e ---
+            calendarEvents = try { Json.decodeFromString(calendarEventsJson) } catch(_: Exception){ emptyMap() }, // --- FIX: Unused e ---
+            kanbanColumns = try { Json.decodeFromString(kanbanColumnsJson) } catch(_: Exception){ emptyList() }, // --- FIX: Unused e ---
+            sketchStrokes = try { Json.decodeFromString(sketchStrokesJson) } catch(_: Exception){ emptyList() }, // --- FIX: Unused e ---
+            galleryItems = try { Json.decodeFromString(galleryItemsJson) } catch(_: Exception){ emptyList() }, // --- FIX: Unused e ---
             pinnedTab = pinnedTab, isLocked = isLocked, children = emptyList()
         )
     }

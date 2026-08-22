@@ -1,6 +1,5 @@
 package com.example.loom.ui.sandbox.blocks
 
-import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
@@ -109,7 +108,6 @@ fun CalendarBlockRenderer(
                             val dateStr = date.toString()
                             val events = block.calendarEvents[dateStr] ?: emptyList()
 
-                            // --- UI FIX: Colors updated to match app theme correctly in dark/light mode ---
                             Surface(
                                 modifier = Modifier.weight(1f).aspectRatio(1f).padding(2.dp).combinedClickable(
                                     onClick = { selectedDate = date; isCalendarEditMode = false },

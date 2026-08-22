@@ -216,8 +216,8 @@ fun HealthScreen(viewModel: HealthViewModel) {
                 }
             }
 
-            // --- RENDER NATIVE CARDS ---
-            availableCards.forEach { (cardName, CardComposable) ->
+            // --- FIX: Renamed 'CardComposable' to 'cardContent' ---
+            availableCards.forEach { (cardName, cardContent) ->
                 item(key = cardName) {
                     val isVisible = !hiddenCards.contains(cardName)
 
@@ -227,7 +227,7 @@ fun HealthScreen(viewModel: HealthViewModel) {
                         exit = fadeOut() + shrinkVertically()
                     ) {
                         Column {
-                            CardComposable()
+                            cardContent()
                             Spacer(modifier = Modifier.height(16.dp))
                         }
                     }

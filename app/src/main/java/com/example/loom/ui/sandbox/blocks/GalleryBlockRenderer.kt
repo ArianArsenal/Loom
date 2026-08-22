@@ -37,7 +37,8 @@ import com.example.loom.data.models.GalleryItem
 import com.example.loom.data.models.SandboxBlock
 import com.example.loom.ui.sandbox.copyMediaToLocal
 import java.text.SimpleDateFormat
-import java.util.*
+import java.util.Date
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
@@ -61,7 +62,6 @@ fun GalleryBlockRenderer(
         }
     }
 
-    // --- THE NEW OUTER CARD WRAPPER ---
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -69,9 +69,8 @@ fun GalleryBlockRenderer(
             .clip(RoundedCornerShape(16.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f))
             .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f), RoundedCornerShape(16.dp))
-            .padding(12.dp) // Inner padding so items don't touch the card edges
+            .padding(12.dp)
     ) {
-        // --- 1. EDITABLE HEADER & OPTIONS ---
         Row(
             modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -114,7 +113,6 @@ fun GalleryBlockRenderer(
             }
         }
 
-        // --- 2. DISTINCT GRID LAYOUT ---
         val gridItems = block.galleryItems + null
         val chunks = gridItems.chunked(2)
 
@@ -126,7 +124,6 @@ fun GalleryBlockRenderer(
                 ) {
                     for (item in rowItems) {
                         if (item == null) {
-                            // "ADD NEW" BUTTON
                             Box(
                                 modifier = Modifier
                                     .weight(1f)
@@ -145,7 +142,6 @@ fun GalleryBlockRenderer(
                                 }
                             }
                         } else {
-                            // GALLERY IMAGE CARD
                             val itemIndex = block.galleryItems.indexOf(item)
                             Box(
                                 modifier = Modifier
@@ -165,7 +161,6 @@ fun GalleryBlockRenderer(
                                     modifier = Modifier.fillMaxSize()
                                 )
 
-                                // DATE BADGE (Top Left)
                                 val dateStr = SimpleDateFormat("MMM d, yyyy", Locale.getDefault()).format(Date(item.timestamp))
                                 Box(
                                     modifier = Modifier
@@ -179,7 +174,6 @@ fun GalleryBlockRenderer(
                                     Text(dateStr, color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                                 }
 
-                                // SMALLER DELETE BUTTON (Top Right)
                                 Box(
                                     modifier = Modifier
                                         .align(Alignment.TopEnd)
@@ -196,7 +190,6 @@ fun GalleryBlockRenderer(
                                     Icon(Icons.Default.Close, "Delete", tint = Color.White, modifier = Modifier.size(14.dp))
                                 }
 
-                                // METADATA OVERLAY (Bottom)
                                 Row(
                                     modifier = Modifier
                                         .align(Alignment.BottomCenter)
@@ -240,7 +233,6 @@ fun GalleryBlockRenderer(
                                         )
                                     }
 
-                                    // STANDARDIZED NUMBER BADGE (Bottom Right)
                                     if (block.isChecked) {
                                         Spacer(modifier = Modifier.width(8.dp))
                                         Box(
@@ -265,7 +257,6 @@ fun GalleryBlockRenderer(
         }
     }
 
-    // --- DATE PICKER DIALOG ---
     if (showDatePickerFor != null) {
         val datePickerState = rememberDatePickerState(initialSelectedDateMillis = showDatePickerFor!!.timestamp)
         DatePickerDialog(
@@ -291,7 +282,6 @@ fun GalleryBlockRenderer(
         }
     }
 
-    // --- FULL SCREEN LIGHTBOX ---
     if (showLightbox && block.galleryItems.isNotEmpty()) {
         val pagerState = rememberPagerState(initialPage = lightboxInitialPage, pageCount = { block.galleryItems.size })
 

@@ -1,3 +1,8 @@
+@file:Suppress("UnstableApiUsage")
+
+include(":baselineprofile")
+// --- FIX: Silences standard Gradle Incubating warnings ---
+
 pluginManagement {
     repositories {
         google {
@@ -24,4 +29,3 @@ dependencyResolutionManagement {
 
 rootProject.name = "Loom"
 include(":app")
- 

@@ -1,25 +1,19 @@
 package com.example.loom.ui.sandbox.blocks
 
-import com.example.loom.ui.sandbox.LinkMetadata
-import com.example.loom.ui.sandbox.fetchUrlMetadata
 import android.content.Intent
-import android.net.Uri
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.ContentScale
@@ -28,10 +22,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.net.toUri // --- FIX: Extracted specific KTX extension ---
 import coil.compose.AsyncImage
-
 import com.example.loom.data.models.SandboxBlock
-
 import kotlinx.coroutines.withContext
 import org.jsoup.Jsoup
 
@@ -41,7 +34,7 @@ fun LinkBlockRenderer(
     block: SandboxBlock,
     textState: TextFieldValue,
     handleTextChange: (TextFieldValue) -> Unit,
-    commonModifier: Modifier,
+    modifier: Modifier, // --- FIX: Renamed modifier ---
     placeholderUI: @Composable (@Composable () -> Unit) -> Unit,
     onUpdate: (SandboxBlock) -> Unit,
     onDeleteBlock: (String, Boolean) -> Unit
@@ -68,7 +61,7 @@ fun LinkBlockRenderer(
         } else {
             Surface(
                 modifier = Modifier.fillMaxWidth().clickable {
-                    try { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(block.url))) } catch (e: Exception) {}
+                    try { context.startActivity(Intent(Intent.ACTION_VIEW, block.url.toUri())) } catch (_: Exception) {} // --- FIX: KTX URI & Unused e ---
                 },
                 shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha=0.5f),
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
@@ -92,7 +85,7 @@ fun LinkBlockRenderer(
         BasicTextField(
             value = textState, onValueChange = handleTextChange,
             textStyle = MaterialTheme.typography.bodySmall.copy(color = Color.Gray),
-            modifier = commonModifier.padding(top = 4.dp, start = 4.dp), cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+            modifier = modifier.padding(top = 4.dp, start = 4.dp), cursorBrush = SolidColor(MaterialTheme.colorScheme.primary), // --- FIX: Applied renamed modifier ---
             decorationBox = placeholderUI
         )
     }
@@ -114,7 +107,6 @@ fun BookmarkBlockRenderer(
     LaunchedEffect(block.url) {
         if (block.url.isNotBlank() && block.url.contains(".")) {
 
-            // --- FIX: Ensure Cache Belongs to the CURRENT URL! ---
             val cachedData = block.secondaryContent.split("|||")
             if (cachedData.size >= 4 && cachedData[0] == block.url && cachedData[1] != "Preview unavailable") {
                 ogTitle = cachedData[1]
@@ -136,7 +128,7 @@ fun BookmarkBlockRenderer(
                     tempTitle = doc.select("meta[property=og:title]").attr("content").ifEmpty { doc.title() }
                     tempDesc = doc.select("meta[property=og:description]").attr("content").ifEmpty { doc.select("meta[name=description]").attr("content") }
                     tempImage = doc.select("meta[property=og:image]").attr("content").ifEmpty { doc.select("meta[name=twitter:image]").attr("content") }
-                } catch (e: Exception) {
+                } catch (_: Exception) { // --- FIX: Unused e ---
                     tempTitle = "Preview unavailable"
                     tempDesc = "Could not load metadata for this link."
                     tempImage = ""
@@ -149,7 +141,6 @@ fun BookmarkBlockRenderer(
             isLoading = false
 
             if (tempTitle.isNotEmpty() && tempTitle != "Preview unavailable") {
-                // Save URL at index 0 so it instantly invalidates if the URL changes!
                 onUpdate(block.copy(secondaryContent = "${block.url}|||$tempTitle|||$tempDesc|||$tempImage"))
             }
         } else {
@@ -186,8 +177,8 @@ fun BookmarkBlockRenderer(
                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp).clickable {
                     try {
                         val clickUrl = if (!block.url.startsWith("http")) "https://${block.url}" else block.url
-                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(clickUrl)))
-                    } catch (e: Exception) {}
+                        context.startActivity(Intent(Intent.ACTION_VIEW, clickUrl.toUri())) // --- FIX: KTX URI ---
+                    } catch (_: Exception) {} // --- FIX: Unused e ---
                 },
                 shape = RoundedCornerShape(12.dp),
                 colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))

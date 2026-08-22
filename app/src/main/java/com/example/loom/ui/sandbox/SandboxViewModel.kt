@@ -9,20 +9,21 @@ import com.example.loom.data.local.preferences.UserPreferences
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable // --- FIX: Imported ---
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext // --- FIX: Imported ---
 import javax.inject.Inject
+import kotlin.time.Duration.Companion.milliseconds // --- FIX: Imported Duration ---
 
-// THE FIX: Hilt will now force this ViewModel to share the EXACT SAME database instance as the Home tab!
 @HiltViewModel
 class SandboxViewModel @Inject constructor(
     private val sandboxDao: SandboxDao,
-    private val userPreferences: UserPreferences
+    userPreferences: UserPreferences // --- FIX: Removed 'private val' since it's only used for init ---
 ) : ViewModel() {
 
     val isBiometricEnabled: StateFlow<Boolean> = userPreferences.biometricEnabledFlow
@@ -43,7 +44,7 @@ class SandboxViewModel @Inject constructor(
         pendingSpaceToSave = space.copy(updatedAt = System.currentTimeMillis())
         saveJob?.cancel()
         saveJob = viewModelScope.launch {
-            delay(500)
+            delay(500.milliseconds) // --- FIX: Modern Duration API ---
             executePendingSave()
         }
     }
@@ -56,13 +57,16 @@ class SandboxViewModel @Inject constructor(
 
     private fun executeInstantSave(space: SandboxSpace) {
         @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
-        GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO + kotlinx.coroutines.NonCancellable) {
-            try {
-                val spaceEntity = NotionSpaceEntity.fromDomainModel(space.copy(updatedAt = System.currentTimeMillis()))
-                val blockEntities = flattenTree(space.blocks, space.id)
-                sandboxDao.saveSpaceWithBlocks(spaceEntity, blockEntities)
-            } catch (e: Exception) {
-                android.util.Log.e("LoomDatabase", "Fatal error saving space", e)
+        GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            // --- FIX: Safely wrapped in withContext(NonCancellable) ---
+            withContext(NonCancellable) {
+                try {
+                    val spaceEntity = NotionSpaceEntity.fromDomainModel(space.copy(updatedAt = System.currentTimeMillis()))
+                    val blockEntities = flattenTree(space.blocks, space.id)
+                    sandboxDao.saveSpaceWithBlocks(spaceEntity, blockEntities)
+                } catch (e: Exception) {
+                    android.util.Log.e("LoomDatabase", "Fatal error saving space", e)
+                }
             }
         }
     }
@@ -86,8 +90,11 @@ class SandboxViewModel @Inject constructor(
 
     fun permanentlyDeleteSpace(space: SandboxSpace) {
         @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
-        GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO + kotlinx.coroutines.NonCancellable) {
-            sandboxDao.permanentlyDeleteSpace(NotionSpaceEntity.fromDomainModel(space))
+        GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            // --- FIX: Safely wrapped in withContext(NonCancellable) ---
+            withContext(NonCancellable) {
+                sandboxDao.permanentlyDeleteSpace(NotionSpaceEntity.fromDomainModel(space))
+            }
         }
     }
 
@@ -95,5 +102,3 @@ class SandboxViewModel @Inject constructor(
         viewModelScope.launch { sandboxDao.emptyTrash() }
     }
 }
-
-// NOTICE: The Factory class has been permanently deleted from the bottom of this file.

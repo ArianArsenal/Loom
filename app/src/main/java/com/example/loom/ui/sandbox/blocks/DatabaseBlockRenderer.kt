@@ -1,8 +1,7 @@
 package com.example.loom.ui.sandbox.blocks
 
-import android.app.DatePickerDialog
+
 import android.content.Intent
-import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
@@ -14,7 +13,6 @@ import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
@@ -42,7 +40,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import androidx.core.graphics.toColorInt // --- FIX: KTX Color ---
+import androidx.core.net.toUri // --- FIX: KTX URI ---
 import coil.compose.AsyncImage
 import com.example.loom.data.models.DatabaseProperty
 import com.example.loom.data.models.PropertyType
@@ -69,14 +68,14 @@ fun getSchema(block: SandboxBlock): DatabaseSchema {
     return try {
         if (block.secondaryContent.isNotBlank()) Json.decodeFromString(block.secondaryContent)
         else DatabaseSchema()
-    } catch (e: Exception) { DatabaseSchema() }
+    } catch (_: Exception) { DatabaseSchema() } // --- FIX: Unused 'e' ---
 }
 
 @Composable
 fun DatabaseBlockRenderer(
     block: SandboxBlock,
     allSpaces: List<SandboxSpace>,
-    currentSpaceId: String,
+    currentSpaceId: String, // --- FIX: Left as-is, required by signature though currently unused in local scope ---
     onNavigateToSpace: (String) -> Unit,
     onUpdate: (SandboxBlock) -> Unit,
     onDeleteBlock: (String, Boolean) -> Unit
@@ -84,10 +83,9 @@ fun DatabaseBlockRenderer(
     val schema = getSchema(block)
     var showTableOptions by remember { mutableStateOf(false) }
 
-    val rows = if (block.tableData.isNotEmpty()) block.tableData else listOf(List(schema.properties.size) { "" })
+    val rows = block.tableData.ifEmpty { listOf(List(schema.properties.size) { "" }) }
     val colWidths = if (block.colWidths.size == schema.properties.size) block.colWidths else List(schema.properties.size) { 150f }
 
-    // --- FIX: Exact pixel width for the scrollable container ---
     val totalWidthDp = (colWidths.sum() + 150f).dp
     val cellBorderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
 
@@ -105,7 +103,6 @@ fun DatabaseBlockRenderer(
 
         Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
 
-            // --- FIX: The Entire Table is now wrapped in a beautiful outer border ---
             Column(
                 modifier = Modifier
                     .border(1.dp, cellBorderColor, RoundedCornerShape(8.dp))
@@ -122,7 +119,6 @@ fun DatabaseBlockRenderer(
                                 .fillMaxHeight()
                                 .clickable { showPropMenu = true }
                                 .drawBehind {
-                                    // Draws a single vertical line on the right side of the header
                                     drawLine(cellBorderColor, Offset(size.width, 0f), Offset(size.width, size.height), 1.dp.toPx())
                                 }
                                 .padding(12.dp)
@@ -185,7 +181,6 @@ fun DatabaseBlockRenderer(
                 }
 
                 // --- BOLD HORIZONTAL DIVIDER ---
-                // FIX: Used a precisely measured Box so it doesn't vanish in horizontal scroll!
                 Box(
                     modifier = Modifier
                         .width(totalWidthDp)
@@ -205,9 +200,7 @@ fun DatabaseBlockRenderer(
                                     .fillMaxHeight()
                                     .drawBehind {
                                         val stroke = 1.dp.toPx()
-                                        // Draw Right Border
                                         drawLine(cellBorderColor, Offset(size.width, 0f), Offset(size.width, size.height), stroke)
-                                        // Draw Bottom Border
                                         drawLine(cellBorderColor, Offset(0f, size.height), Offset(size.width, size.height), stroke)
                                     }
                                     .padding(8.dp),
@@ -228,13 +221,11 @@ fun DatabaseBlockRenderer(
                             }
                         }
 
-                        // Empty space under "+ Add Property"
                         Box(
                             modifier = Modifier
                                 .width(150.dp)
                                 .fillMaxHeight()
                                 .drawBehind {
-                                    // Draw Bottom Border only
                                     drawLine(cellBorderColor, Offset(0f, size.height), Offset(size.width, size.height), 1.dp.toPx())
                                 }
                         )
@@ -251,7 +242,6 @@ fun DatabaseBlockRenderer(
                                     .width(colWidths[cIndex].dp)
                                     .fillMaxHeight()
                                     .drawBehind {
-                                        // Draw Right Border only (Outer container handles the bottom)
                                         drawLine(cellBorderColor, Offset(size.width, 0f), Offset(size.width, size.height), 1.dp.toPx())
                                     }
                                     .padding(8.dp),
@@ -329,7 +319,7 @@ fun PropertyEditDialog(property: DatabaseProperty, canDelete: Boolean, onDismiss
                 Spacer(Modifier.height(8.dp))
 
                 Column(modifier = Modifier.background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha=0.3f), RoundedCornerShape(8.dp)).border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp))) {
-                    PropertyType.values().forEach { t ->
+                    PropertyType.entries.forEach { t -> // --- FIX: Used .entries instead of .values() ---
                         Row(
                             modifier = Modifier.fillMaxWidth().clickable { editType = t }.padding(12.dp),
                             verticalAlignment = Alignment.CenterVertically
@@ -348,7 +338,7 @@ fun PropertyEditDialog(property: DatabaseProperty, canDelete: Boolean, onDismiss
                     Spacer(Modifier.height(8.dp))
 
                     property.options.forEach { (optName, optColor) ->
-                        val col = try { Color(android.graphics.Color.parseColor(optColor)) } catch(e:Exception){Color.Gray}
+                        val col = try { Color(optColor.toColorInt()) } catch(_: Exception){Color.Gray} // --- FIX: KTX Color & Unused e ---
                         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 4.dp)) {
                             Surface(color = col.copy(alpha=0.2f), shape = RoundedCornerShape(4.dp)) {
                                 Text(optName, color = col, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp), style = MaterialTheme.typography.labelSmall)
@@ -484,6 +474,7 @@ fun DatabaseCell(
             }
 
             Text(
+                // --- FIX: Replaced with ifEmpty ---
                 text = value.ifEmpty { "Empty" },
                 color = if (value.isEmpty()) Color.LightGray else MaterialTheme.colorScheme.onSurface,
                 style = MaterialTheme.typography.bodyMedium,
@@ -502,7 +493,7 @@ fun DatabaseCell(
                         Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.horizontalScroll(rememberScrollState()).weight(1f)) {
                             selectedTags.forEach { tag ->
                                 val tagColorHex = property.options[tag] ?: "#808080"
-                                val tagColor = try { Color(android.graphics.Color.parseColor(tagColorHex)) } catch (e: Exception) { Color.Gray }
+                                val tagColor = try { Color(tagColorHex.toColorInt()) } catch (_: Exception) { Color.Gray } // --- FIX: KTX Color & Unused e ---
 
                                 Surface(color = tagColor.copy(alpha=0.2f), shape = RoundedCornerShape(4.dp)) {
                                     Text(tag, color = tagColor, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
@@ -519,7 +510,7 @@ fun DatabaseCell(
                     } else {
                         property.options.forEach { (optName, optColorHex) ->
                             val isSelected = selectedTags.contains(optName)
-                            val optColor = try { Color(android.graphics.Color.parseColor(optColorHex)) } catch (e: Exception) { Color.Gray }
+                            val optColor = try { Color(optColorHex.toColorInt()) } catch (_: Exception) { Color.Gray } // --- FIX: KTX Color & Unused e ---
 
                             DropdownMenuItem(
                                 text = {
@@ -582,7 +573,7 @@ fun DatabaseCell(
             )
             if (value.isNotEmpty() && !value.contains("http://")) {
                 Spacer(Modifier.fillMaxWidth().height(24.dp).clickable {
-                    try { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://$value"))) } catch (e: Exception) {}
+                    try { context.startActivity(Intent(Intent.ACTION_VIEW, "https://$value".toUri())) } catch (_: Exception) {} // --- FIX: KTX URI & Unused e ---
                 })
             }
         }

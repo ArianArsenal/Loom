@@ -15,7 +15,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
-
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -33,7 +32,16 @@ fun extractHeadings(blocks: List<SandboxBlock>): List<SandboxBlock> {
 }
 
 @Composable
-fun TocBlockRenderer(textState: TextFieldValue, handleTextChange: (TextFieldValue) -> Unit, commonModifier: Modifier, placeholderUI: @Composable (@Composable () -> Unit) -> Unit, isReadOnly: Boolean, allBlocks: List<SandboxBlock>, onScrollToBlock: (String) -> Unit, onDeleteBlock: (String, Boolean) -> Unit) {
+fun TocBlockRenderer(
+    textState: TextFieldValue,
+    handleTextChange: (TextFieldValue) -> Unit,
+    modifier: Modifier, // --- FIX: Renamed modifier ---
+    placeholderUI: @Composable (@Composable () -> Unit) -> Unit,
+    isReadOnly: Boolean,
+    allBlocks: List<SandboxBlock>,
+    onScrollToBlock: (String) -> Unit,
+    onDeleteBlock: (String, Boolean) -> Unit
+) {
     var showBlockMenu by remember { mutableStateOf(false) }
     Column(modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), RoundedCornerShape(8.dp)).padding(16.dp)) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
@@ -46,6 +54,14 @@ fun TocBlockRenderer(textState: TextFieldValue, handleTextChange: (TextFieldValu
         if (headings.isEmpty()) { Text("No headings found. Add H1, H2, H3, or H4 blocks.", color = Color.Gray, style = MaterialTheme.typography.bodySmall) } else {
             headings.forEach { hBlock -> val indent = when(hBlock.type) { BlockType.HEADING -> 0.dp; BlockType.HEADING_2 -> 16.dp; BlockType.HEADING_3 -> 32.dp; BlockType.HEADING_4 -> 48.dp; else -> 0.dp }; val text = hBlock.content.replace(ZWSP, "").ifEmpty { "Untitled Heading" }; Text(text = text, color = MaterialTheme.colorScheme.primary, modifier = Modifier.fillMaxWidth().padding(start = indent, top = 4.dp, bottom = 4.dp).clickable { onScrollToBlock(hBlock.id) }, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis) }
         }
-        BasicTextField(value = textState, onValueChange = handleTextChange, textStyle = MaterialTheme.typography.bodySmall.copy(color = Color.Transparent, fontSize = 1.sp), modifier = commonModifier.height(1.dp), cursorBrush = SolidColor(Color.Transparent), decorationBox = placeholderUI, readOnly = isReadOnly)
+        BasicTextField(
+            value = textState,
+            onValueChange = handleTextChange,
+            textStyle = MaterialTheme.typography.bodySmall.copy(color = Color.Transparent, fontSize = 1.sp),
+            modifier = modifier.height(1.dp), // --- FIX: Applied renamed modifier ---
+            cursorBrush = SolidColor(Color.Transparent),
+            decorationBox = placeholderUI,
+            readOnly = isReadOnly
+        )
     }
 }

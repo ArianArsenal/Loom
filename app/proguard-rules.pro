@@ -1,21 +1,36 @@
-# Add project specific ProGuard rules here.
-# You can control the set of applied configuration files using the
-# proguardFiles setting in build.gradle.
-#
-# For more details, see
-#   http://developer.android.com/guide/developing/tools/proguard.html
+# ----------------------------------------------------------------------
+# GLOBAL ATTRIBUTES
+# ----------------------------------------------------------------------
+# Prevent R8 from stripping generic signatures (List<T>) and annotations
+-keepattributes Signature, *Annotation*, InnerClasses, EnclosingMethod
 
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
+# ----------------------------------------------------------------------
+# DATA MODELS (Precision Rules)
+# ----------------------------------------------------------------------
+-keep @kotlinx.serialization.Serializable class com.example.loom.data.models.** { *; }
+-keep @androidx.room.Entity class com.example.loom.data.local.entity.** { *; }
 
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
+# ----------------------------------------------------------------------
+# GSON
+# ----------------------------------------------------------------------
+# Suppress missing Unsafe class warning for Gson
+-dontwarn sun.misc.Unsafe
 
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
+# Keep all Gson TypeToken subclasses so JSON list parsing doesn't crash
+-keep class * extends com.google.gson.reflect.TypeToken
+
+# ----------------------------------------------------------------------
+# KOTLINX SERIALIZATION
+# ----------------------------------------------------------------------
+-keep class kotlinx.serialization.** { *; }
+-keepclassmembers class kotlinx.serialization.** {
+    *** Companion;
+}
+-keepclasseswithmembers class * {
+    @kotlinx.serialization.Serializable <init>(...);
+}
+
+# ----------------------------------------------------------------------
+# UTILS & MANAGERS
+# ----------------------------------------------------------------------
+-keep class com.example.loom.util.TemplateManager$** { *; }

@@ -13,6 +13,9 @@ private val Context.dataStore by preferencesDataStore(name = "user_settings")
 class UserPreferences @Inject constructor(private val context: Context) {
 
     companion object {
+        // --- NEW: User Profile ---
+        val USER_NAME = stringPreferencesKey("user_name")
+
         val WEIGHT = floatPreferencesKey("bio_weight")
         val HEIGHT = intPreferencesKey("bio_height")
         val AGE = intPreferencesKey("bio_age")
@@ -20,7 +23,6 @@ class UserPreferences @Inject constructor(private val context: Context) {
         val ACTIVITY_LEVEL = stringPreferencesKey("bio_activity")
         val FITNESS_GOAL = stringPreferencesKey("bio_goal")
 
-        // NEW BIO ENGINE KEYS
         val BODY_FAT = floatPreferencesKey("bio_body_fat")
         val DIET_TYPE = stringPreferencesKey("bio_diet_type")
         val PHASE_START_TIME = longPreferencesKey("bio_phase_start")
@@ -40,27 +42,51 @@ class UserPreferences @Inject constructor(private val context: Context) {
         val BIOMETRIC_ENABLED = booleanPreferencesKey("biometric_enabled")
         val APP_THEME = stringPreferencesKey("app_theme")
 
-        // Add to your companion object keys:
         val FASTING_START_TIME = longPreferencesKey("fasting_start_time")
         val FASTING_GOAL_HOURS = intPreferencesKey("fasting_goal_hours")
         val IS_FASTING = booleanPreferencesKey("is_fasting")
 
         val HIDDEN_HEALTH_CARDS = stringPreferencesKey("hidden_health_cards")
 
+        val HIDDEN_HOME_CARDS = stringPreferencesKey("hidden_home_cards")
+        val AGENDA_TEXT = stringPreferencesKey("agenda_text")
+        val AGENDA_DATE = stringPreferencesKey("agenda_date")
+
         val SUPPLEMENTS_ROSTER = stringPreferencesKey("supplements_roster")
         val SUPPLEMENT_CATEGORIES = stringPreferencesKey("supplement_categories")
     }
+
+    // --- NEW: User Name Flow ---
+    val userNameFlow: Flow<String> = context.dataStore.data.map { it[USER_NAME] ?: "" }
 
     val hiddenHealthCardsFlow: Flow<Set<String>> = context.dataStore.data.map { preferences ->
         try {
             val json = preferences[HIDDEN_HEALTH_CARDS] ?: "[]"
             kotlinx.serialization.json.Json.decodeFromString<Set<String>>(json)
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             emptySet()
         }
     }
 
-    // Add these state flows:
+    val hiddenHomeCardsFlow: Flow<Set<String>> = context.dataStore.data.map { preferences ->
+        try {
+            val json = preferences[HIDDEN_HOME_CARDS] ?: "[]"
+            kotlinx.serialization.json.Json.decodeFromString<Set<String>>(json)
+        } catch (_: Exception) {
+            emptySet()
+        }
+    }
+
+    val agendaTextFlow: Flow<String> = context.dataStore.data.map { prefs ->
+        val savedDate = prefs[AGENDA_DATE] ?: ""
+        val currentDate = java.time.LocalDate.now().toString()
+        if (savedDate == currentDate) {
+            prefs[AGENDA_TEXT] ?: ""
+        } else {
+            ""
+        }
+    }
+
     val fastingStartTimeFlow: Flow<Long> = context.dataStore.data.map { it[FASTING_START_TIME] ?: 0L }
     val fastingGoalHoursFlow: Flow<Int> = context.dataStore.data.map { it[FASTING_GOAL_HOURS] ?: 16 }
     val isFastingFlow: Flow<Boolean> = context.dataStore.data.map { it[IS_FASTING] ?: false }
@@ -92,31 +118,55 @@ class UserPreferences @Inject constructor(private val context: Context) {
         it[CUSTOM_WATER_CONTAINERS] ?: """[{"id":"1","name":"Glass","iconEmoji":"LocalDrink","volumeMl":250,"hydrationFactor":1.0},{"id":"2","name":"Shaker","iconEmoji":"LocalCafe","volumeMl":600,"hydrationFactor":1.0},{"id":"3","name":"Bottle","iconEmoji":"WaterDrop","volumeMl":1500,"hydrationFactor":1.0}]"""
     }
 
-    // Default to the upgraded JSON structure
     private val defaultSupplements = """[{"id":"1","name":"Vitamin D3","dosage":"2000 IU","category":"Supplement","timeOfUse":"Morning","recurrenceType":"DAILY","recurrenceValue":"","instruction":"With Food"},{"id":"2","name":"Vitamin C","dosage":"500mg","category":"Supplement","timeOfUse":"Anytime","recurrenceType":"DAILY","recurrenceValue":"","instruction":"None"},{"id":"3","name":"Magnesium","dosage":"200mg","category":"Supplement","timeOfUse":"Before Bed","recurrenceType":"DAILY","recurrenceValue":"","instruction":"None"},{"id":"4","name":"Zinc","dosage":"15mg","category":"Supplement","timeOfUse":"Evening","recurrenceType":"DAILY","recurrenceValue":"","instruction":"With Food"},{"id":"5","name":"Omega-3 Fish Oil","dosage":"1000mg","category":"Supplement","timeOfUse":"Morning","recurrenceType":"DAILY","recurrenceValue":"","instruction":"With Food"},{"id":"6","name":"Creatine","dosage":"5g","category":"Supplement","timeOfUse":"Anytime","recurrenceType":"DAILY","recurrenceValue":"","instruction":"With Water"},{"id":"7","name":"Whey Protein","dosage":"30g","category":"Supplement","timeOfUse":"Anytime","recurrenceType":"DAILY","recurrenceValue":"","instruction":"With Water"},{"id":"8","name":"Multivitamin","dosage":"1 pill","category":"Supplement","timeOfUse":"Morning","recurrenceType":"DAILY","recurrenceValue":"","instruction":"With Food"},{"id":"9","name":"B-Complex","dosage":"1 cap","category":"Supplement","timeOfUse":"Morning","recurrenceType":"DAILY","recurrenceValue":"","instruction":"With Food"},{"id":"10","name":"Iron","dosage":"18mg","category":"Supplement","timeOfUse":"Anytime","recurrenceType":"DAILY","recurrenceValue":"","instruction":"With Food"},{"id":"11","name":"Vitamin B12","dosage":"1000mcg","category":"Supplement","timeOfUse":"Morning","recurrenceType":"DAILY","recurrenceValue":"","instruction":"None"},{"id":"12","name":"Ashwagandha","dosage":"500mg","category":"Supplement","timeOfUse":"Evening","recurrenceType":"DAILY","recurrenceValue":"","instruction":"None"},{"id":"13","name":"Probiotics","dosage":"1 cap","category":"Supplement","timeOfUse":"Morning","recurrenceType":"DAILY","recurrenceValue":"","instruction":"Empty Stomach"}]"""
     val supplementsRosterFlow: Flow<String> = context.dataStore.data.map { it[SUPPLEMENTS_ROSTER] ?: defaultSupplements }
-    // NEW: Categories Flow
+
     private val defaultCategories = """["Supplement", "Medication", "Pre-workout"]"""
     val supplementCategoriesFlow: Flow<String> = context.dataStore.data.map { it[SUPPLEMENT_CATEGORIES] ?: defaultCategories }
     val biometricEnabledFlow: Flow<Boolean> = context.dataStore.data.map { it[BIOMETRIC_ENABLED] ?: true }
+
+    // --- NEW: Save User Name ---
+    suspend fun saveUserName(name: String) {
+        context.dataStore.edit { it[USER_NAME] = name }
+    }
+
+    suspend fun saveAgendaText(text: String) {
+        context.dataStore.edit { prefs ->
+            prefs[AGENDA_TEXT] = text
+            prefs[AGENDA_DATE] = java.time.LocalDate.now().toString()
+        }
+    }
+
+    suspend fun toggleHomeCardVisibility(cardName: String, isVisible: Boolean) {
+        context.dataStore.edit { preferences ->
+            val currentJson = preferences[HIDDEN_HOME_CARDS] ?: "[]"
+            val currentSet = try {
+                kotlinx.serialization.json.Json.decodeFromString<Set<String>>(currentJson).toMutableSet()
+            } catch (_: Exception) { mutableSetOf() }
+
+            if (isVisible) currentSet.remove(cardName) else currentSet.add(cardName)
+            preferences[HIDDEN_HOME_CARDS] = kotlinx.serialization.json.Json.encodeToString(currentSet)
+        }
+    }
 
     suspend fun saveSupplementsRoster(json: String) {
         context.dataStore.edit { it[SUPPLEMENTS_ROSTER] = json }
     }
     suspend fun saveSupplementCategories(json: String) { context.dataStore.edit { it[SUPPLEMENT_CATEGORIES] = json } }
+
     suspend fun toggleHealthCardVisibility(cardName: String, isVisible: Boolean) {
         context.dataStore.edit { preferences ->
             val currentJson = preferences[HIDDEN_HEALTH_CARDS] ?: "[]"
             val currentSet = try {
                 kotlinx.serialization.json.Json.decodeFromString<Set<String>>(currentJson).toMutableSet()
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 mutableSetOf()
             }
 
             if (isVisible) {
-                currentSet.remove(cardName) // Remove from hidden list to show it
+                currentSet.remove(cardName)
             } else {
-                currentSet.add(cardName) // Add to hidden list
+                currentSet.add(cardName)
             }
 
             preferences[HIDDEN_HEALTH_CARDS] = kotlinx.serialization.json.Json.encodeToString(currentSet)
@@ -140,14 +190,12 @@ class UserPreferences @Inject constructor(private val context: Context) {
             preferences[DIET_TYPE] = dietType
             preferences[CALORIE_CYCLING] = isCycling
 
-            // Only reset start time if the phase duration changed significantly
             val currentWeeks = preferences[PHASE_WEEKS] ?: 12
             if (currentWeeks != phaseWeeks) {
                 preferences[PHASE_WEEKS] = phaseWeeks
                 preferences[PHASE_START_TIME] = System.currentTimeMillis()
             }
 
-            // 1. Calculate BMR (Katch-McArdle if BF% is provided, otherwise Mifflin-St Jeor)
             val bmr = if (bodyFat > 0f) {
                 val leanMass = weight * (1f - (bodyFat / 100f))
                 370f + (21.6f * leanMass)
@@ -159,16 +207,16 @@ class UserPreferences @Inject constructor(private val context: Context) {
                 }
             }
 
-            // 2. Calculate TDEE
             val multiplier = when (activity) { "Sedentary" -> 1.2f; "Light" -> 1.375f; "Moderate" -> 1.55f; "Active" -> 1.725f; "Very Active" -> 1.9f; else -> 1.2f }
             var tdee = bmr * multiplier
 
-            // 3. Goal Adjustment
             tdee += when (goal) { "Lose Weight" -> -500f; "Build Muscle" -> 300f; else -> 0f }
             val cals = tdee.toInt()
 
-            // 4. Custom Macro Splits
-            var protein = 0; var fats = 0; var carbs = 0
+            val protein: Int
+            val fats: Int
+            val carbs: Int
+
             when (dietType) {
                 "High Protein" -> {
                     protein = (weight * 2.6f).toInt()
@@ -177,15 +225,15 @@ class UserPreferences @Inject constructor(private val context: Context) {
                 }
                 "Low Carb" -> {
                     protein = (weight * 2.2f).toInt()
-                    carbs = (weight * 1.0f).toInt() // Strict 1g per kg
+                    carbs = (weight * 1.0f).toInt()
                     fats = ((cals - (protein * 4) - (carbs * 4)) / 9).coerceAtLeast(0)
                 }
                 "Keto" -> {
-                    carbs = ((cals * 0.05f) / 4).toInt() // Strict 5% carbs
-                    protein = ((cals * 0.25f) / 4).toInt() // 25% protein
-                    fats = ((cals - (protein * 4) - (carbs * 4)) / 9).coerceAtLeast(0) // 70% fats
+                    carbs = ((cals * 0.05f) / 4).toInt()
+                    protein = ((cals * 0.25f) / 4).toInt()
+                    fats = ((cals - (protein * 4) - (carbs * 4)) / 9).coerceAtLeast(0)
                 }
-                else -> { // Balanced
+                else -> {
                     protein = (weight * 2.2f).toInt()
                     fats = (weight * 0.8f).toInt()
                     carbs = ((cals - (protein * 4) - (fats * 9)) / 4).coerceAtLeast(0)
@@ -202,7 +250,6 @@ class UserPreferences @Inject constructor(private val context: Context) {
         }
     }
 
-    // Add this control function:
     suspend fun setFastingState(isFasting: Boolean, startTime: Long, goalHours: Int) {
         context.dataStore.edit { prefs ->
             prefs[IS_FASTING] = isFasting

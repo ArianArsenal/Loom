@@ -33,6 +33,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
+import androidx.core.graphics.toColorInt // --- FIX: Using fast KTX extension ---
 import com.example.loom.data.models.SandboxBlock
 import com.example.loom.data.models.TextFormatSpan
 import com.example.loom.ui.sandbox.TableCellData
@@ -59,7 +60,6 @@ fun TableBlockRenderer(
     val colWidths = if (block.colWidths.size == colCount) block.colWidths else List(colCount) { 120f }
     val rowHeights = if (block.rowHeights.size == rowCount) block.rowHeights else List(rowCount) { 48f }
 
-    // State to track text field value for the currently focused cell
     var activeTextFieldValue by remember { mutableStateOf(TextFieldValue("")) }
 
     Column(modifier = Modifier.fillMaxWidth().border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp)).padding(4.dp)) {
@@ -86,14 +86,13 @@ fun TableBlockRenderer(
                                 if (cell.isDeleted) {
                                     Box(modifier = Modifier.fillMaxSize().padding(4.dp))
                                 } else {
-                                    val bgColor = cell.colorHex?.let { try { Color(android.graphics.Color.parseColor(it)) } catch(e:Exception){Color.Transparent} } ?: Color.Transparent
+                                    val bgColor = cell.colorHex?.let { try { Color(it.toColorInt()) } catch(_: Exception){Color.Transparent} } ?: Color.Transparent // --- FIX: KTX Color & Unused e ---
                                     Surface(
                                         modifier = Modifier.fillMaxSize().border(0.5.dp, MaterialTheme.colorScheme.outlineVariant),
                                         color = bgColor
                                     ) {
                                         Box(modifier = Modifier.fillMaxSize()) {
 
-                                            // Ensure non-focused cells display the correct rich text state
                                             val displayValue = if (isFocused) {
                                                 activeTextFieldValue
                                             } else {
@@ -148,10 +147,8 @@ fun TableBlockRenderer(
             }
         }
 
-        // --- ADD: Rich Text Toolbar Integration ---
         focusedCell?.let { (r, c) ->
             val cell = parseCell(block.tableData[r][c])
-            // Fake a SandboxBlock struct so we can reuse the existing Toolbar exactly as is!
             val fakeBlock = SandboxBlock(id = "table_cell", content = cell.text, textFormats = cell.formats)
 
             TextFormatToolbar(
@@ -164,7 +161,6 @@ fun TableBlockRenderer(
                     newData[r][c] = encodeCell(cell.copy(formats = updatedBlock.textFormats))
                     onUpdate(block.copy(tableData = newData))
 
-                    // Instantly sync the visual state
                     activeTextFieldValue = activeTextFieldValue.copy(annotatedString = buildAnnotated(activeTextFieldValue.text, updatedBlock.textFormats))
                 },
                 applyFormat = { type, value ->
@@ -185,7 +181,6 @@ fun TableBlockRenderer(
                     newData[r][c] = encodeCell(cell.copy(formats = newFormats))
                     onUpdate(block.copy(tableData = newData))
 
-                    // Instantly sync the visual state
                     activeTextFieldValue = activeTextFieldValue.copy(annotatedString = buildAnnotated(activeTextFieldValue.text, newFormats))
                 }
             )

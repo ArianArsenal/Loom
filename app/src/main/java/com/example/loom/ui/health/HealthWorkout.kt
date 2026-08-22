@@ -120,12 +120,14 @@ fun HealthWorkout(viewModel: HealthViewModel) {
         var editDuration by remember { mutableStateOf(loggedExerciseToEdit!!.durationInSeconds.toString()) }
         var editVaryWeight by remember { mutableStateOf(loggedExerciseToEdit!!.weightListJson != "[]") }
         var editWeight by remember { mutableStateOf(loggedExerciseToEdit!!.weight.formatWeight()) }
+
+        // --- FIX: Restored explicit <Map<Int, String>> type definition ---
         var editAdvancedWeights by remember {
-            mutableStateOf<Map<Int, String>>(
+            mutableStateOf(
                 try {
                     val list = Json.decodeFromString<List<Float>>(loggedExerciseToEdit!!.weightListJson)
                     list.mapIndexed { index, w -> index to w.formatWeight() }.toMap()
-                } catch(e: Exception) { emptyMap() }
+                } catch(_: Exception) { emptyMap<Int, String>() } // <-- Explicit type moved here!
             )
         }
 
@@ -245,12 +247,14 @@ fun HealthWorkout(viewModel: HealthViewModel) {
         var editDuration by remember { mutableStateOf(presetExerciseToEdit!!.durationInSeconds.toString()) }
         var editVaryWeight by remember { mutableStateOf(presetExerciseToEdit!!.weightListJson != "[]") }
         var editWeight by remember { mutableStateOf(presetExerciseToEdit!!.weight.formatWeight()) }
+
+        // --- FIX: Restored explicit <Map<Int, String>> type definition ---
         var editAdvancedWeights by remember {
-            mutableStateOf<Map<Int, String>>(
+            mutableStateOf(
                 try {
-                    val list = Json.decodeFromString<List<Float>>(presetExerciseToEdit!!.weightListJson)
+                    val list = Json.decodeFromString<List<Float>>(loggedExerciseToEdit!!.weightListJson)
                     list.mapIndexed { index, w -> index to w.formatWeight() }.toMap()
-                } catch(e: Exception) { emptyMap() }
+                } catch(_: Exception) { emptyMap<Int, String>() } // <-- Explicit type moved here!
             )
         }
 
@@ -376,13 +380,13 @@ fun HealthWorkout(viewModel: HealthViewModel) {
                                         OutlinedTextField(
                                             value = inputName, onValueChange = { inputName = it; expanded = true },
                                             label = { Text("Search Exercise") }, leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search") },
-                                            modifier = Modifier.menuAnchor().fillMaxWidth()
+                                            modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryEditable, true).fillMaxWidth()
                                         )
                                         val filtered = globalTemplates.filter { it.name.contains(inputName, true) }
                                         val exactMatch = globalTemplates.any { it.name.equals(inputName, ignoreCase = true) }
 
                                         if ((filtered.isNotEmpty() || (inputName.isNotBlank() && !exactMatch)) && expanded) {
-                                            ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }, modifier = Modifier.heightIn(max = 200.dp)) {
+                                            ExposedDropdownMenu(expanded = true, onDismissRequest = { expanded = false }, modifier = Modifier.heightIn(max = 200.dp)) {
                                                 filtered.forEach { option ->
                                                     Box(modifier = Modifier.fillMaxWidth().combinedClickable(
                                                         onClick = { inputName = option.name; expanded = false },
@@ -491,14 +495,14 @@ fun HealthWorkout(viewModel: HealthViewModel) {
                                         ExposedDropdownMenuBox(expanded = presetDropdownExpanded, onExpandedChange = { presetDropdownExpanded = it }, modifier = Modifier.weight(1f)) {
                                             OutlinedTextField(
                                                 value = if (activePresetId == 0) "Create New Preset..." else "Editing: $activePresetName",
-                                                onValueChange = {}, readOnly = true, modifier = Modifier.menuAnchor().fillMaxWidth(),
+                                                onValueChange = {}, readOnly = true, modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable, true).fillMaxWidth(),
                                                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = presetDropdownExpanded) },
                                                 colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors()
                                             )
                                             ExposedDropdownMenu(expanded = presetDropdownExpanded, onDismissRequest = { presetDropdownExpanded = false }) {
                                                 allPresets.forEach { preset ->
                                                     DropdownMenuItem(text = { Text(preset.presetName) }, onClick = {
-                                                        activePresetId = preset.id; activePresetName = preset.presetName; activeExercises = preset.exercises;
+                                                        activePresetId = preset.id; activePresetName = preset.presetName; activeExercises = preset.exercises
                                                         isCurrentPresetSaved = true
                                                         presetDropdownExpanded = false
                                                     })
@@ -557,7 +561,7 @@ fun HealthWorkout(viewModel: HealthViewModel) {
                                                     if (ex.isTimeBased) {
                                                         Text("${ex.sets} Sets × ${ex.durationInSeconds} Secs", style = MaterialTheme.typography.bodySmall)
                                                     } else {
-                                                        val wList = try { Json.decodeFromString<List<Float>>(ex.weightListJson) } catch(e:Exception){ emptyList() }
+                                                        val wList = try { Json.decodeFromString<List<Float>>(ex.weightListJson) } catch(_:Exception){ emptyList() }
                                                         if (wList.isNotEmpty()) {
                                                             Text("${ex.sets} Sets × ${ex.reps} Reps @ ${wList.joinToString(", ") { it.formatWeight() }}kg", style = MaterialTheme.typography.bodySmall)
                                                         } else {
@@ -577,13 +581,13 @@ fun HealthWorkout(viewModel: HealthViewModel) {
                                         OutlinedTextField(
                                             value = builderName, onValueChange = { builderName = it; builderExpanded = true }, label = { Text("Search Exercise") },
                                             leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search") },
-                                            modifier = Modifier.menuAnchor().fillMaxWidth().height(56.dp)
+                                            modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryEditable, true).fillMaxWidth().height(56.dp)
                                         )
                                         val filtered = globalTemplates.filter { it.name.contains(builderName, true) }
                                         val exactMatch = globalTemplates.any { it.name.equals(builderName, ignoreCase = true) }
 
                                         if ((filtered.isNotEmpty() || (builderName.isNotBlank() && !exactMatch)) && builderExpanded) {
-                                            ExposedDropdownMenu(expanded = builderExpanded, onDismissRequest = { builderExpanded = false }, modifier = Modifier.heightIn(max = 200.dp)) {
+                                            ExposedDropdownMenu(expanded = true, onDismissRequest = { builderExpanded = false }, modifier = Modifier.heightIn(max = 200.dp)) {
                                                 filtered.forEach { option ->
                                                     Box(modifier = Modifier.fillMaxWidth().combinedClickable(
                                                         onClick = { builderName = option.name; builderExpanded = false },
@@ -743,6 +747,10 @@ fun HealthWorkout(viewModel: HealthViewModel) {
                     HorizontalDivider(modifier = Modifier.padding(bottom = 8.dp), color = MaterialTheme.colorScheme.surfaceVariant)
 
                     exercises.forEach { exercise ->
+                        val wList = remember(exercise.weightListJson) {
+                            try { Json.decodeFromString<List<Float>>(exercise.weightListJson) } catch(_:Exception){ emptyList() }
+                        }
+
                         key(exercise.id) {
                             val dismissState = rememberSwipeToDismissBoxState(confirmValueChange = { dismissValue -> when (dismissValue) { SwipeToDismissBoxValue.EndToStart -> { viewModel.deleteExercise(exercise); true }; SwipeToDismissBoxValue.StartToEnd -> { loggedExerciseToEdit = exercise; false }; else -> false } })
                             SwipeToDismissBox(
@@ -772,7 +780,6 @@ fun HealthWorkout(viewModel: HealthViewModel) {
                                         if (exercise.isTimeBased) {
                                             Text("${exercise.sets} Sets × ${exercise.durationInSeconds} Seconds", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
                                         } else {
-                                            val wList = try { Json.decodeFromString<List<Float>>(exercise.weightListJson) } catch(e:Exception){ emptyList() }
                                             if (wList.isNotEmpty()) {
                                                 Text("${exercise.sets} Sets × ${exercise.reps} Reps  |  ${wList.joinToString(", ") { it.formatWeight() }} kg", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
                                             } else {

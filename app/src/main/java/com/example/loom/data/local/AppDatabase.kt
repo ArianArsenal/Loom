@@ -1,8 +1,6 @@
 package com.example.loom.data.local
 
-import android.content.Context
 import androidx.room.Database
-import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 import androidx.room.migration.Migration
@@ -22,6 +20,7 @@ import com.example.loom.data.local.entity.SkincareRoutine
 import com.example.loom.data.local.entity.FoodItem
 import com.example.loom.data.local.entity.NotionSpaceEntity
 import com.example.loom.data.local.entity.SandboxBlockEntity
+
 @Database(
     entities = [
         DailyRecord::class, Task::class, TaskSection::class, Exercise::class,
@@ -32,7 +31,7 @@ import com.example.loom.data.local.entity.SandboxBlockEntity
         NotionSpaceEntity::class,
         SandboxBlockEntity::class
     ],
-    version = 32, // <-- BUMPED TO 32
+    version = 32,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -41,9 +40,6 @@ abstract class AppDatabase : RoomDatabase() {
     abstract val sandboxDao: SandboxDao
 
     companion object {
-        @Volatile
-        private var INSTANCE: AppDatabase? = null
-
         // Existing Migrations
         private val MIGRATION_TO_17 = object : Migration(15, 17) {
             override fun migrate(db: SupportSQLiteDatabase) {
@@ -190,7 +186,6 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
-        // NEW MIGRATION: Injects the Trash system flag
         private val MIGRATION_30_31 = object : Migration(30, 31) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE `notion_spaces` ADD COLUMN `isDeleted` INTEGER NOT NULL DEFAULT 0")
@@ -199,7 +194,6 @@ abstract class AppDatabase : RoomDatabase() {
 
         private val MIGRATION_31_32 = object : Migration(31, 32) {
             override fun migrate(db: SupportSQLiteDatabase) {
-                // 1. Create the new blocks table
                 db.execSQL("""
                     CREATE TABLE IF NOT EXISTS `notion_blocks` (
                         `id` TEXT NOT NULL, `spaceId` TEXT NOT NULL, `parentId` TEXT, `orderIndex` INTEGER NOT NULL, 
@@ -216,7 +210,6 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("CREATE INDEX IF NOT EXISTS `index_notion_blocks_spaceId` ON `notion_blocks` (`spaceId`)")
                 db.execSQL("CREATE INDEX IF NOT EXISTS `index_notion_blocks_parentId` ON `notion_blocks` (`parentId`)")
 
-                // 2. Extract the old JSON strings, parse them, and insert into the new blocks table
                 val cursor = db.query("SELECT id, blocksJson FROM notion_spaces")
                 while (cursor.moveToNext()) {
                     val spaceId = cursor.getString(0)
@@ -237,11 +230,10 @@ abstract class AppDatabase : RoomDatabase() {
                             }
                             db.insert("notion_blocks", android.database.sqlite.SQLiteDatabase.CONFLICT_REPLACE, values)
                         }
-                    } catch (e: Exception) { android.util.Log.e("Migration", "Failed parsing block for $spaceId") }
+                    } catch (_: Exception) { android.util.Log.e("Migration", "Failed parsing block for $spaceId") }
                 }
                 cursor.close()
 
-                // 3. Create the clean Space table WITHOUT the blocksJson column
                 db.execSQL("""
                     CREATE TABLE IF NOT EXISTS `notion_spaces_new` (
                         `id` TEXT NOT NULL, `title` TEXT NOT NULL, `icon` TEXT NOT NULL, `bannerUrl` TEXT NOT NULL, 
@@ -250,10 +242,8 @@ abstract class AppDatabase : RoomDatabase() {
                     )
                 """.trimIndent())
 
-                // Copy data over
                 db.execSQL("INSERT INTO notion_spaces_new (id, title, icon, bannerUrl, updatedAt, isPinned, tagsJson, isPrivate, isDeleted) SELECT id, title, icon, bannerUrl, updatedAt, isPinned, tagsJson, isPrivate, isDeleted FROM notion_spaces")
 
-                // Swap tables
                 db.execSQL("DROP TABLE notion_spaces")
                 db.execSQL("ALTER TABLE notion_spaces_new RENAME TO notion_spaces")
             }
@@ -284,35 +274,13 @@ abstract class AppDatabase : RoomDatabase() {
             db.execSQL("ALTER TABLE exercises_new RENAME TO exercises")
         }
 
-        fun getDatabase(context: Context): AppDatabase {
-            return INSTANCE ?: synchronized(this) {
-                Room.databaseBuilder(
-                    context.applicationContext,
-                    AppDatabase::class.java,
-                    "loom_database.db"
-                )
-                    .addMigrations(
-                        MIGRATION_TO_17,
-                        MIGRATION_16_17,
-                        MIGRATION_17_18,
-                        MIGRATION_18_19,
-                        MIGRATION_19_20,
-                        MIGRATION_20_21,
-                        MIGRATION_21_22,
-                        MIGRATION_22_23,
-                        MIGRATION_23_24,
-                        MIGRATION_24_25,
-                        MIGRATION_25_26,
-                        MIGRATION_26_27,
-                        MIGRATION_27_28,
-                        MIGRATION_28_29,
-                        MIGRATION_29_30,
-                        MIGRATION_30_31,
-                        MIGRATION_31_32
-                    )
-                    .fallbackToDestructiveMigration()
-                    .build().also { INSTANCE = it }
-            }
-        }
+        // Expose your migrations cleanly to your Hilt Module
+        val MIGRATIONS = arrayOf(
+            MIGRATION_TO_17, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19,
+            MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23,
+            MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27,
+            MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31,
+            MIGRATION_31_32
+        )
     }
 }

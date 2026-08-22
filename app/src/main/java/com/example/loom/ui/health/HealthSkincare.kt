@@ -42,7 +42,6 @@ fun HealthSkincare(viewModel: HealthViewModel) {
     var routineToEdit by remember { mutableStateOf<SkincareRoutine?>(null) }
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
 
-    // THE FIX: Editing a product locally inside a specific routine
     var editingProductContext by remember { mutableStateOf<Pair<SkincareRoutine, SkincareProduct>?>(null) }
 
     if (editingProductContext != null) {
@@ -52,13 +51,13 @@ fun HealthSkincare(viewModel: HealthViewModel) {
             initialProduct = oldProduct,
             onDismiss = { editingProductContext = null },
             onSave = { updatedProduct ->
-                val currentProducts = try { Json.decodeFromString<List<SkincareProduct>>(routineContext.productsJson) } catch (e: Exception) { emptyList() }
+                val currentProducts = try { Json.decodeFromString<List<SkincareProduct>>(routineContext.productsJson) } catch (_: Exception) { emptyList() } // --- FIX ---
                 val updatedList = currentProducts.map { if (it.name == oldProduct.name) updatedProduct else it }
                 viewModel.saveSkincareRoutine(routineContext.copy(productsJson = Json.encodeToString(updatedList)))
                 editingProductContext = null
             },
             onDelete = {
-                val currentProducts = try { Json.decodeFromString<List<SkincareProduct>>(routineContext.productsJson) } catch (e: Exception) { emptyList() }
+                val currentProducts = try { Json.decodeFromString<List<SkincareProduct>>(routineContext.productsJson) } catch (_: Exception) { emptyList() } // --- FIX ---
                 val updatedList = currentProducts.filter { it.name != oldProduct.name }
                 viewModel.saveSkincareRoutine(routineContext.copy(productsJson = Json.encodeToString(updatedList)))
                 editingProductContext = null
@@ -87,14 +86,13 @@ fun HealthSkincare(viewModel: HealthViewModel) {
         var inputRoutineName by remember(routineToEdit) { mutableStateOf(routineToEdit?.name ?: "") }
         var isPinnedToHome by remember(routineToEdit) { mutableStateOf(routineToEdit?.isPinnedToHome ?: true) }
 
-        // THE FIX: Smart Parser handles both the old List<String> and new List<SkincareProduct>
         val initialProducts = remember(routineToEdit) {
             try {
                 Json.decodeFromString<List<SkincareProduct>>(routineToEdit?.productsJson ?: "[]")
-            } catch(e: Exception){
+            } catch(_: Exception){
                 try {
                     Json.decodeFromString<List<String>>(routineToEdit?.productsJson ?: "[]").map { SkincareProduct(name = it) }
-                } catch (e2: Exception) { emptyList() }
+                } catch (_: Exception) { emptyList() } // --- FIX ---
             }
         }
         var selectedProducts by remember(routineToEdit) { mutableStateOf(initialProducts) }
@@ -103,7 +101,6 @@ fun HealthSkincare(viewModel: HealthViewModel) {
         var productSearchText by remember { mutableStateOf("") }
         var productDropdownExpanded by remember { mutableStateOf(false) }
 
-        // State for editing inside the dialog
         var dialogProductToEdit by remember { mutableStateOf<SkincareProduct?>(null) }
 
         if (dialogProductToEdit != null) {
@@ -128,15 +125,17 @@ fun HealthSkincare(viewModel: HealthViewModel) {
                 LazyColumn {
                     item {
                         ExposedDropdownMenuBox(expanded = routineDropdownExpanded, onExpandedChange = { routineDropdownExpanded = it }) {
+                            // --- FIX: MenuAnchor explicitly set to PrimaryEditable ---
                             OutlinedTextField(
                                 value = inputRoutineName, onValueChange = { inputRoutineName = it; routineDropdownExpanded = true },
-                                label = { Text("Routine Name (e.g., Morning Wash)") }, modifier = Modifier.fillMaxWidth().menuAnchor(),
+                                label = { Text("Routine Name (e.g., Morning Wash)") }, modifier = Modifier.fillMaxWidth().menuAnchor(MenuAnchorType.PrimaryEditable, true),
                                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = routineDropdownExpanded) },
                                 colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(), singleLine = true
                             )
                             val filteredRoutines = skincareRoutines.filter { it.name.contains(inputRoutineName, true) }
                             if (filteredRoutines.isNotEmpty() && routineDropdownExpanded) {
-                                ExposedDropdownMenu(expanded = routineDropdownExpanded, onDismissRequest = { routineDropdownExpanded = false }, modifier = Modifier.heightIn(max = 200.dp)) {
+                                // --- FIX: Expanded is always true inside this block ---
+                                ExposedDropdownMenu(expanded = true, onDismissRequest = { routineDropdownExpanded = false }, modifier = Modifier.heightIn(max = 200.dp)) {
                                     filteredRoutines.forEach { routine ->
                                         DropdownMenuItem(text = { Text(routine.name) }, onClick = { routineToEdit = routine; routineDropdownExpanded = false })
                                     }
@@ -159,20 +158,22 @@ fun HealthSkincare(viewModel: HealthViewModel) {
                             products = selectedProducts,
                             onReorder = { newOrder -> selectedProducts = newOrder },
                             onRemove = { removedProduct -> selectedProducts = selectedProducts.filter { it.name != removedProduct.name } },
-                            onLongClick = { dialogProductToEdit = it } // THE FIX: Items holdable in Edit Mode
+                            onLongClick = { dialogProductToEdit = it }
                         )
 
                         Row(modifier = Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                             ExposedDropdownMenuBox(expanded = productDropdownExpanded, onExpandedChange = { productDropdownExpanded = it }, modifier = Modifier.weight(1f)) {
+                                // --- FIX: MenuAnchor explicitly set to PrimaryEditable ---
                                 OutlinedTextField(
                                     value = productSearchText, onValueChange = { productSearchText = it; productDropdownExpanded = true },
-                                    placeholder = { Text("Search or add...") }, modifier = Modifier.menuAnchor().fillMaxWidth(), singleLine = true
+                                    placeholder = { Text("Search or add...") }, modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryEditable, true).fillMaxWidth(), singleLine = true
                                 )
                                 val filteredProducts = skincareProducts.filter { it.name.contains(productSearchText, true) && !selectedProducts.any { sp -> sp.name == it.name } }
                                 val exactMatch = skincareProducts.any { it.name.equals(productSearchText.trim(), ignoreCase = true) }
 
                                 if ((filteredProducts.isNotEmpty() || (productSearchText.isNotBlank() && !exactMatch)) && productDropdownExpanded) {
-                                    ExposedDropdownMenu(expanded = productDropdownExpanded, onDismissRequest = { productDropdownExpanded = false }, modifier = Modifier.heightIn(max = 200.dp)) {
+                                    // --- FIX: Expanded is always true inside this block ---
+                                    ExposedDropdownMenu(expanded = true, onDismissRequest = { productDropdownExpanded = false }, modifier = Modifier.heightIn(max = 200.dp)) {
                                         filteredProducts.forEach { product ->
                                             Box(modifier = Modifier.fillMaxWidth().clickable(
                                                 onClick = { selectedProducts = selectedProducts + product; productSearchText = ""; productDropdownExpanded = false }
@@ -209,7 +210,6 @@ fun HealthSkincare(viewModel: HealthViewModel) {
             },
             confirmButton = {
                 Column(modifier = Modifier.fillMaxWidth()) {
-                    // TOP ROW: Primary Actions (Evenly split)
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -224,7 +224,7 @@ fun HealthSkincare(viewModel: HealthViewModel) {
                                     Toast.makeText(context, "Preset Saved!", Toast.LENGTH_SHORT).show()
                                 }
                             },
-                            modifier = Modifier.weight(1f) // Makes it take exactly 50% width
+                            modifier = Modifier.weight(1f)
                         ) { Text("Save Preset") }
 
                         Button(
@@ -238,11 +238,10 @@ fun HealthSkincare(viewModel: HealthViewModel) {
                                     routineToEdit = null
                                 }
                             },
-                            modifier = Modifier.weight(1f) // Makes it take exactly 50% width
+                            modifier = Modifier.weight(1f)
                         ) { Text("Log Now") }
                     }
 
-                    // BOTTOM ROW: Secondary Actions (Delete & Cancel)
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -281,11 +280,12 @@ fun HealthSkincare(viewModel: HealthViewModel) {
                 Text("No skincare routines logged today.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 8.dp))
             } else {
                 visibleRoutines.forEach { routine ->
+                    // --- OPTIMIZATION: Caches parsing result until DB changes ---
                     val products = remember(routine.productsJson) {
                         try { Json.decodeFromString<List<SkincareProduct>>(routine.productsJson) }
-                        catch (e: Exception) {
+                        catch (_: Exception) {
                             try { Json.decodeFromString<List<String>>(routine.productsJson).map { SkincareProduct(name = it) } }
-                            catch (e2: Exception) { emptyList() }
+                            catch (_: Exception) { emptyList() } // --- FIX ---
                         }
                     }
 
@@ -342,7 +342,7 @@ fun HealthSkincare(viewModel: HealthViewModel) {
                                                     .fillMaxWidth()
                                                     .combinedClickable(
                                                         onClick = { viewModel.toggleSkincareStep(routine.name, product.name) },
-                                                        onLongClick = { editingProductContext = Pair(routine, product) } // THE FIX: Edit specific preset copy
+                                                        onLongClick = { editingProductContext = Pair(routine, product) }
                                                     )
                                                     .padding(vertical = 4.dp)
                                             ) {

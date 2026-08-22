@@ -1,7 +1,5 @@
 package com.example.loom.ui.health
 
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -23,9 +21,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.rememberLazyListState
 import java.util.Locale
 
 @Composable
@@ -54,6 +53,7 @@ fun MacroBadge(emoji: String, amount: String, label: String) {
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalAnimationApi::class)
+@Suppress("SpellCheckingInspection") // --- FIX: Tell compiler to ignore standard fitness names ---
 @Composable
 fun HealthBio(viewModel: HealthViewModel) {
     val weight by viewModel.weight.collectAsState()
@@ -77,7 +77,7 @@ fun HealthBio(viewModel: HealthViewModel) {
 
     var isEditingBio by remember { mutableStateOf(false) }
     var showEnergyInfoDialog by remember { mutableStateOf(false) }
-    var viewCyclingTab by remember { mutableStateOf("Train") } // "Train" or "Rest"
+    var viewCyclingTab by remember { mutableStateOf("Train") }
 
     if (showEnergyInfoDialog) {
         AlertDialog(
@@ -138,7 +138,8 @@ fun HealthBio(viewModel: HealthViewModel) {
 
                         Spacer(modifier = Modifier.height(16.dp))
                         ExposedDropdownMenuBox(expanded = activityExpanded, onExpandedChange = { activityExpanded = it }) {
-                            OutlinedTextField(value = editActivity, onValueChange = {}, readOnly = true, label = { Text("Activity Level") }, modifier = Modifier.menuAnchor().fillMaxWidth(), trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = activityExpanded) })
+                            // --- FIX: Explicitly typed menu anchor ---
+                            OutlinedTextField(value = editActivity, onValueChange = {}, readOnly = true, label = { Text("Activity Level") }, modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable, true).fillMaxWidth(), trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = activityExpanded) })
                             ExposedDropdownMenu(expanded = activityExpanded, onDismissRequest = { activityExpanded = false }) {
                                 listOf("Sedentary", "Light", "Moderate", "Active", "Very Active").forEach { opt -> DropdownMenuItem(text = { Text(opt) }, onClick = { editActivity = opt; activityExpanded = false }) }
                             }
@@ -253,10 +254,8 @@ fun HealthBio(viewModel: HealthViewModel) {
                         var showWeightLogDialog by remember { mutableStateOf(false) }
 
                         if (showWeightLogDialog) {
-                            // Start the dialog at today's logged weight, OR the base weight if nothing is logged yet
                             var sliderWeight by remember { mutableFloatStateOf(if ((todayRecord?.weightLogKg ?: 0f) > 0f) todayRecord!!.weightLogKg else weight) }
 
-                            // Sets the initial scroll position so the active weight is visible immediately
                             val listState = rememberLazyListState(initialFirstVisibleItemIndex = (sliderWeight.toInt() - 20).coerceAtLeast(0))
 
                             AlertDialog(
@@ -271,16 +270,15 @@ fun HealthBio(viewModel: HealthViewModel) {
                                             color = MaterialTheme.colorScheme.primary
                                         )
 
-                                        // Horizontal Scrollable Number Selection (Whole KGs)
                                         LazyRow(
                                             state = listState,
                                             modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
                                             horizontalArrangement = Arrangement.spacedBy(16.dp),
-                                            contentPadding = PaddingValues(horizontal = 60.dp) // Gives room to scroll smoothly to the edges
+                                            contentPadding = PaddingValues(horizontal = 60.dp)
                                         ) {
                                             val minWeight = 20
                                             val maxWeight = 250
-                                            items(maxWeight - minWeight + 1) { index ->
+                                            items(maxWeight - minWeight + 1, key = { it }) { index -> // --- FIX: Added key ---
                                                 val itemWeight = minWeight + index
                                                 val isSelected = itemWeight == sliderWeight.toInt()
 
@@ -289,7 +287,6 @@ fun HealthBio(viewModel: HealthViewModel) {
                                                     modifier = Modifier
                                                         .clip(RoundedCornerShape(12.dp))
                                                         .clickable {
-                                                            // Keep the exact decimal when a new whole number is tapped
                                                             val decimal = sliderWeight - sliderWeight.toInt()
                                                             sliderWeight = itemWeight.toFloat() + decimal
                                                         }
@@ -312,7 +309,6 @@ fun HealthBio(viewModel: HealthViewModel) {
                                             }
                                         }
 
-                                        // Precision Controls
                                         Row(
                                             modifier = Modifier.fillMaxWidth(),
                                             horizontalArrangement = Arrangement.SpaceEvenly,
@@ -360,7 +356,7 @@ fun HealthBio(viewModel: HealthViewModel) {
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = RoundedCornerShape(16.dp),
                                 color = MaterialTheme.colorScheme.primaryContainer,
-                                onClick = { showWeightLogDialog = true } // <-- Lets you edit today's weight by tapping the card!
+                                onClick = { showWeightLogDialog = true }
                             ) {
                                 Column(modifier = Modifier.padding(16.dp)) {
                                     Row(
@@ -395,7 +391,7 @@ fun HealthBio(viewModel: HealthViewModel) {
                             }
                         } else {
                             OutlinedButton(
-                                onClick = { showWeightLogDialog = true }, // <-- Now opens the precision dialog instead of auto-logging!
+                                onClick = { showWeightLogDialog = true },
                                 modifier = Modifier.fillMaxWidth(),
                             ) {
                                 Icon(Icons.Outlined.Scale, contentDescription = null, tint = MaterialTheme.colorScheme.primary)

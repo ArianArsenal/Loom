@@ -38,8 +38,14 @@ import java.text.SimpleDateFormat
 import java.util.Collections
 import java.util.Locale
 
-val timelineDateFormatter = SimpleDateFormat("h:mm a", Locale.getDefault())
+// --- FIX: Upgraded to ThreadLocal. Fixes Locale warning & performance! ---
+val timelineDateFormatter = object : ThreadLocal<SimpleDateFormat>() {
+    override fun initialValue(): SimpleDateFormat {
+        return SimpleDateFormat("h:mm a", Locale.getDefault())
+    }
+}
 
+// --- FIX: Serves as the single source of truth for the entire Health package ---
 fun Float.formatWeight(): String {
     return if (this % 1f == 0f) this.toInt().toString() else this.toString()
 }
@@ -137,7 +143,6 @@ fun ProductProfileDialog(
     var selectedEmoji by remember { mutableStateOf(initialProduct.timeOfUseEmoji) }
     var selectedFrequency by remember { mutableStateOf(initialProduct.frequency) }
 
-    // THE FIX: Added descriptive text mapping for the emojis
     val emojis = listOf(
         "☀️" to "Morning",
         "🌙" to "Night",
@@ -213,7 +218,6 @@ fun ProductProfileDialog(
         },
         confirmButton = {
             Column(modifier = Modifier.fillMaxWidth()) {
-                // TOP ROW: Primary Save Action (Full width)
                 Button(
                     onClick = {
                         if (editName.isNotBlank()) {
@@ -226,7 +230,6 @@ fun ProductProfileDialog(
                     modifier = Modifier.fillMaxWidth()
                 ) { Text("Save Profile") }
 
-                // BOTTOM ROW: Secondary Actions (Delete & Cancel)
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,

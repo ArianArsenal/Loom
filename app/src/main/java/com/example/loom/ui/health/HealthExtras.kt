@@ -22,7 +22,6 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.outlined.Bedtime
@@ -48,9 +47,9 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
-import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.util.Locale
+import kotlin.time.Duration.Companion.milliseconds // --- FIX ---
 
 @Composable
 fun FastingTimerCard(viewModel: HealthViewModel) {
@@ -62,7 +61,7 @@ fun FastingTimerCard(viewModel: HealthViewModel) {
     var selectedGoal by remember { mutableIntStateOf(goalHours) }
 
     LaunchedEffect(goalHours) { selectedGoal = goalHours }
-    LaunchedEffect(isFasting) { while (isFasting) { delay(1000); currentTime = System.currentTimeMillis() } }
+    LaunchedEffect(isFasting) { while (isFasting) { delay(1000.milliseconds); currentTime = System.currentTimeMillis() } } // --- FIX ---
 
     ElevatedCard(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp), colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)) {
         Column(modifier = Modifier.padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -157,7 +156,7 @@ fun SleepRecoveryCard(viewModel: HealthViewModel) {
                     Text("${String.format(Locale.US, "%.1f", sliderHours)} Hours", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
 
                     LazyRow(state = listState, modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp), horizontalArrangement = Arrangement.spacedBy(16.dp), contentPadding = PaddingValues(horizontal = 60.dp)) {
-                        items(24) { index ->
+                        items(24, key = { it }) { index ->
                             val itemHours = 2f + (index * 0.5f)
                             val isSelected = itemHours == sliderHours
                             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clip(RoundedCornerShape(12.dp)).clickable { sliderHours = itemHours }.padding(8.dp)) {
@@ -232,7 +231,8 @@ fun SleepRecoveryCard(viewModel: HealthViewModel) {
 fun BodyMeasurementsCard(viewModel: HealthViewModel) {
     val todayRecord by viewModel.todayRecord.collectAsState()
     val rawJson = todayRecord?.measurementsJson ?: "{}"
-    val measurements = try { Json.decodeFromString<Map<String, Float>>(if (rawJson.isBlank()) "{}" else rawJson) } catch (e: Exception) { emptyMap() }
+    // --- FIX: Using ifBlank directly inside the block! ---
+    val measurements = remember(rawJson) { try { Json.decodeFromString<Map<String, Float>>(rawJson.ifBlank { "{}" }) } catch (_: Exception) { emptyMap() } }
 
     var showDialog by remember { mutableStateOf(false) }
 
@@ -328,7 +328,6 @@ fun SupplementsCard(viewModel: HealthViewModel) {
     var showCategoryDialog by remember { mutableStateOf(false) }
     var editingItem by remember { mutableStateOf<SupplementItem?>(null) }
 
-    // Tracks which category the user is trying to delete
     var categoryToDelete by remember { mutableStateOf<String?>(null) }
 
     if (categoryToDelete != null) {
@@ -361,7 +360,7 @@ fun SupplementsCard(viewModel: HealthViewModel) {
                     Text("Hold a category to delete it.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(modifier = Modifier.height(8.dp))
                     LazyColumn(modifier = Modifier.heightIn(max = 200.dp)) {
-                        items(categories) { cat ->
+                        items(categories, key = { it }) { cat ->
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -437,14 +436,14 @@ fun SupplementsCard(viewModel: HealthViewModel) {
                             elevation = CardDefaults.elevatedCardElevation(defaultElevation = 4.dp)
                         ) {
                             LazyColumn(modifier = Modifier.fillMaxSize()) {
-                                items(filtered) { template ->
+                                items(filtered, key = { it.name }) { template ->
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .clickable {
                                                 editName = template.name; editDosage = template.dosage; editCategory = template.category
                                                 editTime = template.timeOfUse; editInstruction = template.instruction
-                                                showSuggestions = false // Hides immediately!
+                                                showSuggestions = false
                                                 focusManager.clearFocus()
                                             }
                                             .padding(16.dp),
@@ -460,21 +459,21 @@ fun SupplementsCard(viewModel: HealthViewModel) {
                     OutlinedTextField(value = editDosage, onValueChange = { editDosage = it }, label = { Text("Dosage (e.g. 500mg)") }, modifier = Modifier.fillMaxWidth())
 
                     ExposedDropdownMenuBox(expanded = catExpanded, onExpandedChange = { catExpanded = it }) {
-                        OutlinedTextField(value = editCategory, onValueChange = {}, readOnly = true, label = { Text("Category") }, modifier = Modifier.menuAnchor().fillMaxWidth(), trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = catExpanded) })
+                        OutlinedTextField(value = editCategory, onValueChange = {}, readOnly = true, label = { Text("Category") }, modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable, true).fillMaxWidth(), trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = catExpanded) })
                         ExposedDropdownMenu(expanded = catExpanded, onDismissRequest = { catExpanded = false }) {
                             categories.forEach { opt -> DropdownMenuItem(text = { Text(opt) }, onClick = { editCategory = opt; catExpanded = false }) }
                         }
                     }
 
                     ExposedDropdownMenuBox(expanded = timeExpanded, onExpandedChange = { timeExpanded = it }) {
-                        OutlinedTextField(value = editTime, onValueChange = {}, readOnly = true, label = { Text("Time of Use") }, modifier = Modifier.menuAnchor().fillMaxWidth(), trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = timeExpanded) })
+                        OutlinedTextField(value = editTime, onValueChange = {}, readOnly = true, label = { Text("Time of Use") }, modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable, true).fillMaxWidth(), trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = timeExpanded) })
                         ExposedDropdownMenu(expanded = timeExpanded, onDismissRequest = { timeExpanded = false }) {
                             listOf("Morning", "Afternoon", "Evening", "Before Bed", "Anytime").forEach { opt -> DropdownMenuItem(text = { Text(opt) }, onClick = { editTime = opt; timeExpanded = false }) }
                         }
                     }
 
                     ExposedDropdownMenuBox(expanded = instExpanded, onExpandedChange = { instExpanded = it }) {
-                        OutlinedTextField(value = editInstruction, onValueChange = {}, readOnly = true, label = { Text("Instructions") }, modifier = Modifier.menuAnchor().fillMaxWidth(), trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = instExpanded) })
+                        OutlinedTextField(value = editInstruction, onValueChange = {}, readOnly = true, label = { Text("Instructions") }, modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable, true).fillMaxWidth(), trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = instExpanded) })
                         ExposedDropdownMenu(expanded = instExpanded, onDismissRequest = { instExpanded = false }) {
                             listOf("None", "With Food", "Empty Stomach", "With Water").forEach { opt -> DropdownMenuItem(text = { Text(opt) }, onClick = { editInstruction = opt; instExpanded = false }) }
                         }
@@ -504,7 +503,7 @@ fun SupplementsCard(viewModel: HealthViewModel) {
             },
             confirmButton = {
                 Button(onClick = {
-                    val idToSave = if (editingItem!!.id.isEmpty()) java.util.UUID.randomUUID().toString() else editingItem!!.id
+                    val idToSave = editingItem!!.id.ifEmpty { java.util.UUID.randomUUID().toString() } // --- FIX ---
                     viewModel.saveSupplementItem(SupplementItem(idToSave, editName, editDosage, editCategory, editTime, editRecurrenceType, editRecurrenceVal, editInstruction))
                     editingItem = null
                 }) { Text("Save") }
@@ -535,11 +534,11 @@ fun SupplementsCard(viewModel: HealthViewModel) {
                             Text(cat, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 12.dp, bottom = 4.dp))
                             HorizontalDivider(color = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f))
                         }
-                        items(items) { item ->
+                        items(items, key = { it.id }) { item ->
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clickable { editingItem = item } // Now clean and icon-free! Click to edit.
+                                    .clickable { editingItem = item }
                                     .padding(vertical = 12.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
@@ -622,7 +621,6 @@ fun SupplementsCard(viewModel: HealthViewModel) {
                                             enableDismissFromStartToEnd = false,
                                             backgroundContent = {
                                                 val isSwiping = dismissState.targetValue == SwipeToDismissBoxValue.EndToStart || dismissState.currentValue == SwipeToDismissBoxValue.EndToStart
-                                                // FIXED: Hardcoded clean solid Red
                                                 val color by animateColorAsState(targetValue = if (isSwiping) Color(0xFFE53935) else Color.Transparent)
 
                                                 Box(modifier = Modifier.fillMaxSize().padding(vertical = 2.dp).clip(RoundedCornerShape(12.dp)).background(color).padding(end = 16.dp), contentAlignment = Alignment.CenterEnd) {

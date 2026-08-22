@@ -6,10 +6,9 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack // --- FIX: AutoMirrored ---
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.MoreVert
@@ -18,32 +17,26 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.core.graphics.toColorInt // --- FIX: Fast KTX color parsing ---
 import com.example.loom.data.models.BlockType
 import com.example.loom.data.models.SandboxBlock
-import com.example.loom.data.models.SandboxSpace
 import com.example.loom.ui.sandbox.BlockRenderer
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.text.SimpleDateFormat
 import java.util.*
-import kotlin.math.roundToInt
 
 @Serializable
 data class TimelineSettings(
@@ -102,25 +95,22 @@ private fun getCustomTimePickerColors() = TimePickerDefaults.colors(
 @Composable
 fun TimelineBlockRenderer(
     block: SandboxBlock,
-    allSpaces: List<SandboxSpace>,
+    allSpaces: List<com.example.loom.data.models.SandboxSpace>, // --- FIX: Retained type mapping ---
     currentSpaceId: String,
     recentTableColors: MutableList<Color>,
-    focusRequesters: MutableMap<String, FocusRequester>,
+    focusRequesters: MutableMap<String, androidx.compose.ui.focus.FocusRequester>, // --- FIX: Retained type mapping ---
     onUpdate: (SandboxBlock) -> Unit,
     onDeleteBlock: (String, Boolean) -> Unit
 ) {
     val currentBlock by rememberUpdatedState(block)
 
-    val context = LocalContext.current
     var showSettings by remember { mutableStateOf(false) }
 
-    val settings = try { Json.decodeFromString<TimelineSettings>(currentBlock.secondaryContent) } catch (e: Exception) { TimelineSettings() }
+    val settings = try { Json.decodeFromString<TimelineSettings>(currentBlock.secondaryContent) } catch (_: Exception) { TimelineSettings() } // --- FIX: Unused 'e' ---
 
     val rowHeight = 60.dp
     val hourWidth = 120.dp
-    val density = LocalDensity.current
     val minuteWidthDp = hourWidth / 60f
-    val rowHeightPx = with(density) { rowHeight.toPx() }
 
     val horizontalScrollState = rememberScrollState()
 
@@ -133,12 +123,14 @@ fun TimelineBlockRenderer(
             "LIVE" -> {
                 cal.timeInMillis = settings.liveStartDateMillis
                 val sdf = SimpleDateFormat("MMM d (EEE)", Locale.getDefault())
-                for (i in 0..6) { labels.add(sdf.format(cal.time)); cal.add(Calendar.DAY_OF_YEAR, 1) }
+                // --- FIX: Replaced unused 'i' loop with 'repeat' ---
+                repeat(7) { labels.add(sdf.format(cal.time)); cal.add(Calendar.DAY_OF_YEAR, 1) }
             }
             else -> {
                 val daysOfWeek = listOf("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat")
                 var current = settings.startDayOfWeek - 1
-                for (i in 0..6) { labels.add(daysOfWeek[current % 7]); current++ }
+                // --- FIX: Replaced unused 'i' loop with 'repeat' ---
+                repeat(7) { labels.add(daysOfWeek[current % 7]); current++ }
             }
         }
         labels
@@ -152,7 +144,7 @@ fun TimelineBlockRenderer(
     // --- EVENT PROPERTIES DIALOG ---
     val propsCard = cardToEditProps
     if (propsCard != null) {
-        val meta = try { Json.decodeFromString<TimelineCardMeta>(propsCard.secondaryContent) } catch (e: Exception) { TimelineCardMeta() }
+        val meta = try { Json.decodeFromString<TimelineCardMeta>(propsCard.secondaryContent) } catch (_: Exception) { TimelineCardMeta() } // --- FIX: Unused 'e' ---
 
         var title by remember { mutableStateOf(propsCard.content.replace("\u200B", "")) }
         var dayIndex by remember { mutableIntStateOf(meta.dayIndex) }
@@ -162,7 +154,7 @@ fun TimelineBlockRenderer(
         var endHour by remember { mutableIntStateOf((meta.startTimeMin + meta.durationMin) / 60) }
         var endMin by remember { mutableIntStateOf((meta.startTimeMin + meta.durationMin) % 60) }
 
-        val initialColor = try { Color(android.graphics.Color.parseColor(meta.colorHex)) } catch (e: Exception) { Color(0xFF4CAF50) }
+        val initialColor = try { Color(meta.colorHex.toColorInt()) } catch (_: Exception) { Color(0xFF4CAF50) } // --- FIX: KTX Color & Unused 'e' ---
         var hue by remember { mutableFloatStateOf(0f) }
         var saturation by remember { mutableFloatStateOf(0f) }
         var value by remember { mutableFloatStateOf(0f) }
@@ -242,7 +234,8 @@ fun TimelineBlockRenderer(
                     Spacer(Modifier.height(8.dp))
                     var expandedDay by remember { mutableStateOf(false) }
                     ExposedDropdownMenuBox(expanded = expandedDay, onExpandedChange = { expandedDay = it }) {
-                        OutlinedTextField(value = dayLabels[dayIndex.coerceIn(0..6)], onValueChange = {}, readOnly = true, modifier = Modifier.menuAnchor().fillMaxWidth(), trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandedDay) })
+                        // --- FIX: Add PrimaryNotEditable to the exposed input ---
+                        OutlinedTextField(value = dayLabels[dayIndex.coerceIn(0..6)], onValueChange = {}, readOnly = true, modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable, true).fillMaxWidth(), trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandedDay) })
                         ExposedDropdownMenu(expanded = expandedDay, onDismissRequest = { expandedDay = false }) {
                             dayLabels.forEachIndexed { i, label -> DropdownMenuItem(text = { Text(label) }, onClick = { dayIndex = i; expandedDay = false }) }
                         }
@@ -434,9 +427,10 @@ fun TimelineBlockRenderer(
                         var startDayExpanded by remember { mutableStateOf(false) }
                         val daysList = listOf(Calendar.MONDAY to "Monday", Calendar.TUESDAY to "Tuesday", Calendar.WEDNESDAY to "Wednesday", Calendar.THURSDAY to "Thursday", Calendar.FRIDAY to "Friday", Calendar.SATURDAY to "Saturday", Calendar.SUNDAY to "Sunday")
                         ExposedDropdownMenuBox(expanded = startDayExpanded, onExpandedChange = { startDayExpanded = it }) {
+                            // --- FIX: Add PrimaryNotEditable to the exposed input ---
                             OutlinedTextField(
                                 value = daysList.find { it.first == settings.startDayOfWeek }?.second ?: "Monday",
-                                onValueChange = {}, readOnly = true, modifier = Modifier.menuAnchor().fillMaxWidth(),
+                                onValueChange = {}, readOnly = true, modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable, true).fillMaxWidth(),
                                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = startDayExpanded) }
                             )
                             ExposedDropdownMenu(expanded = startDayExpanded, onDismissRequest = { startDayExpanded = false }) {
@@ -496,8 +490,8 @@ fun TimelineBlockRenderer(
     // --- FULL SCREEN CANVAS DIALOG ---
     val canvasCard = currentBlock.children.find { it.id == activeCanvasCardId }
     if (canvasCard != null) {
-        val meta = try { Json.decodeFromString<TimelineCardMeta>(canvasCard.secondaryContent) } catch (e: Exception) { TimelineCardMeta() }
-        val cardColor = try { Color(android.graphics.Color.parseColor(meta.colorHex)) } catch (e: Exception) { MaterialTheme.colorScheme.primary }
+        val meta = try { Json.decodeFromString<TimelineCardMeta>(canvasCard.secondaryContent) } catch (_: Exception) { TimelineCardMeta() } // --- FIX: Unused e ---
+        val cardColor = try { Color(meta.colorHex.toColorInt()) } catch (_: Exception) { MaterialTheme.colorScheme.primary } // --- FIX: KTX Color & Unused e ---
 
         Dialog(
             onDismissRequest = { activeCanvasCardId = null },
@@ -507,7 +501,8 @@ fun TimelineBlockRenderer(
                 Column(modifier = Modifier.fillMaxSize()) {
                     Surface(color = MaterialTheme.colorScheme.surfaceVariant, shadowElevation = 4.dp) {
                         Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 12.dp).statusBarsPadding(), verticalAlignment = Alignment.CenterVertically) {
-                            IconButton(onClick = { activeCanvasCardId = null }) { Icon(Icons.Default.ArrowBack, "Back") }
+                            // --- FIX: Using AutoMirrored ---
+                            IconButton(onClick = { activeCanvasCardId = null }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
                             Spacer(modifier = Modifier.width(8.dp))
                             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
                                 Box(modifier = Modifier.size(12.dp).background(cardColor, CircleShape))
@@ -536,7 +531,7 @@ fun TimelineBlockRenderer(
                                 TextButton(onClick = {
                                     val liveCard = currentBlock.children.find { it.id == activeCanvasCardId }
                                     if (liveCard != null) {
-                                        val newId = java.util.UUID.randomUUID().toString()
+                                        val newId = UUID.randomUUID().toString()
                                         val updatedChild = liveCard.copy(children = listOf(SandboxBlock(id = newId, content = "\u200B")))
                                         val newChildren = currentBlock.children.toMutableList()
                                         val idx = newChildren.indexOfFirst { c -> c.id == updatedChild.id }
@@ -570,7 +565,7 @@ fun TimelineBlockRenderer(
                                                 val currentIndex = liveChildren.indexOfFirst { it.id == childBlock.id }
                                                 if (currentIndex != -1) {
                                                     val newIndex = currentIndex + offset
-                                                    if (newIndex in 0 until liveChildren.size) {
+                                                    if (newIndex in liveChildren.indices) { // --- FIX: Using .indices ---
                                                         val newChildren = liveChildren.toMutableList()
                                                         val temp = newChildren[currentIndex]
                                                         newChildren[currentIndex] = newChildren[newIndex]
@@ -604,7 +599,7 @@ fun TimelineBlockRenderer(
                                                 val safeIndex = liveChildren.indexOfFirst { it.id == childBlock.id }
                                                 if (safeIndex != -1) {
                                                     liveChildren[safeIndex] = liveChildren[safeIndex].copy(content = currentContent)
-                                                    val newBlockId = java.util.UUID.randomUUID().toString()
+                                                    val newBlockId = UUID.randomUUID().toString()
                                                     liveChildren.add(safeIndex + 1, SandboxBlock(id = newBlockId, type = nextType, content = nextContent))
                                                     val uCard = liveCard.copy(children = liveChildren)
                                                     val bC = currentBlock.children.toMutableList()
@@ -614,13 +609,13 @@ fun TimelineBlockRenderer(
                                                 }
                                             }
                                         },
-                                        onDeleteBlock = { remainder, deleteEntirely ->
+                                        onDeleteBlock = { remainder, deleteEntirelyFlag ->
                                             val liveCard = currentBlock.children.find { it.id == activeCanvasCardId }
                                             if (liveCard != null) {
                                                 val liveChildren = liveCard.children.toMutableList()
                                                 val safeIndex = liveChildren.indexOfFirst { it.id == childBlock.id }
                                                 if (safeIndex != -1 && safeIndex < liveChildren.size) {
-                                                    if (liveChildren.size == 1 && safeIndex == 0 && (deleteEntirely || remainder.trim().replace("\u200B","").isEmpty())) {
+                                                    if (liveChildren.size == 1 && safeIndex == 0 && (deleteEntirelyFlag || remainder.trim().replace("\u200B","").isEmpty())) {
                                                         liveChildren[0] = liveChildren[0].copy(type = BlockType.TEXT, content = "\u200B")
                                                         val uCard = liveCard.copy(children = liveChildren)
                                                         val bC = currentBlock.children.toMutableList()
@@ -628,7 +623,7 @@ fun TimelineBlockRenderer(
                                                         if (cardIdx != -1) { bC[cardIdx] = uCard; onUpdate(currentBlock.copy(children = bC)) }
                                                         canvasFocusedBlockId = liveChildren[0].id
                                                     } else {
-                                                        if (deleteEntirely) {
+                                                        if (deleteEntirelyFlag) {
                                                             val prevId = if (safeIndex > 0) liveChildren[safeIndex - 1].id else null
                                                             liveChildren.removeAt(safeIndex)
                                                             val uCard = liveCard.copy(children = liveChildren)
@@ -656,7 +651,8 @@ fun TimelineBlockRenderer(
                                                                 if (cardIdx != -1) { bC[cardIdx] = uCard; onUpdate(currentBlock.copy(children = bC)) }
                                                             }
                                                         } else if (safeIndex == 0) {
-                                                            if (deleteEntirely || remainder.trim().replace("\u200B","").isEmpty()) {
+                                                            // --- FIX: The "always false" warning pointed out that 'deleteEntirelyFlag' was checked above, meaning it is impossible to be true here ---
+                                                            if (remainder.trim().replace("\u200B","").isEmpty()) {
                                                                 liveChildren.removeAt(0)
                                                                 val uCard = liveCard.copy(children = liveChildren)
                                                                 val bC = currentBlock.children.toMutableList()
@@ -699,7 +695,6 @@ fun TimelineBlockRenderer(
                 Text(currentBlock.content.replace("\u200B", "").ifEmpty { "Weekly Schedule" }, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
                 Row {
                     IconButton(onClick = {
-                        // --- FIX: Start exactly at the beginning of the visible timeline! ---
                         val newEvent = SandboxBlock(type = BlockType.TIMELINE_CARD, content = "\u200BNew Event", secondaryContent = Json.encodeToString(TimelineCardMeta(startTimeMin = settings.startHour * 60)))
                         cardToEditProps = newEvent
                         isNewCard = true
@@ -756,12 +751,12 @@ fun TimelineBlockRenderer(
                             }
 
                             currentBlock.children.forEach { childCard ->
-                                val meta = try { Json.decodeFromString<TimelineCardMeta>(childCard.secondaryContent) } catch (e: Exception) { TimelineCardMeta() }
+                                val meta = try { Json.decodeFromString<TimelineCardMeta>(childCard.secondaryContent) } catch (_: Exception) { TimelineCardMeta() } // --- FIX: Unused 'e' ---
                                 val cardStartTotalMin = meta.startTimeMin
                                 val visibleStartMin = settings.startHour * 60
 
                                 if (cardStartTotalMin >= visibleStartMin && cardStartTotalMin < settings.endHour * 60) {
-                                    val cardColor = try { Color(android.graphics.Color.parseColor(meta.colorHex)) } catch (e: Exception) { MaterialTheme.colorScheme.primary }
+                                    val cardColor = try { Color(meta.colorHex.toColorInt()) } catch (_: Exception) { MaterialTheme.colorScheme.primary } // --- FIX: KTX Color & Unused 'e' ---
 
                                     val cardXDp = minuteWidthDp * (cardStartTotalMin - visibleStartMin)
                                     val cardYDp = rowHeight * meta.dayIndex

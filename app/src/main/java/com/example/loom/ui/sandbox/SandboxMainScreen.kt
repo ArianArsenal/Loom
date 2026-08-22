@@ -1,5 +1,6 @@
 package com.example.loom.ui.sandbox
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -12,6 +13,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -20,21 +22,19 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager // --- FIX: Clean qualifier ---
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.example.loom.data.models.SandboxBlock
 import com.example.loom.data.models.SandboxSpace
-import com.example.loom.utils.SecurityManager
+import com.example.loom.util.SecurityManager
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import androidx.activity.compose.BackHandler
-import androidx.compose.runtime.LaunchedEffect
+import kotlin.time.Duration.Companion.milliseconds // --- FIX: Duration mapping ---
 
 enum class SandboxRoute { HUB, CANVAS }
-
-
 
 @Composable
 fun SandboxMainScreen(
@@ -45,7 +45,6 @@ fun SandboxMainScreen(
     var currentRoute by remember { mutableStateOf(SandboxRoute.HUB) }
     var spaceBackstack by remember { mutableStateOf(emptyList<String>()) }
 
-    // --- NEW: Broadcast to LoomMainScreen whenever the route changes! ---
     LaunchedEffect(currentRoute) {
         onCanvasVisibilityChanged(currentRoute == SandboxRoute.CANVAS)
     }
@@ -55,22 +54,19 @@ fun SandboxMainScreen(
 
     val activeSpace = allSpaces.find { it.id == spaceBackstack.lastOrNull() }
 
-    // Security Dialog States
     var spaceToUnlock by remember { mutableStateOf<SandboxSpace?>(null) }
     var showPinFallback by remember { mutableStateOf(false) }
     var showNoSecurityDialog by remember { mutableStateOf(false) }
     var passwordInput by remember { mutableStateOf("") }
     var passwordError by remember { mutableStateOf(false) }
 
-    // Locks to prevent double-taps and store pending navigation
     var isNavigating by remember { mutableStateOf(false) }
     var pendingNavigation by remember { mutableStateOf<Pair<String, Boolean>?>(null) }
 
     val savedPin = SecurityManager.getPin(context)
-    val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
+    val focusManager = LocalFocusManager.current // --- FIX: Replaced redundant qualifier ---
     val scope = rememberCoroutineScope()
 
-    // Master Navigation Logic with Security Interception
     val attemptNavigateToSpace = { spaceId: String, isNested: Boolean ->
         if (!isNavigating) {
             isNavigating = true
@@ -88,7 +84,6 @@ fun SandboxMainScreen(
             }
 
             if (targetSpace?.isPrivate == true) {
-                // THE FIX: Check if the PIN is null OR an empty string
                 val hasPin = !savedPin.isNullOrBlank()
                 val hasBio = isBiometricEnabled && SecurityManager.hasBiometricHardware(context)
 
@@ -96,7 +91,7 @@ fun SandboxMainScreen(
                     showNoSecurityDialog = true
                 } else if (hasBio) {
                     scope.launch {
-                        kotlinx.coroutines.delay(100) // UI settle delay
+                        delay(100.milliseconds) // --- FIX: Modern Duration API ---
                         SecurityManager.authenticate(
                             context = context,
                             title = "Unlock Private Space",
@@ -118,12 +113,11 @@ fun SandboxMainScreen(
                     showPinFallback = true
                 }
             } else {
-                executeNavigation() // Public space, go right in
+                executeNavigation()
             }
         }
     }
 
-    // "Go to Settings" Warning Dialog
     if (showNoSecurityDialog) {
         AlertDialog(
             onDismissRequest = { showNoSecurityDialog = false; isNavigating = false },
@@ -135,7 +129,6 @@ fun SandboxMainScreen(
         )
     }
 
-    // PIN Fallback Dialog
     if (showPinFallback && spaceToUnlock != null) {
         AlertDialog(
             onDismissRequest = {
@@ -145,7 +138,6 @@ fun SandboxMainScreen(
             title = { Text("Private Space") },
             text = {
                 Column {
-                    // THE FIX: Use isNullOrBlank()
                     if (savedPin.isNullOrBlank()) {
                         Text("No PIN has been configured. Please go to Settings to set up an App PIN.", color = MaterialTheme.colorScheme.error)
                     } else {
@@ -200,7 +192,6 @@ fun SandboxMainScreen(
         )
     } else {
         activeSpace?.let { space ->
-            // --- NEW: HARDWARE BACK BUTTON INTERCEPTOR ---
             BackHandler {
                 if (spaceBackstack.size > 1) {
                     spaceBackstack = spaceBackstack.dropLast(1)
@@ -221,7 +212,6 @@ fun SandboxMainScreen(
                         currentRoute = SandboxRoute.HUB
                     }
                 },
-                // ... rest of parameters stay the same ...
                 onNavigateToSpace = { spaceId -> attemptNavigateToSpace(spaceId, true) },
                 onCreateLinkedSpace = {
                     val newSpace = SandboxSpace(title = "", blocks = listOf(SandboxBlock(content = ZWSP)))

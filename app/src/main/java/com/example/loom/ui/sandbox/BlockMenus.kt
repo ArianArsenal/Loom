@@ -33,7 +33,6 @@ import androidx.compose.ui.window.PopupProperties
 import com.example.loom.data.models.BlockType
 import com.example.loom.data.models.SandboxBlock
 
-
 @Composable
 fun CalloutColorPicker(currentBlock: SandboxBlock, onUpdate: (SandboxBlock) -> Unit, onDismiss: () -> Unit) {
     var hue by remember { mutableFloatStateOf(0f) }

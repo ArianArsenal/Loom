@@ -191,6 +191,41 @@ interface TrackerDao {
     @Query("SELECT * FROM exercises WHERE dateId LIKE :monthPrefix || '%'")
     fun getExercisesForMonth(monthPrefix: String): Flow<List<Exercise>>
 
+
+    // --- BULK IMPORTS FOR LIGHTNING FAST RESTORES ---
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertDailyRecords(records: List<DailyRecord>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertTasks(tasks: List<Task>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertTaskSections(sections: List<TaskSection>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertExercises(exercises: List<Exercise>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertPresets(presets: List<WorkoutPreset>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertTemplates(templates: List<ExerciseTemplate>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertDiaryNotes(notes: List<DiaryNote>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertNoteTags(tags: List<NoteTag>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertSkincareProducts(products: List<SkincareProduct>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertSkincareRoutines(routines: List<SkincareRoutine>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertFoodItems(foodItems: List<FoodItem>)
+
     // --- DANGER ZONE (WIPE ALL DATA) ---
     @Query("DELETE FROM daily_records") suspend fun wipeDailyRecords()
     @Query("DELETE FROM tasks") suspend fun wipeTasks()

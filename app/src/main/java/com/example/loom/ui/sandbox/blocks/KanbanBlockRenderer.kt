@@ -34,7 +34,6 @@ import androidx.compose.ui.unit.dp
 import com.example.loom.data.models.CalendarChecklistItem
 import com.example.loom.data.models.KanbanCard
 import com.example.loom.data.models.KanbanColumn
-
 import com.example.loom.data.models.SandboxBlock
 import kotlin.math.roundToInt
 
@@ -44,7 +43,7 @@ fun KanbanBlockRenderer(
     block: SandboxBlock,
     textState: TextFieldValue,
     handleTextChange: (TextFieldValue) -> Unit,
-    commonModifier: Modifier,
+    modifier: Modifier, // --- FIX: Renamed modifier ---
     placeholderUI: @Composable (@Composable () -> Unit) -> Unit,
     onUpdate: (SandboxBlock) -> Unit,
     onDeleteBlock: (String, Boolean) -> Unit
@@ -57,7 +56,7 @@ fun KanbanBlockRenderer(
             BasicTextField(
                 value = textState, onValueChange = handleTextChange,
                 textStyle = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface),
-                modifier = commonModifier.weight(1f), cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                modifier = modifier.weight(1f), cursorBrush = SolidColor(MaterialTheme.colorScheme.primary), // --- FIX: Applied renamed modifier ---
                 decorationBox = placeholderUI
             )
             IconButton(onClick = { showBlockMenu = true }) { Icon(Icons.Default.MoreVert, "Options", tint = Color.Gray) }
@@ -66,15 +65,15 @@ fun KanbanBlockRenderer(
             }
         }
 
-        val columns = if (block.kanbanColumns.isEmpty()) listOf(KanbanColumn(title = "To Do"), KanbanColumn(title = "In Progress"), KanbanColumn(title = "Done")) else block.kanbanColumns
+        // --- FIX: Replaced with ifEmpty ---
+        val columns = block.kanbanColumns.ifEmpty { listOf(KanbanColumn(title = "To Do"), KanbanColumn(title = "In Progress"), KanbanColumn(title = "Done")) }
 
-        // --- FIX: IntrinsicSize.Max ensures all columns dynamically stretch to match the tallest one ---
         Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).height(IntrinsicSize.Max), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             columns.forEachIndexed { colIndex, col ->
                 Column(
                     modifier = Modifier
                         .width(280.dp)
-                        .fillMaxHeight() // Takes up full Intrinsic size available in the row
+                        .fillMaxHeight()
                         .defaultMinSize(minHeight = 150.dp)
                         .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f), RoundedCornerShape(12.dp))
                         .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f), RoundedCornerShape(12.dp))
@@ -133,7 +132,8 @@ fun KanbanBlockRenderer(
                                         if (card.tags.isNotEmpty()) {
                                             Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.horizontalScroll(rememberScrollState()).weight(1f, fill = false)) {
                                                 card.tags.forEach { tagName ->
-                                                    val tagHash = Math.abs(tagName.hashCode()) % 5
+                                                    // --- FIX: Using Kotlin's native math library ---
+                                                    val tagHash = kotlin.math.abs(tagName.hashCode()) % 5
                                                     val tagColor = when(tagHash) { 0->Color(0xFF2196F3); 1->Color(0xFF9C27B0); 2->Color(0xFFFF9800); 3->Color(0xFF00BCD4); else->Color(0xFFE91E63) }
                                                     Surface(color = tagColor.copy(alpha = 0.2f), shape = RoundedCornerShape(4.dp)) { Text(tagName, style = MaterialTheme.typography.labelSmall, color = tagColor, modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)) }
                                                 }
@@ -187,7 +187,6 @@ fun KanbanBlockRenderer(
             }
         }
 
-        // --- FIX: Completely Re-Written Inline Kanban Card Edit Dialog ---
         if (editingCard != null) {
             val (cIdx, rIdx, cardToEdit) = editingCard!!
 
@@ -195,11 +194,9 @@ fun KanbanBlockRenderer(
             var editDesc by remember { mutableStateOf(cardToEdit.description) }
             var editPriority by remember { mutableIntStateOf(cardToEdit.priority) }
 
-            // Chips tag state
             var editTags by remember { mutableStateOf(cardToEdit.tags) }
             var newTagText by remember { mutableStateOf("") }
 
-            // Subtasks state
             var editSubtasks by remember { mutableStateOf(cardToEdit.subtasks) }
 
             AlertDialog(
@@ -213,6 +210,7 @@ fun KanbanBlockRenderer(
 
                         Spacer(Modifier.height(16.dp))
                         Text("Priority (1-5)", style = MaterialTheme.typography.labelMedium)
+                        // --- FIX: Using Kotlin method reference Float::roundToInt ---
                         Slider(value = editPriority.toFloat(), onValueChange = { editPriority = it.roundToInt() }, valueRange = 1f..5f, steps = 3)
 
                         Spacer(Modifier.height(16.dp))

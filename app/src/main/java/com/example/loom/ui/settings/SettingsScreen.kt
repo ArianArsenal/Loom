@@ -10,13 +10,15 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.ColorLens
 import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -28,29 +30,43 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.example.loom.ui.home.HomeViewModel
-import com.example.loom.utils.SecurityManager
+import com.example.loom.util.SecurityManager
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     viewModel: HomeViewModel,
-    onNavigateBack: () -> Unit
+    onNavigateBack: () -> Unit,
+    onNavigateToBugReport: () -> Unit // --- NEW CALLBACK ---
 ) {
     val context = LocalContext.current
+
+    val userName by viewModel.userName.collectAsState()
     val appTheme by viewModel.appTheme.collectAsState()
     val isBiometricEnabled by viewModel.isBiometricEnabled.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
-    var currentPin by remember { mutableStateOf(SecurityManager.getPin(context)) }
+
+    var currentPin by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(Unit) {
+        withContext(Dispatchers.IO) {
+            val pin = SecurityManager.getPin(context)
+            withContext(Dispatchers.Main) {
+                currentPin = pin
+            }
+        }
+    }
 
     // Dialog States
     var showSetPinDialog by remember { mutableStateOf(false) }
     var showAuthPinDialog by remember { mutableStateOf(false) }
     var showWipeConfirmDialog by remember { mutableStateOf(false) }
+    var showEditNameDialog by remember { mutableStateOf(false) }
     var pinInput by remember { mutableStateOf("") }
     var pinError by remember { mutableStateOf(false) }
     var pendingDisableBiometric by remember { mutableStateOf(false) }
 
-    // Backup & Restore OS Launchers
     val exportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/json"),
         onResult = { uri ->
@@ -75,10 +91,38 @@ fun SettingsScreen(
         }
     )
 
-    // Processing / Loading Dialog
+    // --- NEW: Edit Name Dialog ---
+    if (showEditNameDialog) {
+        var nameInput by remember { mutableStateOf(userName) }
+        AlertDialog(
+            onDismissRequest = { showEditNameDialog = false },
+            title = { Text("Edit Profile") },
+            text = {
+                OutlinedTextField(
+                    value = nameInput,
+                    onValueChange = { nameInput = it },
+                    label = { Text("Your Name") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            confirmButton = {
+                Button(onClick = {
+                    if (nameInput.isNotBlank()) {
+                        viewModel.saveUserName(nameInput.trim())
+                    }
+                    showEditNameDialog = false
+                }) { Text("Save") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showEditNameDialog = false }) { Text("Cancel") }
+            }
+        )
+    }
+
     if (isLoading) {
         AlertDialog(
-            onDismissRequest = { /* Prevent dismissing by tapping outside */ },
+            onDismissRequest = { },
             confirmButton = {},
             title = { Text("Processing Data") },
             text = {
@@ -94,7 +138,6 @@ fun SettingsScreen(
         )
     }
 
-    // Danger Zone Confirmation Dialog
     if (showWipeConfirmDialog) {
         AlertDialog(
             onDismissRequest = { showWipeConfirmDialog = false },
@@ -126,7 +169,6 @@ fun SettingsScreen(
         )
     }
 
-    // Dialog: Set NEW Pin
     if (showSetPinDialog) {
         AlertDialog(
             onDismissRequest = { showSetPinDialog = false; pinInput = ""; pinError = false },
@@ -164,7 +206,7 @@ fun SettingsScreen(
                     if (!currentPin.isNullOrBlank()) {
                         TextButton(
                             onClick = {
-                                SecurityManager.savePin(context, "") // Erase PIN
+                                SecurityManager.savePin(context, "")
                                 currentPin = ""
                                 showSetPinDialog = false
                                 pinInput = ""
@@ -180,7 +222,6 @@ fun SettingsScreen(
         )
     }
 
-    // Dialog: Authenticate Existing PIN
     if (showAuthPinDialog) {
         AlertDialog(
             onDismissRequest = { showAuthPinDialog = false; pinInput = ""; pinError = false },
@@ -230,7 +271,7 @@ fun SettingsScreen(
         topBar = {
             TopAppBar(
                 title = { Text("Settings", fontWeight = FontWeight.Bold) },
-                navigationIcon = { IconButton(onClick = onNavigateBack) { Icon(Icons.Default.ArrowBack, contentDescription = "Back") } }
+                navigationIcon = { IconButton(onClick = onNavigateBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") } }
             )
         }
     ) { paddingValues ->
@@ -242,6 +283,30 @@ fun SettingsScreen(
                 .verticalScroll(rememberScrollState())
         ) {
             Spacer(modifier = Modifier.height(8.dp))
+
+            // --- NEW: PROFILE SECTION ---
+            Text("Profile", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+            Spacer(modifier = Modifier.height(8.dp))
+
+            ElevatedCard(
+                modifier = Modifier.fillMaxWidth().clickable { showEditNameDialog = true },
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
+                Row(
+                    modifier = Modifier.padding(16.dp).fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Default.Person, contentDescription = "Profile", tint = MaterialTheme.colorScheme.primary)
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(userName.ifBlank { "User" }, fontWeight = FontWeight.Bold)
+                        Text("Tap to edit your name", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
 
             // --- SECURITY SECTION ---
             Text("Security", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
@@ -296,7 +361,6 @@ fun SettingsScreen(
                                     viewModel.setBiometricEnabled(true)
                                 } else {
                                     if (currentPin.isNullOrBlank()) {
-                                        // FIX: If they don't even have a PIN, let them turn it off freely!
                                         viewModel.setBiometricEnabled(false)
                                     } else {
                                         SecurityManager.authenticate(
@@ -392,6 +456,26 @@ fun SettingsScreen(
                             Text("Import Data", fontWeight = FontWeight.Bold)
                             Text("Restore everything from a previous Loom backup", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // --- NEW: SUPPORT & FEEDBACK SECTION ---
+            Text("Support & Feedback", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+            Spacer(modifier = Modifier.height(8.dp))
+
+            ElevatedCard(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                Row(
+                    modifier = Modifier.padding(16.dp).fillMaxWidth().clickable { onNavigateToBugReport() },
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Default.BugReport, contentDescription = "Bug Report", tint = MaterialTheme.colorScheme.primary)
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Report a Bug", fontWeight = FontWeight.Bold)
+                        Text("Found an issue? Let us know so we can fix it.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }

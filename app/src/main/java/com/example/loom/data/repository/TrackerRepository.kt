@@ -11,10 +11,13 @@ import com.example.loom.data.local.entity.SkincareProduct
 import com.example.loom.data.local.entity.SkincareRoutine
 import com.example.loom.data.local.entity.Task
 import com.example.loom.data.local.entity.TaskSection
+import com.example.loom.data.local.entity.WaterLog // --- FIX: Extracted for clean code ---
 import com.example.loom.data.local.entity.WorkoutPreset
 import com.example.loom.util.DateUtils
 import kotlinx.coroutines.flow.Flow
 import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json // --- FIX: Extracted for clean code ---
+import java.util.UUID // --- FIX: Extracted for clean code ---
 import javax.inject.Inject
 
 class TrackerRepository @Inject constructor(private val dao: TrackerDao) {
@@ -40,7 +43,7 @@ class TrackerRepository @Inject constructor(private val dao: TrackerDao) {
         val record = dao.getDailyRecordSync(DateUtils.getTodayDateId())
         if (record != null) {
             // Calculate total net hydration from logs
-            val logsList = try { kotlinx.serialization.json.Json.decodeFromString<List<com.example.loom.data.local.entity.WaterLog>>(logsJson) } catch (e: Exception) { emptyList() }
+            val logsList = try { Json.decodeFromString<List<WaterLog>>(logsJson) } catch (_: Exception) { emptyList() } // --- FIX: Unused 'e' & Cleaned qualifier ---
             var netHydration = 0f
             logsList.forEach { netHydration += (it.amountMl * it.hydrationFactor) }
 
@@ -54,7 +57,7 @@ class TrackerRepository @Inject constructor(private val dao: TrackerDao) {
     suspend fun addWater(amountMl: Int, targetDateId: String = DateUtils.getTodayDateId()) {
         val record = dao.getDailyRecordSync(targetDateId)
         if (record != null) {
-            val currentLogs = try { kotlinx.serialization.json.Json.decodeFromString<List<com.example.loom.data.local.entity.WaterLog>>(record.waterLogsJson) } catch (e: Exception) { emptyList() }
+            val currentLogs = try { Json.decodeFromString<List<WaterLog>>(record.waterLogsJson) } catch (_: Exception) { emptyList() } // --- FIX: Unused 'e' & Cleaned qualifier ---
 
             // Find matching container name/icon based on volume, or fallback nicely
             val containerName = when (amountMl) {
@@ -70,15 +73,15 @@ class TrackerRepository @Inject constructor(private val dao: TrackerDao) {
                 else -> "LocalDrink"
             }
 
-            val newLog = com.example.loom.data.local.entity.WaterLog(
-                id = java.util.UUID.randomUUID().toString(),
+            val newLog = WaterLog(
+                id = UUID.randomUUID().toString(), // --- FIX: Cleaned qualifier ---
                 containerName = containerName,
                 emoji = iconKey,
                 amountMl = amountMl,
                 hydrationFactor = 1.0f,
                 timestamp = System.currentTimeMillis()
             )
-            val updatedJson = kotlinx.serialization.json.Json.encodeToString(currentLogs + newLog)
+            val updatedJson = Json.encodeToString(currentLogs + newLog) // --- FIX: Cleaned qualifier ---
 
             record.waterLogsJson = updatedJson
             record.waterIntakeMl += amountMl
@@ -89,11 +92,11 @@ class TrackerRepository @Inject constructor(private val dao: TrackerDao) {
     suspend fun removeWater(amountMl: Int, targetDateId: String = DateUtils.getTodayDateId()) {
         val record = dao.getDailyRecordSync(targetDateId)
         if (record != null) {
-            val currentLogs = try { kotlinx.serialization.json.Json.decodeFromString<List<com.example.loom.data.local.entity.WaterLog>>(record.waterLogsJson) } catch (e: Exception) { emptyList() }.toMutableList()
+            val currentLogs = try { Json.decodeFromString<List<WaterLog>>(record.waterLogsJson) } catch (_: Exception) { emptyList() }.toMutableList() // --- FIX: Unused 'e' & Cleaned qualifier ---
             if (currentLogs.isNotEmpty()) {
                 // FIXED: Using removeAt to avoid API 35 conflicts
                 val removedLog = currentLogs.removeAt(currentLogs.lastIndex)
-                val updatedJson = kotlinx.serialization.json.Json.encodeToString(currentLogs)
+                val updatedJson = Json.encodeToString(currentLogs) // --- FIX: Cleaned qualifier ---
                 record.waterLogsJson = updatedJson
                 record.waterIntakeMl = (record.waterIntakeMl - (removedLog.amountMl * removedLog.hydrationFactor).toInt()).coerceAtLeast(0)
             } else {

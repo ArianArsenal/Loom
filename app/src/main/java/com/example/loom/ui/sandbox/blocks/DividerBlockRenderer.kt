@@ -15,6 +15,13 @@ fun DividerBlockRenderer(isReadOnly: Boolean, onDeleteBlock: (String, Boolean) -
     var showBlockMenu by remember { mutableStateOf(false) }
     Box(modifier = Modifier.fillMaxWidth().height(32.dp), contentAlignment = Alignment.Center) {
         HorizontalDivider(modifier = Modifier.padding(end = 40.dp), color = Color.LightGray)
-        if (!isReadOnly) { IconButton(onClick = { showBlockMenu = true }, modifier = Modifier.align(Alignment.CenterEnd).size(32.dp)) { Icon(Icons.Default.MoreVert, "Options", tint = Color.LightGray, modifier = Modifier.size(18.dp)) }; DropdownMenu(expanded = showBlockMenu, onDismissRequest = { showBlockMenu = false }) { DropdownMenuItem(text = { Text("Delete Divider", color = MaterialTheme.colorScheme.error) }, onClick = { onDeleteBlock("", true) }) } }
+        if (!isReadOnly) {
+            IconButton(onClick = { showBlockMenu = true }, modifier = Modifier.align(Alignment.CenterEnd).size(32.dp)) {
+                Icon(Icons.Default.MoreVert, "Options", tint = Color.LightGray, modifier = Modifier.size(18.dp))
+            }
+            DropdownMenu(expanded = showBlockMenu, onDismissRequest = { showBlockMenu = false }) {
+                DropdownMenuItem(text = { Text("Delete Divider", color = MaterialTheme.colorScheme.error) }, onClick = { onDeleteBlock("", true) })
+            }
+        }
     }
 }

@@ -8,6 +8,7 @@ import com.example.loom.data.repository.TrackerRepository
 import com.example.loom.ui.health.SupplementItem
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.FlowPreview // --- FIX: Added FlowPreview import ---
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -19,6 +20,7 @@ import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 import java.util.Date
 import java.util.Locale
+import kotlin.time.Duration.Companion.milliseconds // --- FIX: Added duration extension ---
 import javax.inject.Inject
 
 data class DailySnapshot(
@@ -27,7 +29,6 @@ data class DailySnapshot(
     val exercises: List<Exercise>
 )
 
-// NEW: Data class for our Monthly Overview Dashboard
 data class MonthlyAnalytics(
     val averageSleep: Float = 0f,
     val workoutDays: Int = 0,
@@ -56,17 +57,14 @@ class CalendarViewModel @Inject constructor(
     val allSkincareRoutines: StateFlow<List<SkincareRoutine>> = repository.getAllSkincareRoutines().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val allSkincareProducts: StateFlow<List<SkincareProduct>> = repository.getAllSkincareProducts().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val targetProtein: StateFlow<Int> = userPreferences.targetProteinFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 140)
-    val targetCarbs: StateFlow<Int> = userPreferences.targetCarbsFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 350)
-    val targetFats: StateFlow<Int> = userPreferences.targetFatsFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 75)
     val weightFlow: StateFlow<Float> = userPreferences.weightFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 70f)
 
     val supplementsRoster: StateFlow<List<SupplementItem>> = userPreferences.supplementsRosterFlow
-        .map { try { Json.decodeFromString<List<SupplementItem>>(it) } catch (e: Exception) { emptyList() } }
+        .map { try { Json.decodeFromString<List<SupplementItem>>(it) } catch (_: Exception) { emptyList() } } // --- FIX: Unused 'e' ---
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val supplementCategories: StateFlow<List<String>> = userPreferences.supplementCategoriesFlow
-        .map { try { Json.decodeFromString<List<String>>(it) } catch (e: Exception) { listOf("Supplement", "Medication", "Pre-workout") } }
+        .map { try { Json.decodeFromString<List<String>>(it) } catch (_: Exception) { listOf("Supplement", "Medication", "Pre-workout") } } // --- FIX: Unused 'e' ---
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), listOf("Supplement", "Medication", "Pre-workout"))
 
     val selectedDateScheduledSupplements: StateFlow<List<SupplementItem>> = combine(
@@ -90,15 +88,6 @@ class CalendarViewModel @Inject constructor(
             }
         }.sortedBy { it.timeOfUse }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-
-    @OptIn(ExperimentalCoroutinesApi::class)
-    val monthlyRecords: StateFlow<Map<String, DailyRecord>> = currentMonth
-        .flatMapLatest { yearMonth ->
-            val prefix = yearMonth.format(DateTimeFormatter.ofPattern("yyyy-MM"))
-            repository.getRecordsForMonth(prefix)
-        }
-        .map { list -> list.associateBy { it.dateId } }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
 
     @OptIn(ExperimentalCoroutinesApi::class)
     val activeDays: StateFlow<Set<String>> = currentMonth
@@ -151,7 +140,6 @@ class CalendarViewModel @Inject constructor(
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptySet())
 
-    // NEW: Analytics Engine computes averages for the month
     @OptIn(ExperimentalCoroutinesApi::class)
     val monthlyAnalytics: StateFlow<MonthlyAnalytics> = currentMonth
         .flatMapLatest { yearMonth ->
@@ -230,9 +218,10 @@ class CalendarViewModel @Inject constructor(
     private val _foodSearchQuery = MutableStateFlow("")
     val foodSearchQuery: StateFlow<String> = _foodSearchQuery.asStateFlow()
 
-    @OptIn(ExperimentalCoroutinesApi::class)
+    // --- FIX: Added FlowPreview OptIn and used milliseconds duration ---
+    @OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
     val searchedFoodItems: StateFlow<List<FoodItem>> = _foodSearchQuery
-        .debounce(300L)
+        .debounce(300.milliseconds)
         .flatMapLatest { query ->
             if (query.isBlank()) repository.searchFoodItems("مرغ")
             else repository.searchFoodItems(query)
@@ -260,7 +249,7 @@ class CalendarViewModel @Inject constructor(
             calories = totalCals, protein = totalPro, carbs = totalCarbs, fats = totalFats, timestamp = currentTime
         )
 
-        val currentLogs = try { Json.decodeFromString<List<ConsumedFoodLog>>(record.consumedFoodsJson) } catch (e: Exception) { emptyList() }
+        val currentLogs = try { Json.decodeFromString<List<ConsumedFoodLog>>(record.consumedFoodsJson) } catch (_: Exception) { emptyList() } // --- FIX: Unused 'e' ---
         repository.updateDailyRecord(record.copy(
             calories = record.calories + totalCals,
             protein = record.protein + totalPro,
@@ -272,7 +261,7 @@ class CalendarViewModel @Inject constructor(
 
     fun removeConsumedFoodLog(log: ConsumedFoodLog) = viewModelScope.launch {
         val record = _selectedDateSnapshot.value?.record ?: return@launch
-        val currentLogs = try { Json.decodeFromString<List<ConsumedFoodLog>>(record.consumedFoodsJson) } catch (e: Exception) { emptyList() }
+        val currentLogs = try { Json.decodeFromString<List<ConsumedFoodLog>>(record.consumedFoodsJson) } catch (_: Exception) { emptyList() } // --- FIX: Unused 'e' ---
         val updatedLogs = currentLogs.filter { it.id != log.id }
         repository.updateDailyRecord(record.copy(
             calories = record.calories - log.calories,
@@ -331,7 +320,7 @@ class CalendarViewModel @Inject constructor(
         userPreferences.saveSupplementsRoster(Json.encodeToString(current))
 
         val record = _selectedDateSnapshot.value?.record ?: return@launch
-        val currentCompleted = try { Json.decodeFromString<List<String>>(record.completedSupplementsJson) } catch (e: Exception) { emptyList() }.toMutableList()
+        val currentCompleted = try { Json.decodeFromString<List<String>>(record.completedSupplementsJson) } catch (_: Exception) { emptyList() }.toMutableList() // --- FIX: Unused 'e' ---
         if (currentCompleted.contains(id)) {
             currentCompleted.remove(id)
             repository.updateDailyRecord(record.copy(completedSupplementsJson = Json.encodeToString(currentCompleted)))
@@ -340,7 +329,7 @@ class CalendarViewModel @Inject constructor(
 
     fun toggleSupplement(id: String) = viewModelScope.launch {
         val record = _selectedDateSnapshot.value?.record ?: return@launch
-        val currentList = try { Json.decodeFromString<List<String>>(record.completedSupplementsJson) } catch (e: Exception) { emptyList() }.toMutableList()
+        val currentList = try { Json.decodeFromString<List<String>>(record.completedSupplementsJson) } catch (_: Exception) { emptyList() }.toMutableList() // --- FIX: Unused 'e' ---
         if (currentList.contains(id)) currentList.remove(id) else currentList.add(id)
         repository.updateDailyRecord(record.copy(completedSupplementsJson = Json.encodeToString(currentList)))
     }
@@ -352,7 +341,7 @@ class CalendarViewModel @Inject constructor(
 
     fun logSkincareRoutine(routineName: String) = viewModelScope.launch {
         val record = _selectedDateSnapshot.value?.record ?: return@launch
-        val currentRoutines = try { Json.decodeFromString<List<String>>(record.completedSkincareRoutinesJson) } catch (e: Exception) { emptyList() }.toMutableList()
+        val currentRoutines = try { Json.decodeFromString<List<String>>(record.completedSkincareRoutinesJson) } catch (_: Exception) { emptyList() }.toMutableList() // --- FIX: Unused 'e' ---
         if (!currentRoutines.contains(routineName)) {
             currentRoutines.add(routineName)
             repository.updateDailyRecord(record.copy(completedSkincareRoutinesJson = Json.encodeToString(currentRoutines)))
@@ -362,29 +351,15 @@ class CalendarViewModel @Inject constructor(
     fun toggleSkincareStep(routineName: String, productName: String) = viewModelScope.launch {
         val record = _selectedDateSnapshot.value?.record ?: return@launch
         val stepId = "${routineName}_${productName}"
-        val currentList = try { Json.decodeFromString<List<String>>(record.completedSkincareStepsJson) } catch (e: Exception) { emptyList() }.toMutableList()
+        val currentList = try { Json.decodeFromString<List<String>>(record.completedSkincareStepsJson) } catch (_: Exception) { emptyList() }.toMutableList() // --- FIX: Unused 'e' ---
         if (currentList.contains(stepId)) currentList.remove(stepId) else currentList.add(stepId)
         repository.updateDailyRecord(record.copy(completedSkincareStepsJson = Json.encodeToString(currentList)))
     }
 
-    fun toggleAllSkincareSteps(routineName: String, products: List<String>, isCompleted: Boolean) = viewModelScope.launch {
-        val record = _selectedDateSnapshot.value?.record ?: return@launch
-        val currentSteps = try { Json.decodeFromString<List<String>>(record.completedSkincareStepsJson) } catch (e: Exception) { emptyList() }.toMutableList()
-        products.forEach { p ->
-            val stepId = "${routineName}_$p"
-            if (isCompleted) {
-                if (!currentSteps.contains(stepId)) currentSteps.add(stepId)
-            } else {
-                currentSteps.remove(stepId)
-            }
-        }
-        repository.updateDailyRecord(record.copy(completedSkincareStepsJson = Json.encodeToString(currentSteps)))
-    }
-
     fun removeLoggedSkincareRoutine(routineName: String, products: List<String>) = viewModelScope.launch {
         val record = _selectedDateSnapshot.value?.record ?: return@launch
-        val currentRoutines = try { Json.decodeFromString<List<String>>(record.completedSkincareRoutinesJson) } catch (e: Exception) { emptyList() }.toMutableList()
-        val currentSteps = try { Json.decodeFromString<List<String>>(record.completedSkincareStepsJson) } catch (e: Exception) { emptyList() }.toMutableList()
+        val currentRoutines = try { Json.decodeFromString<List<String>>(record.completedSkincareRoutinesJson) } catch (_: Exception) { emptyList() }.toMutableList() // --- FIX: Unused 'e' ---
+        val currentSteps = try { Json.decodeFromString<List<String>>(record.completedSkincareStepsJson) } catch (_: Exception) { emptyList() }.toMutableList() // --- FIX: Unused 'e' ---
         currentRoutines.remove(routineName)
         products.forEach { p -> currentSteps.remove("${routineName}_$p") }
         repository.updateDailyRecord(record.copy(completedSkincareRoutinesJson = Json.encodeToString(currentRoutines), completedSkincareStepsJson = Json.encodeToString(currentSteps)))

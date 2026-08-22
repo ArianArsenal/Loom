@@ -1,76 +1,41 @@
 package com.example.loom.ui.sandbox
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
-
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.RadioButtonUnchecked
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.unit.dp
-import com.example.loom.data.models.CalendarChecklistItem
-import com.example.loom.data.models.KanbanCard
-import androidx.compose.foundation.layout.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.sp
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
-
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.graphics.toColorInt // --- FIX: Fast String parsing ---
+import com.example.loom.data.models.CalendarChecklistItem
+import com.example.loom.data.models.KanbanCard
 import com.example.loom.data.models.SandboxSpace
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -80,12 +45,12 @@ fun EditSpaceTagsDialog(
     allExistingTags: List<String>,
     onDismiss: () -> Unit,
     onSave: (List<String>) -> Unit,
-    onDeleteGlobalTag: (String) -> Unit // NEW CALLBACK
+    onDeleteGlobalTag: (String) -> Unit
 ) {
     var currentTags by remember { mutableStateOf(space.tags) }
     var localExistingTags by remember { mutableStateOf(allExistingTags) }
     var newTagText by remember { mutableStateOf("") }
-    var tagToDelete by remember { mutableStateOf<String?>(null) } // Holds the tag queued for global deletion
+    var tagToDelete by remember { mutableStateOf<String?>(null) }
 
     var hue by remember { mutableFloatStateOf(120f) }
     var saturation by remember { mutableFloatStateOf(0.9f) }
@@ -113,7 +78,7 @@ fun EditSpaceTagsDialog(
                             val parts = tagString.split("|")
                             val text = parts[0]
                             val hex = parts.getOrNull(1) ?: "#4CAF50"
-                            val tagColor = try { Color(android.graphics.Color.parseColor(hex)) } catch (e:Exception) { Color(0xFF4CAF50) }
+                            val tagColor = try { Color(hex.toColorInt()) } catch (_: Exception) { Color(0xFF4CAF50) } // --- FIX: KTX & Unused e ---
 
                             Surface(
                                 shape = RoundedCornerShape(8.dp),
@@ -122,11 +87,9 @@ fun EditSpaceTagsDialog(
                                 modifier = Modifier.pointerInput(Unit) {
                                     detectTapGestures(
                                         onTap = {
-                                            // 1-Tap: Unequip from current space
                                             currentTags = currentTags.filter { it != tagString }
                                         },
                                         onLongPress = {
-                                            // Hold: Queue for global deletion
                                             tagToDelete = tagString
                                         }
                                     )
@@ -160,7 +123,7 @@ fun EditSpaceTagsDialog(
                             val parts = tagString.split("|")
                             val text = parts[0]
                             val hex = parts.getOrNull(1) ?: "#4CAF50"
-                            val tagColor = try { Color(android.graphics.Color.parseColor(hex)) } catch (e:Exception) { Color(0xFF4CAF50) }
+                            val tagColor = try { Color(hex.toColorInt()) } catch (_: Exception) { Color(0xFF4CAF50) } // --- FIX: KTX & Unused e ---
 
                             Surface(
                                 shape = RoundedCornerShape(8.dp),
@@ -169,11 +132,9 @@ fun EditSpaceTagsDialog(
                                 modifier = Modifier.pointerInput(Unit) {
                                     detectTapGestures(
                                         onTap = {
-                                            // 1-Tap: Equip to current space
                                             currentTags = currentTags + tagString
                                         },
                                         onLongPress = {
-                                            // Hold: Queue for global deletion
                                             tagToDelete = tagString
                                         }
                                     )
@@ -284,7 +245,6 @@ fun EditSpaceTagsDialog(
         }
     )
 
-    // --- GLOBAL DELETE CONFIRMATION POPUP ---
     if (tagToDelete != null) {
         val parts = tagToDelete!!.split("|")
         val text = parts[0]
@@ -310,7 +270,8 @@ fun EditSpaceTagsDialog(
         )
     }
 }
-@OptIn(ExperimentalMaterial3Api::class)
+
+@Suppress("unused") // --- FIX: Acknowledged as component library dialog ---
 @Composable
 fun EditKanbanCardDialog(
     card: KanbanCard,

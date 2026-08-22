@@ -20,14 +20,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.FormatAlignLeft
-import androidx.compose.material.icons.automirrored.filled.FormatAlignRight
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack // --- FIX ---
+import androidx.compose.material.icons.automirrored.filled.FormatAlignLeft // --- FIX ---
+import androidx.compose.material.icons.automirrored.filled.FormatAlignRight // --- FIX ---
 import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FormatAlignCenter
-import androidx.compose.material.icons.filled.FormatAlignLeft
-import androidx.compose.material.icons.filled.FormatAlignRight
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
@@ -62,6 +60,7 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.graphics.toColorInt // --- FIX ---
 import coil.compose.AsyncImage
 import com.example.loom.data.local.entity.DiaryNote
 import com.example.loom.data.local.entity.NoteTag
@@ -70,7 +69,11 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import java.util.*
+import java.text.SimpleDateFormat // --- FIX ---
+import java.util.Date // --- FIX ---
+import java.util.Locale // --- FIX ---
+import java.util.UUID // --- FIX ---
+import kotlin.time.Duration.Companion.milliseconds
 
 @OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
@@ -82,7 +85,7 @@ fun NoteEditor(initialNote: DiaryNote?, allTags: List<NoteTag>, viewModel: HomeV
     var isPrivate by remember { mutableStateOf(initialNote?.isPrivate ?: false) }
     var isPinned by remember { mutableStateOf(initialNote?.isPinned ?: false) }
 
-    val initialBlocks = try { Json.decodeFromString<List<NoteBlock>>(initialNote?.blocksJson ?: "[]") } catch (e: Exception) { emptyList() }
+    val initialBlocks = try { Json.decodeFromString<List<NoteBlock>>(initialNote?.blocksJson ?: "[]") } catch (_: Exception) { emptyList() }
     val blocks = remember { mutableStateListOf<NoteBlock>().apply {
         if (initialBlocks.isEmpty() && initialNote?.content?.isNotBlank() == true) {
             add(NoteBlock(id = UUID.randomUUID().toString(), type = "text", content = ZWSP + initialNote.content))
@@ -109,7 +112,7 @@ fun NoteEditor(initialNote: DiaryNote?, allTags: List<NoteTag>, viewModel: HomeV
 
     LaunchedEffect(focusedBlockId) {
         focusedBlockId?.let { id ->
-            try { focusRequesters[id]?.requestFocus() } catch (e: Exception) {}
+            try { focusRequesters[id]?.requestFocus() } catch (_: Exception) {}
         }
     }
 
@@ -137,7 +140,7 @@ fun NoteEditor(initialNote: DiaryNote?, allTags: List<NoteTag>, viewModel: HomeV
     }
 
     LaunchedEffect(title, selectedTag, isFavorite, isPrivate, isPinned, blocks.toList()) {
-        delay(500)
+        delay(500.milliseconds) // --- FIX ---
         performSave()
     }
 
@@ -215,7 +218,7 @@ fun NoteEditor(initialNote: DiaryNote?, allTags: List<NoteTag>, viewModel: HomeV
                         performSave()
                         onNavigateBack()
                     }
-                }) { Icon(Icons.Default.ArrowBack, "Back") }
+                }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") } // --- FIX ---
             },
             actions = {
                 IconButton(onClick = { photoPickerLauncher.launch(androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }) {
@@ -225,14 +228,15 @@ fun NoteEditor(initialNote: DiaryNote?, allTags: List<NoteTag>, viewModel: HomeV
                     val currentIndex = blocks.indexOfFirst { it.id == focusedBlockId }
                     if (currentIndex >= 0) {
                         val currentBlock = blocks[currentIndex]
-                        if (currentBlock.type == "text") {
-                            blocks[currentIndex] = currentBlock.copy(type = "check")
-                        } else if (currentBlock.type == "check") {
-                            blocks[currentIndex] = currentBlock.copy(type = "text")
-                        } else {
-                            val newBlockId = UUID.randomUUID().toString()
-                            blocks.add(currentIndex + 1, NoteBlock(id = newBlockId, type = "check", content = ZWSP))
-                            focusedBlockId = newBlockId
+                        // --- FIX: Converted to 'when' for faster bytecode execution ---
+                        when (currentBlock.type) {
+                            "text" -> blocks[currentIndex] = currentBlock.copy(type = "check")
+                            "check" -> blocks[currentIndex] = currentBlock.copy(type = "text")
+                            else -> {
+                                val newBlockId = UUID.randomUUID().toString()
+                                blocks.add(currentIndex + 1, NoteBlock(id = newBlockId, type = "check", content = ZWSP))
+                                focusedBlockId = newBlockId
+                            }
                         }
                     } else {
                         val newBlockId = UUID.randomUUID().toString()
@@ -276,7 +280,7 @@ fun NoteEditor(initialNote: DiaryNote?, allTags: List<NoteTag>, viewModel: HomeV
                 ) {
                     item { AssistChip(onClick = { showTagDialog = true }, label = { Text("+ New Tag") }) }
                     items(allTags) { tag ->
-                        val tagColor = try { Color(android.graphics.Color.parseColor(tag.colorHex)) } catch (e: Exception) { MaterialTheme.colorScheme.primary }
+                        val tagColor = try { Color(tag.colorHex.toColorInt()) } catch (_: Exception) { MaterialTheme.colorScheme.primary }
 
                         Surface(
                             shape = RoundedCornerShape(8.dp),
@@ -300,10 +304,8 @@ fun NoteEditor(initialNote: DiaryNote?, allTags: List<NoteTag>, viewModel: HomeV
                     colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Color.Transparent, unfocusedBorderColor = Color.Transparent)
                 )
 
-                // NEW: Date & Time Metadata inside the Editor
                 if (initialNote != null) {
-                    // Assuming your DiaryNote entity has a 'timestamp' property. Update if yours is named differently!
-                    val dateStr = java.text.SimpleDateFormat("MMMM d, yyyy • h:mm a", java.util.Locale.getDefault()).format(java.util.Date(initialNote.timestamp))
+                    val dateStr = SimpleDateFormat("MMMM d, yyyy • h:mm a", Locale.getDefault()).format(Date(initialNote.timestamp)) // --- FIX ---
                     Text(
                         text = "Last edited: $dateStr",
                         style = MaterialTheme.typography.labelSmall,
@@ -447,7 +449,6 @@ fun NoteEditor(initialNote: DiaryNote?, allTags: List<NoteTag>, viewModel: HomeV
                                 var currentWidth by remember(block.id) { mutableFloatStateOf(block.width) }
                                 var currentHeight by remember(block.id) { mutableFloatStateOf(block.height) }
 
-                                // 1. Apply the horizontal alignment to the outer box
                                 val boxAlignment = when (block.alignment) {
                                     "Start" -> Alignment.CenterStart
                                     "End" -> Alignment.CenterEnd
@@ -482,7 +483,6 @@ fun NoteEditor(initialNote: DiaryNote?, allTags: List<NoteTag>, viewModel: HomeV
                                             val highlightColor = Color(0xFF4285F4)
                                             Box(modifier = Modifier.fillMaxSize().border(2.dp, highlightColor, RoundedCornerShape(8.dp)))
 
-                                            // 2. The Upgraded Repositioning Control Bar
                                             Surface(
                                                 shape = RoundedCornerShape(8.dp),
                                                 color = Color.Black.copy(alpha = 0.8f),
@@ -516,7 +516,7 @@ fun NoteEditor(initialNote: DiaryNote?, allTags: List<NoteTag>, viewModel: HomeV
                                                     IconButton(onClick = {
                                                         val idx = blocks.indexOfFirst { it.id == block.id }
                                                         if (idx >= 0) blocks[idx] = block.copy(alignment = "Start")
-                                                    }, modifier = Modifier.size(32.dp)) { Icon(Icons.Default.FormatAlignLeft, "Left", tint = if (block.alignment == "Start") highlightColor else Color.White, modifier = Modifier.size(16.dp)) }
+                                                    }, modifier = Modifier.size(32.dp)) { Icon(Icons.AutoMirrored.Filled.FormatAlignLeft, "Left", tint = if (block.alignment == "Start") highlightColor else Color.White, modifier = Modifier.size(16.dp)) }
 
                                                     // Align Center
                                                     IconButton(onClick = {
@@ -528,7 +528,7 @@ fun NoteEditor(initialNote: DiaryNote?, allTags: List<NoteTag>, viewModel: HomeV
                                                     IconButton(onClick = {
                                                         val idx = blocks.indexOfFirst { it.id == block.id }
                                                         if (idx >= 0) blocks[idx] = block.copy(alignment = "End")
-                                                    }, modifier = Modifier.size(32.dp)) { Icon(Icons.Default.FormatAlignRight, "Right", tint = if (block.alignment == "End") highlightColor else Color.White, modifier = Modifier.size(16.dp)) }
+                                                    }, modifier = Modifier.size(32.dp)) { Icon(Icons.AutoMirrored.Filled.FormatAlignRight, "Right", tint = if (block.alignment == "End") highlightColor else Color.White, modifier = Modifier.size(16.dp)) }
 
                                                     Box(modifier = Modifier.width(1.dp).height(16.dp).background(Color.White.copy(alpha = 0.3f)).padding(horizontal = 4.dp))
 

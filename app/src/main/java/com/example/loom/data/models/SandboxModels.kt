@@ -1,8 +1,10 @@
 package com.example.loom.data.models
 
+import androidx.annotation.Keep
 import kotlinx.serialization.Serializable
 import java.util.UUID
 
+@Keep
 @Serializable
 enum class BlockType {
     TEXT, HEADING, HEADING_2, HEADING_3, HEADING_4, BULLET, NUMBER, TODO, TOGGLE, CALLOUT, QUOTE, TABLE, DIVIDER, CALENDAR,
@@ -25,7 +27,7 @@ data class CalendarEvent(
     var title: String = "",
     var type: String = "Task",
     var details: String = "",
-    var checklist: List<CalendarChecklistItem> = emptyList(), // <-- MUST BE CalendarChecklistItem
+    var checklist: List<CalendarChecklistItem> = emptyList(),
     var imageUrl: String = "",
     var frequency: String = "Once"
 )
@@ -33,19 +35,17 @@ data class CalendarEvent(
 @Serializable
 enum class PropertyType {
     TEXT, NUMBER, CHECKBOX, DATE, SELECT, MULTI_SELECT,
-    STATUS, PROGRESS, FORMULA, URL, MEDIA, SPACE // --- FIX: Added 6 new types!
+    STATUS, PROGRESS, FORMULA, URL, MEDIA, SPACE
 }
 
 @Serializable
 data class DatabaseProperty(
-    val id: String = java.util.UUID.randomUUID().toString(),
+    val id: String = UUID.randomUUID().toString(), // --- FIX: Removed redundant java.util.UUID qualifier ---
     var name: String = "New Property",
     var type: PropertyType = PropertyType.TEXT,
-    // --- FIX: Map now holds the option name AND its custom HSV Hex Color ---
     var options: Map<String, String> = emptyMap()
 )
 
-// NEW: Data class for individual gallery images
 @Serializable
 data class GalleryItem(
     val id: String = UUID.randomUUID().toString(),
@@ -61,7 +61,7 @@ data class KanbanCard(
     var text: String = "",
     var description: String = "",
     var priority: Int = 1,
-    var subtasks: List<CalendarChecklistItem> = emptyList(), // <-- MUST BE CalendarChecklistItem
+    var subtasks: List<CalendarChecklistItem> = emptyList(),
     var tags: List<String> = emptyList()
 )
 
@@ -90,6 +90,7 @@ data class TextFormatSpan(
     val value: String = ""
 )
 
+@Keep
 @Serializable
 data class SandboxBlock(
     val id: String = UUID.randomUUID().toString(),
@@ -114,6 +115,7 @@ data class SandboxBlock(
     var isLocked: Boolean = false
 )
 
+@Keep
 @Serializable
 data class SandboxSpace(
     val id: String = UUID.randomUUID().toString(),

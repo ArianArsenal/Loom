@@ -1,5 +1,9 @@
-<?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <style name="Theme.Loom" parent="android:Theme.Material.Light.NoActionBar">
+        <!-- YOUR EXISTING CODE MIGHT BE HERE -->
 
-    <style name="Theme.Loom" parent="android:Theme.Material.Light.NoActionBar" />
+        <!-- ADD THESE TWO LINES -->
+        <item name="android:windowBackground">@color/ic_launcher_background</item>
+        <item name="android:windowSplashScreenBackground">@color/ic_launcher_background</item>
+    </style>
 </resources>

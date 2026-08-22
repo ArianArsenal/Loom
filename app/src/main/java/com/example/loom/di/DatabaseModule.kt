@@ -25,7 +25,7 @@ object DatabaseModule {
             AppDatabase::class.java,
             "loom_database.db"
         )
-            .createFromAsset("loom_database.db") // This copies your pre-packaged Kaggle dataset
+            .createFromAsset("loom_database.db")
             .fallbackToDestructiveMigration()
             .build()
     }

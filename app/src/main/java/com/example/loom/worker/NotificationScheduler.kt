@@ -4,29 +4,26 @@ import android.content.Context
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
-import java.util.Calendar
+import java.time.LocalDateTime
+import java.time.temporal.ChronoUnit
 import java.util.concurrent.TimeUnit
 
 object NotificationScheduler {
 
     fun scheduleDailyReminder(context: Context, hourOfDay: Int, minute: Int) {
-        val currentDate = Calendar.getInstance()
-        val dueDate = Calendar.getInstance().apply {
-            set(Calendar.HOUR_OF_DAY, hourOfDay)
-            set(Calendar.MINUTE, minute)
-            set(Calendar.SECOND, 0)
+        val now = LocalDateTime.now()
+        var target = now.withHour(hourOfDay).withMinute(minute).withSecond(0).withNano(0)
+
+        // --- OPTIMIZATION: Using fast, modern java.time instead of the heavy Calendar API ---
+        if (now.isAfter(target) || now.isEqual(target)) {
+            target = target.plusDays(1)
         }
 
-        // If the time has already passed today, schedule for tomorrow
-        if (dueDate.before(currentDate)) {
-            dueDate.add(Calendar.HOUR_OF_DAY, 24)
-        }
-
-        val timeDiff = dueDate.timeInMillis - currentDate.timeInMillis
+        val initialDelayMillis = ChronoUnit.MILLIS.between(now, target)
 
         // Set up the work to repeat every 24 hours, starting after the initial delay
         val dailyWorkRequest = PeriodicWorkRequestBuilder<NotificationWorker>(24, TimeUnit.HOURS)
-            .setInitialDelay(timeDiff, TimeUnit.MILLISECONDS)
+            .setInitialDelay(initialDelayMillis, TimeUnit.MILLISECONDS)
             .build()
 
         WorkManager.getInstance(context).enqueueUniquePeriodicWork(

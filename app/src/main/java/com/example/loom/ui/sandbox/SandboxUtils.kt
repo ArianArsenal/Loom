@@ -1,5 +1,7 @@
 package com.example.loom.ui.sandbox
 
+import android.content.Context
+import android.net.Uri
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
@@ -14,21 +16,20 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
+import androidx.core.graphics.toColorInt // --- FIX: Using fast KTX extension ---
+import com.example.loom.data.local.entity.SandboxBlockEntity
 import com.example.loom.data.models.BlockType
 import com.example.loom.data.models.SandboxBlock
 import com.example.loom.data.models.TextFormatSpan
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.net.HttpURLConnection
-import java.net.URL
-import android.util.Log
-import android.content.Context
-import android.net.Uri
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json // --- FIX: Removed redundant inline qualifiers below ---
 import java.io.File
 import java.io.FileOutputStream
+import java.net.HttpURLConnection
+import java.net.URL
 import java.util.UUID
 
 const val ZWSP = "\u200B"
@@ -38,11 +39,12 @@ data class TableCellData(
     val text: String = "",
     val colorHex: String? = null,
     val isDeleted: Boolean = false,
-    val formats: List<TextFormatSpan> = emptyList() // --- NEW: Required for table rich text! ---
+    val formats: List<TextFormatSpan> = emptyList()
 )
+
 fun parseCell(raw: String): TableCellData {
     if (raw.isBlank()) return TableCellData()
-    return try { Json.decodeFromString(raw) } catch (e: Exception) { TableCellData(text = raw) }
+    return try { Json.decodeFromString(raw) } catch (_: Exception) { TableCellData(text = raw) } // --- FIX: Unused e ---
 }
 
 fun encodeCell(cell: TableCellData): String = Json.encodeToString(cell)
@@ -59,9 +61,9 @@ fun buildAnnotated(text: String, formats: List<TextFormatSpan>): AnnotatedString
                     "BOLD" -> addStyle(SpanStyle(fontWeight = FontWeight.Bold), start, end)
                     "ITALIC" -> addStyle(SpanStyle(fontStyle = FontStyle.Italic), start, end)
                     "STRIKE" -> addStyle(SpanStyle(textDecoration = TextDecoration.LineThrough), start, end)
-                    "UNDERLINE" -> addStyle(SpanStyle(textDecoration = TextDecoration.Underline), start, end) // --- NEW UNDERLINE FIX ---
-                    "COLOR" -> try { addStyle(SpanStyle(color = Color(android.graphics.Color.parseColor(f.value))), start, end) } catch(e:Exception){}
-                    "HIGHLIGHT" -> try { addStyle(SpanStyle(background = Color(android.graphics.Color.parseColor(f.value))), start, end) } catch(e:Exception){}
+                    "UNDERLINE" -> addStyle(SpanStyle(textDecoration = TextDecoration.Underline), start, end)
+                    "COLOR" -> try { addStyle(SpanStyle(color = Color(f.value.toColorInt())), start, end) } catch(_: Exception){} // --- FIX: Fast KTX & Unused e ---
+                    "HIGHLIGHT" -> try { addStyle(SpanStyle(background = Color(f.value.toColorInt())), start, end) } catch(_: Exception){} // --- FIX: Fast KTX & Unused e ---
                 }
             }
         }
@@ -83,10 +85,11 @@ fun adjustFormats(oldText: String, newText: String, oldFormats: List<TextFormatS
         } else {
             newEnd += diff
         }
-        if (newStart >= newEnd || newStart < 0) null else format.copy(start = newStart, end = newEnd)
+
+        // --- FIX: Converted to a clean Kotlin Range Check ---
+        if (newStart !in 0 until newEnd) null else format.copy(start = newStart, end = newEnd)
     }
 }
-
 class MathVisualTransformation : VisualTransformation {
     override fun filter(text: AnnotatedString): TransformedText {
         val builder = AnnotatedString.Builder()
@@ -142,6 +145,7 @@ fun cleanBlocksForDB(blocks: List<SandboxBlock>): List<SandboxBlock> {
 
 data class LinkMetadata(val title: String, val description: String, val imageUrl: String)
 
+@Suppress("unused") // --- FIX: Tell compiler this is an intended network utility ---
 suspend fun fetchUrlMetadata(urlString: String): LinkMetadata? = withContext(Dispatchers.IO) {
     try {
         var url = URL(urlString)
@@ -153,6 +157,7 @@ suspend fun fetchUrlMetadata(urlString: String): LinkMetadata? = withContext(Dis
         connection.instanceFollowRedirects = true
 
         var responseCode = connection.responseCode
+        // --- FIX: Formatted for clean IDE range checking ---
         if (responseCode in 300..399) {
             val redirectUrl = connection.getHeaderField("Location")
             if (redirectUrl != null) {
@@ -189,7 +194,7 @@ suspend fun fetchUrlMetadata(urlString: String): LinkMetadata? = withContext(Dis
         fun decodeHtml(text: String) = text.replace("&amp;", "&").replace("&#39;", "'").replace("&quot;", "\"").replace("&#x27;", "'")
 
         LinkMetadata(title = decodeHtml(rawTitle), description = decodeHtml(rawDesc), imageUrl = rawImg)
-    } catch (e: Exception) { null }
+    } catch (_: Exception) { null } // --- FIX: Unused e ---
 }
 
 fun copyMediaToLocal(context: Context, uri: Uri): String? {
@@ -202,7 +207,7 @@ fun copyMediaToLocal(context: Context, uri: Uri): String? {
         inputStream.close()
         outputStream.close()
         Uri.fromFile(file).toString()
-    } catch (e: Exception) { null }
+    } catch (_: Exception) { null } // --- FIX: Unused e ---
 }
 
 // --- WIDGET HELPER FIXES ---
@@ -236,23 +241,23 @@ fun removeBlockRecursively(blocks: List<SandboxBlock>, targetId: String): List<S
     }
 }
 
-fun flattenTree(blocks: List<com.example.loom.data.models.SandboxBlock>, spaceId: String, parentId: String? = null): List<com.example.loom.data.local.entity.SandboxBlockEntity> {
-    val flatList = mutableListOf<com.example.loom.data.local.entity.SandboxBlockEntity>()
+fun flattenTree(blocks: List<SandboxBlock>, spaceId: String, parentId: String? = null): List<SandboxBlockEntity> {
+    val flatList = mutableListOf<SandboxBlockEntity>()
     blocks.forEachIndexed { index, block ->
         flatList.add(
-            com.example.loom.data.local.entity.SandboxBlockEntity(
+            SandboxBlockEntity(
                 id = block.id, spaceId = spaceId, parentId = parentId, orderIndex = index,
                 type = block.type.name, content = block.content,
-                textFormatsJson = kotlinx.serialization.json.Json.encodeToString(block.textFormats),
+                textFormatsJson = Json.encodeToString(block.textFormats), // --- FIX: Removed redundant qualifier ---
                 secondaryContent = block.secondaryContent, icon = block.icon, url = block.url,
                 isChecked = block.isChecked, isExpanded = block.isExpanded, progress = block.progress,
-                tableDataJson = kotlinx.serialization.json.Json.encodeToString(block.tableData),
-                colWidthsJson = kotlinx.serialization.json.Json.encodeToString(block.colWidths),
-                rowHeightsJson = kotlinx.serialization.json.Json.encodeToString(block.rowHeights),
-                calendarEventsJson = kotlinx.serialization.json.Json.encodeToString(block.calendarEvents),
-                kanbanColumnsJson = kotlinx.serialization.json.Json.encodeToString(block.kanbanColumns),
-                sketchStrokesJson = kotlinx.serialization.json.Json.encodeToString(block.sketchStrokes),
-                galleryItemsJson = kotlinx.serialization.json.Json.encodeToString(block.galleryItems),
+                tableDataJson = Json.encodeToString(block.tableData),
+                colWidthsJson = Json.encodeToString(block.colWidths),
+                rowHeightsJson = Json.encodeToString(block.rowHeights),
+                calendarEventsJson = Json.encodeToString(block.calendarEvents),
+                kanbanColumnsJson = Json.encodeToString(block.kanbanColumns),
+                sketchStrokesJson = Json.encodeToString(block.sketchStrokes),
+                galleryItemsJson = Json.encodeToString(block.galleryItems),
                 pinnedTab = block.pinnedTab, isLocked = block.isLocked
             )
         )
@@ -264,7 +269,7 @@ fun flattenTree(blocks: List<com.example.loom.data.models.SandboxBlock>, spaceId
     return flatList
 }
 
-fun buildTree(domainBlocks: List<com.example.loom.data.models.SandboxBlock>, rawEntities: List<com.example.loom.data.local.entity.SandboxBlockEntity>, parentId: String? = null): List<com.example.loom.data.models.SandboxBlock> {
+fun buildTree(domainBlocks: List<SandboxBlock>, rawEntities: List<SandboxBlockEntity>, parentId: String? = null): List<SandboxBlock> {
     // Find all entities that belong to this parent, sort them by their physical layout order
     val childrenEntities = rawEntities.filter { it.parentId == parentId }.sortedBy { it.orderIndex }
 

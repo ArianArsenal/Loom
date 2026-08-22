@@ -17,11 +17,30 @@ import androidx.compose.ui.unit.dp
 import com.example.loom.util.CodeSyntaxTransformation
 
 @Composable
-fun CodeBlockRenderer(textState: TextFieldValue, handleTextChange: (TextFieldValue) -> Unit, commonModifier: Modifier, isReadOnly: Boolean, onDeleteBlock: (String, Boolean) -> Unit) {
+fun CodeBlockRenderer(
+    textState: TextFieldValue,
+    handleTextChange: (TextFieldValue) -> Unit,
+    modifier: Modifier, // --- FIX: Renamed modifier ---
+    isReadOnly: Boolean,
+    onDeleteBlock: (String, Boolean) -> Unit
+) {
     Surface(color = Color(0xFF1E1E1E), shape = RoundedCornerShape(8.dp), modifier = Modifier.fillMaxWidth()) {
         Box(modifier = Modifier.fillMaxWidth()) {
-            BasicTextField(value = textState, onValueChange = handleTextChange, visualTransformation = CodeSyntaxTransformation(), textStyle = MaterialTheme.typography.bodyMedium.copy(color = Color(0xFFD4D4D4), fontFamily = FontFamily.Monospace), modifier = commonModifier.padding(16.dp).padding(end = 24.dp), cursorBrush = SolidColor(Color.White), readOnly = isReadOnly, decorationBox = { inner -> Box{ if (textState.text.isEmpty()) Text("// write code here", color = Color.Gray, fontFamily = FontFamily.Monospace); inner() } })
-            if (!isReadOnly) { IconButton(onClick = { onDeleteBlock("", true) }, modifier = Modifier.align(Alignment.TopEnd).padding(4.dp).size(24.dp)) { Icon(Icons.Default.Close, "Delete Code", tint = Color.Gray, modifier = Modifier.size(16.dp)) } }
+            BasicTextField(
+                value = textState,
+                onValueChange = handleTextChange,
+                visualTransformation = CodeSyntaxTransformation(),
+                textStyle = MaterialTheme.typography.bodyMedium.copy(color = Color(0xFFD4D4D4), fontFamily = FontFamily.Monospace),
+                modifier = modifier.padding(16.dp).padding(end = 24.dp), // --- FIX: Applied renamed modifier ---
+                cursorBrush = SolidColor(Color.White),
+                readOnly = isReadOnly,
+                decorationBox = { inner -> Box{ if (textState.text.isEmpty()) Text("// write code here", color = Color.Gray, fontFamily = FontFamily.Monospace); inner() } }
+            )
+            if (!isReadOnly) {
+                IconButton(onClick = { onDeleteBlock("", true) }, modifier = Modifier.align(Alignment.TopEnd).padding(4.dp).size(24.dp)) {
+                    Icon(Icons.Default.Close, "Delete Code", tint = Color.Gray, modifier = Modifier.size(16.dp))
+                }
+            }
         }
     }
 }

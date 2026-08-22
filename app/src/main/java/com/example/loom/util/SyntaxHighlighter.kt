@@ -8,45 +8,45 @@ import androidx.compose.ui.text.input.OffsetMapping
 import androidx.compose.ui.text.input.TransformedText
 import androidx.compose.ui.text.input.VisualTransformation
 
+// --- OPTIMIZATION: Moved heavy Regex compilation OUT of the render loop! ---
+private val keywords = listOf(
+    "public", "private", "protected", "class", "interface", "fun", "def", "var", "val",
+    "int", "float", "double", "string", "void", "static", "final", "const",
+    "if", "else", "for", "while", "return", "import", "using", "namespace", "struct"
+)
+private val keywordPattern = "\\b(${keywords.joinToString("|")})\\b".toRegex()
+private val numberPattern = "\\b\\d+\\b".toRegex()
+private val stringPattern = "(\"[^\"]*\"|'[^']*')".toRegex()
+private val commentPattern = "(//.*|#.*)".toRegex()
+
+private val keywordColor = Color(0xFFC678DD) // Purple
+private val stringColor = Color(0xFF98C379)  // Green
+private val numberColor = Color(0xFFD19A66)  // Orange
+private val commentColor = Color(0xFF5C6370) // Grey
+
 class CodeSyntaxTransformation : VisualTransformation {
     override fun filter(text: AnnotatedString): TransformedText {
         val code = text.text
-
-        // Dictionaries for Java, C, Python, and C# (.NET)
-        val keywords = listOf(
-            "public", "private", "protected", "class", "interface", "fun", "def", "var", "val",
-            "int", "float", "double", "string", "void", "static", "final", "const",
-            "if", "else", "for", "while", "return", "import", "using", "namespace", "struct"
-        )
-
-        val keywordColor = Color(0xFFC678DD) // Purple
-        val stringColor = Color(0xFF98C379)  // Green
-        val numberColor = Color(0xFFD19A66)  // Orange
-        val commentColor = Color(0xFF5C6370) // Grey
 
         val annotatedString = buildAnnotatedString {
             append(code)
 
             // 1. Highlight Keywords
-            val keywordPattern = "\\b(${keywords.joinToString("|")})\\b".toRegex()
             keywordPattern.findAll(code).forEach { match ->
                 addStyle(SpanStyle(color = keywordColor), match.range.first, match.range.last + 1)
             }
 
             // 2. Highlight Numbers
-            val numberPattern = "\\b\\d+\\b".toRegex()
             numberPattern.findAll(code).forEach { match ->
                 addStyle(SpanStyle(color = numberColor), match.range.first, match.range.last + 1)
             }
 
-            // 3. Highlight Strings (Single and Double quotes)
-            val stringPattern = "(\"[^\"]*\"|'[^']*')".toRegex()
+            // 3. Highlight Strings
             stringPattern.findAll(code).forEach { match ->
                 addStyle(SpanStyle(color = stringColor), match.range.first, match.range.last + 1)
             }
 
-            // 4. Highlight Comments (// and #)
-            val commentPattern = "(//.*|#.*)".toRegex()
+            // 4. Highlight Comments
             commentPattern.findAll(code).forEach { match ->
                 addStyle(SpanStyle(color = commentColor), match.range.first, match.range.last + 1)
             }

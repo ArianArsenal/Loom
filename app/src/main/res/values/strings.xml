@@ -1,3 +1,13 @@
 <resources>
     <string name="app_name">Loom</string>
+
+    <!-- App Shortcuts -->
+    <string name="shortcut_new_note_short">New Note</string>
+    <string name="shortcut_new_note_long">Create a New Note</string>
+
+    <string name="shortcut_quick_task_short">Quick Task</string>
+    <string name="shortcut_quick_task_long">Add a Quick Task</string>
+
+    <string name="shortcut_log_water_short">Log Water</string>
+    <string name="shortcut_log_water_long">Log Default Water</string>
 </resources>

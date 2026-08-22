@@ -1,7 +1,5 @@
 package com.example.loom.ui.home.components
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -40,13 +38,13 @@ fun SkincareRoutinesCard(
             initialProduct = oldProduct,
             onDismiss = { editingProductContext = null },
             onSave = { updatedProduct ->
-                val currentProducts = try { Json.decodeFromString<List<SkincareProduct>>(routineContext.productsJson) } catch (e: Exception) { emptyList() }
+                val currentProducts = try { Json.decodeFromString<List<SkincareProduct>>(routineContext.productsJson) } catch (_: Exception) { emptyList() } // FIX: Unused 'e'
                 val updatedList = currentProducts.map { if (it.name == oldProduct.name) updatedProduct else it }
                 viewModel.saveSkincareRoutine(routineContext.copy(productsJson = Json.encodeToString(updatedList)))
                 editingProductContext = null
             },
             onDelete = {
-                val currentProducts = try { Json.decodeFromString<List<SkincareProduct>>(routineContext.productsJson) } catch (e: Exception) { emptyList() }
+                val currentProducts = try { Json.decodeFromString<List<SkincareProduct>>(routineContext.productsJson) } catch (_: Exception) { emptyList() } // FIX: Unused 'e'
                 val updatedList = currentProducts.filter { it.name != oldProduct.name }
                 viewModel.saveSkincareRoutine(routineContext.copy(productsJson = Json.encodeToString(updatedList)))
                 editingProductContext = null
@@ -67,9 +65,9 @@ fun SkincareRoutinesCard(
                 activelyLoggedRoutines.forEach { routine ->
                     val products = remember(routine.productsJson) {
                         try { Json.decodeFromString<List<SkincareProduct>>(routine.productsJson) }
-                        catch (e: Exception) {
+                        catch (_: Exception) { // FIX: Unused 'e'
                             try { Json.decodeFromString<List<String>>(routine.productsJson).map { SkincareProduct(name = it) } }
-                            catch (e2: Exception) { emptyList() }
+                            catch (_: Exception) { emptyList() } // FIX: Unused 'e2'
                         }
                     }
 

@@ -6,7 +6,6 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,9 +22,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.DragIndicator
 import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.RadioButtonUnchecked
@@ -64,6 +63,7 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
+import androidx.core.graphics.toColorInt
 import com.example.loom.data.models.BlockType
 import com.example.loom.data.models.SandboxBlock
 import com.example.loom.data.models.SandboxSpace
@@ -73,6 +73,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.Locale
 import java.util.UUID
+import kotlin.time.Duration.Companion.milliseconds
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -140,7 +141,7 @@ fun BlockRenderer(
             try {
                 focusRequester.requestFocus()
                 keyboardController?.show()
-            } catch (e: Exception) {}
+            } catch (_: Exception) {}
             textState = textState.copy(selection = TextRange(textState.text.length))
         }
     }
@@ -153,7 +154,7 @@ fun BlockRenderer(
 
         val newFormats = if (value.isNotEmpty()) {
             cleared + TextFormatSpan(selStart, selEnd, type, value)
-        } else if (type in listOf("BOLD", "ITALIC", "STRIKE", "UNDERLINE")) { // --- FIX: Added Underline support! ---
+        } else if (type in listOf("BOLD", "ITALIC", "STRIKE", "UNDERLINE")) {
             if (overlapping.isNotEmpty()) cleared else cleared + TextFormatSpan(selStart, selEnd, type, "")
         } else {
             cleared
@@ -193,12 +194,11 @@ fun BlockRenderer(
             }
 
             if (!newText.startsWith(ZWSP) || newText.isEmpty()) {
-                val isDeletion = newText.length < oldText.length // --- FIX: Line Combining Bug Check ---
+                val isDeletion = newText.length < oldText.length
 
                 if (isDeletion) {
                     val remainder = newText.replace(ZWSP, "")
 
-                    // 1. Protection for rigid blocks
                     if (block.type == BlockType.CARD || block.type == BlockType.TIMELINE) {
                         val safeText = ZWSP + remainder
                         textState = newTextState.copy(annotatedString = buildAnnotated(safeText, newFormats), selection = TextRange(1.coerceAtMost(safeText.length)))
@@ -206,7 +206,6 @@ fun BlockRenderer(
                         return@handleTextChange
                     }
 
-                    // --- FIX 2: If we delete the start of a formatting block, downgrade it to TEXT first! ---
                     if (block.type in listOf(BlockType.HEADING, BlockType.HEADING_2, BlockType.HEADING_3, BlockType.HEADING_4, BlockType.BULLET, BlockType.NUMBER, BlockType.TODO, BlockType.QUOTE, BlockType.CALLOUT, BlockType.TOGGLE)) {
                         textState = newTextState.copy(
                             annotatedString = buildAnnotated(ZWSP + remainder, newFormats),
@@ -216,20 +215,17 @@ fun BlockRenderer(
                         return@handleTextChange
                     }
 
-                    // 3. Delete empty media/special blocks
                     if (block.type in listOf(BlockType.IMAGE, BlockType.AUDIO, BlockType.FILE, BlockType.SPACE, BlockType.LINK, BlockType.PROGRESS, BlockType.MATH, BlockType.VIDEO, BlockType.KANBAN, BlockType.SKETCH, BlockType.GALLERY) && remainder.isEmpty()) {
                         onDeleteBlock("", true)
                         keyboardController?.show()
                         return@handleTextChange
                     }
 
-                    // 4. Merge text blocks
                     onDeleteBlock(remainder, false)
                     keyboardController?.show()
                     return@handleTextChange
 
                 } else {
-                    // Restore ZWSP if user typed before it
                     val restoredText = ZWSP + newText.replace(ZWSP, "")
                     val newCursor = newTextState.selection.start.coerceAtLeast(1)
 
@@ -242,7 +238,6 @@ fun BlockRenderer(
                 }
             }
 
-            // --- FIX: Ensure we only split if a NEW newline was typed ---
             val newlyAddedNewline = newText.length > oldText.length && newText.count { it == '\n' } > oldText.count { it == '\n' }
 
             if (newlyAddedNewline) {
@@ -256,18 +251,17 @@ fun BlockRenderer(
                 if (currentLine.isEmpty() && block.type != BlockType.TEXT && block.type != BlockType.TOGGLE && block.type != BlockType.CARD) {
                     textState = newTextState.copy(text = ZWSP, selection = TextRange(1))
                     onUpdate(currentBlock.copy(type = BlockType.TEXT, content = ZWSP, textFormats = emptyList()))
-                    scope.launch { kotlinx.coroutines.delay(50); isProcessingEnter = false }
+                    scope.launch { delay(50.milliseconds); isProcessingEnter = false }
                 } else {
                     val nextType = if (block.type in listOf(BlockType.TODO, BlockType.BULLET, BlockType.NUMBER)) block.type else BlockType.TEXT
 
-                    // --- FIX: Rebuild formats instantly so color isn't lost during enter ---
                     textState = TextFieldValue(
                         annotatedString = buildAnnotated(ZWSP + currentLine, newFormats),
                         selection = TextRange((ZWSP + currentLine).length)
                     )
 
                     onSplitBlock(ZWSP + currentLine, nextType, nextContent)
-                    scope.launch { kotlinx.coroutines.delay(50); isProcessingEnter = false }
+                    scope.launch { delay(50.milliseconds); isProcessingEnter = false }
                 }
             } else {
                 isProcessingEnter = false
@@ -296,7 +290,7 @@ fun BlockRenderer(
 
     val placeholderUI: @Composable (innerTextField: @Composable () -> Unit) -> Unit = { inner ->
         Box {
-            if (textState.text.replace(ZWSP, "").isEmpty() && isFocused && !isReadOnly) {
+            if (textState.text.replace(ZWSP, "").isEmpty() && isFocused) {
                 val hint = when(block.type) {
                     BlockType.HEADING -> "Heading 1"
                     BlockType.HEADING_2 -> "Heading 2"
@@ -325,7 +319,11 @@ fun BlockRenderer(
     val isEmptyText = block.type == BlockType.TEXT && textState.text.replace(ZWSP, "").trim().isEmpty()
 
     val hideDragHandle = (isWidgetMode && block.type == BlockType.CARD) || isReadOnly
-    val showHandle = if (hideDragHandle) false else if (isTextBased) { !isEmptyText && (isFocused || isDragging) && !isReadOnly } else { !isReadOnly }
+    val showHandle = when {
+        hideDragHandle -> false
+        isTextBased -> !isEmptyText && (isFocused || isDragging)
+        else -> true
+    }
 
     val elevation by animateDpAsState(if (isDragging) 6.dp else 0.dp, label = "drag_elevation")
     val bgColor = if (isDragging) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f) else Color.Transparent
@@ -389,9 +387,9 @@ fun BlockRenderer(
                 }
 
                 val calloutBaseColor = try {
-                    if (block.secondaryContent.isNotEmpty()) Color(android.graphics.Color.parseColor(block.secondaryContent))
+                    if (block.secondaryContent.isNotEmpty()) Color(block.secondaryContent.toColorInt())
                     else Color(0xFF4CAF50)
-                } catch (e: Exception) { Color(0xFF4CAF50) }
+                } catch (_: Exception) { Color(0xFF4CAF50) }
 
                 val bgColorCallout = if (block.type == BlockType.CALLOUT) calloutBaseColor.copy(alpha = 0.1f) else if (block.type == BlockType.QUOTE) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f) else Color.Transparent
                 val shape = if (block.type == BlockType.CALLOUT || block.type == BlockType.QUOTE) RoundedCornerShape(12.dp) else RoundedCornerShape(0.dp)
@@ -415,18 +413,43 @@ fun BlockRenderer(
                                 .padding(if (block.type == BlockType.CALLOUT) 14.dp else if (block.type == BlockType.QUOTE) 16.dp else 0.dp),
                             verticalAlignment = if (block.type == BlockType.CALLOUT) Alignment.CenterVertically else Alignment.Top
                         ) {
-                            if (block.type == BlockType.QUOTE) {
-                                Box(modifier = Modifier.width(4.dp).fillMaxHeight().background(MaterialTheme.colorScheme.primary)); Spacer(Modifier.width(16.dp))
-                            } else if (block.type == BlockType.BULLET) {
-                                Text("•", modifier = Modifier.padding(end = 8.dp), fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                            } else if (block.type == BlockType.NUMBER) {
-                                Text("$numberIndex.", modifier = Modifier.padding(end = 8.dp), fontWeight = FontWeight.Bold)
-                            } else if (block.type == BlockType.TODO) {
-                                Icon(imageVector = if (block.isChecked) Icons.Outlined.CheckCircle else Icons.Outlined.RadioButtonUnchecked, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp).padding(end = 8.dp).clickable { onUpdate(currentBlock.copy(isChecked = !block.isChecked)) })
-                            } else if (block.type == BlockType.CALLOUT) {
-                                BasicTextField(value = block.icon, onValueChange = { if (it.length <= 4 && !isReadOnly) onUpdate(currentBlock.copy(icon = it)) }, textStyle = MaterialTheme.typography.titleMedium, modifier = Modifier.width(32.dp).padding(end = 8.dp), readOnly = isReadOnly)
-                            } else if (block.type == BlockType.TOGGLE) {
-                                Icon(imageVector = if (block.isExpanded) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowRight, contentDescription = null, modifier = Modifier.size(24.dp).clickable { onUpdate(currentBlock.copy(isExpanded = !block.isExpanded)) })
+
+                            when (block.type) {
+                                BlockType.QUOTE -> {
+                                    Box(modifier = Modifier.width(4.dp).fillMaxHeight().background(MaterialTheme.colorScheme.primary))
+                                    Spacer(Modifier.width(16.dp))
+                                }
+                                BlockType.BULLET -> {
+                                    Text("•", modifier = Modifier.padding(end = 8.dp), fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                                }
+                                BlockType.NUMBER -> {
+                                    Text("$numberIndex.", modifier = Modifier.padding(end = 8.dp), fontWeight = FontWeight.Bold)
+                                }
+                                BlockType.TODO -> {
+                                    Icon(
+                                        imageVector = if (block.isChecked) Icons.Outlined.CheckCircle else Icons.Outlined.RadioButtonUnchecked,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(22.dp).padding(end = 8.dp).clickable { onUpdate(currentBlock.copy(isChecked = !block.isChecked)) }
+                                    )
+                                }
+                                BlockType.CALLOUT -> {
+                                    BasicTextField(
+                                        value = block.icon,
+                                        onValueChange = { if (it.length <= 4 && !isReadOnly) onUpdate(currentBlock.copy(icon = it)) },
+                                        textStyle = MaterialTheme.typography.titleMedium,
+                                        modifier = Modifier.width(32.dp).padding(end = 8.dp),
+                                        readOnly = isReadOnly
+                                    )
+                                }
+                                BlockType.TOGGLE -> {
+                                    Icon(
+                                        imageVector = if (block.isExpanded) Icons.Default.KeyboardArrowDown else Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(24.dp).clickable { onUpdate(currentBlock.copy(isExpanded = !block.isExpanded)) }
+                                    )
+                                }
+                                else -> {}
                             }
 
                             Column(modifier = Modifier.weight(1f)) {
@@ -475,7 +498,7 @@ fun BlockRenderer(
                                             val currentIndex = currentBlock.children.indexOfFirst { it.id == childBlock.id }
                                             if (currentIndex != -1) {
                                                 val newIndex = currentIndex + offset
-                                                if (newIndex in 0 until currentBlock.children.size) {
+                                                if (newIndex in currentBlock.children.indices) {
                                                     val newChildren = currentBlock.children.toMutableList()
                                                     val temp = newChildren[currentIndex]
                                                     newChildren[currentIndex] = newChildren[newIndex]
@@ -510,7 +533,7 @@ fun BlockRenderer(
                                                     newChildren.removeAt(safeIndex)
                                                     onUpdate(currentBlock.copy(children = newChildren))
                                                     onFocusRequest(prevId)
-                                                    try { focusRequesters[prevId]?.requestFocus() } catch(e:Exception){}
+                                                    try { focusRequesters[prevId]?.requestFocus() } catch(_:Exception){}
                                                 } else if (safeIndex > 0) {
                                                     val prevChild = newChildren[safeIndex - 1]
                                                     val isPrevTextBased = prevChild.type in listOf(BlockType.TEXT, BlockType.HEADING, BlockType.HEADING_2, BlockType.HEADING_3, BlockType.HEADING_4, BlockType.BULLET, BlockType.NUMBER, BlockType.TODO, BlockType.QUOTE, BlockType.CALLOUT, BlockType.TOGGLE)
@@ -520,7 +543,7 @@ fun BlockRenderer(
                                                         newChildren.removeAt(safeIndex)
                                                         onUpdate(currentBlock.copy(children = newChildren))
                                                         onFocusRequest(prevId)
-                                                        try { focusRequesters[prevId]?.requestFocus() } catch(e:Exception){}
+                                                        try { focusRequesters[prevId]?.requestFocus() } catch(_:Exception){}
                                                     } else {
                                                         newChildren.removeAt(safeIndex - 1)
                                                         onUpdate(currentBlock.copy(children = newChildren))
@@ -568,7 +591,6 @@ fun BlockRenderer(
                     BlockType.LINK -> LinkBlockRenderer(currentBlock, textState, handleTextChange, commonModifier, placeholderUI, onUpdate, onDeleteBlock)
                     BlockType.BOOKMARK -> BookmarkBlockRenderer(currentBlock, onUpdate, onDeleteBlock)
                     BlockType.GALLERY -> GalleryBlockRenderer(currentBlock, onUpdate, onDeleteBlock)
-
                     BlockType.CARD -> CardBlockRenderer(currentBlock, textState, handleTextChange, commonModifier, placeholderUI, isWidgetMode, isReadOnly, allSpaces, currentSpaceId, recentTableColors, focusRequesters, focusTargetId, allBlocks, onScrollToBlock, onFocusRequest, onScrollToTop, onNavigateToSpace, onCreateLinkedSpace, onUpdate, onDeleteBlock)
                     BlockType.MATH -> MathBlockRenderer(currentBlock, textState, handleTextChange, commonModifier, placeholderUI, isReadOnly, onUpdate)
                     BlockType.CODE -> CodeBlockRenderer(textState, handleTextChange, commonModifier, isReadOnly, onDeleteBlock)
@@ -587,7 +609,7 @@ fun BlockRenderer(
                 if (type == BlockType.TABLE) updated.tableData = List(3) { List(3) { encodeCell(TableCellData()) } }
                 onUpdate(updated)
                 showMenu = false
-                try { focusRequester.requestFocus() } catch(e: Exception){}
+                try { focusRequester.requestFocus() } catch(_: Exception){}
                 onFocusRequest(block.id)
             }
         }

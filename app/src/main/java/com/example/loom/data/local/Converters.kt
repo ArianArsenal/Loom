@@ -15,7 +15,7 @@ class Converters {
     fun toPresetList(value: String): List<PresetExercise> {
         return try {
             Json.decodeFromString(value)
-        } catch (e: Exception) {
+        } catch (_: Exception) { // --- FIX: Unused 'e' ---
             emptyList()
         }
     }

@@ -32,7 +32,10 @@ import java.util.concurrent.TimeUnit
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import java.util.Locale // --- FIX: Imported Locale ---
+import kotlin.time.Duration.Companion.milliseconds // --- FIX: Imported Duration ---
 
+@Suppress("unused", "DiscouragedApi") // --- FIX: Suppress intentional parameter and dynamic sound loading ---
 @Composable
 fun TimerBlockRenderer(
     block: SandboxBlock,
@@ -46,7 +49,7 @@ fun TimerBlockRenderer(
     var isRunning by remember { mutableStateOf(false) }
 
     var selectedAmbient by remember { mutableStateOf("None") }
-    val ambients = listOf("None", "Rain", "Forest", "Focus")
+    val ambientSounds = listOf("None", "Rain", "Forest", "Focus") // --- FIX: Typo corrected ---
     var mediaPlayer by remember { mutableStateOf<android.media.MediaPlayer?>(null) }
 
     DisposableEffect(Unit) {
@@ -75,7 +78,7 @@ fun TimerBlockRenderer(
 
     LaunchedEffect(isRunning, isWorkMode) {
         while (isRunning && timeLeft > 0) {
-            delay(1000)
+            delay(1000.milliseconds) // --- FIX: Duration API ---
             timeLeft--
         }
         if (timeLeft == 0) isRunning = false
@@ -102,7 +105,7 @@ fun TimerBlockRenderer(
 
         Box(contentAlignment = Alignment.Center, modifier = Modifier.size(120.dp)) {
             CircularProgressIndicator(progress = { timeLeft.toFloat() / maxTime.toFloat() }, modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.primary, strokeWidth = 6.dp, trackColor = MaterialTheme.colorScheme.outlineVariant)
-            Text(String.format("%02d:%02d", timeLeft / 60, timeLeft % 60), fontSize = 32.sp, fontWeight = FontWeight.Bold)
+            Text(String.format(Locale.US, "%02d:%02d", timeLeft / 60, timeLeft % 60), fontSize = 32.sp, fontWeight = FontWeight.Bold) // --- FIX: Explicit Locale ---
         }
 
         Spacer(Modifier.height(16.dp))
@@ -115,7 +118,7 @@ fun TimerBlockRenderer(
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
             Icon(Icons.Default.Headset, "Ambient Audio", tint = Color.Gray, modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(8.dp))
-            ambients.forEach { ambient ->
+            ambientSounds.forEach { ambient ->
                 @OptIn(ExperimentalMaterial3Api::class)
                 FilterChip(
                     selected = selectedAmbient == ambient,
@@ -131,7 +134,6 @@ fun TimerBlockRenderer(
         }
     }
 }
-
 
 @Serializable
 data class CountdownMeta(
@@ -158,7 +160,6 @@ fun ConfettiBurst() {
     Canvas(modifier = Modifier.fillMaxSize()) {
         particles.forEach { p ->
             val x = size.width / 2 + (p.xOffset * progress.value * size.width)
-            // Apply a gravity arc: moves up slightly then falls down fast
             val y = size.height / 2 + (p.yOffset * progress.value * size.height) + (progress.value * progress.value * 300f)
             val alpha = (1f - progress.value).coerceIn(0f, 1f)
             drawCircle(p.color.copy(alpha = alpha), radius = p.radius * (1f - progress.value * 0.5f), center = Offset(x, y))
@@ -182,7 +183,7 @@ fun CountdownBlockRenderer(
             val legacyTime = block.content.toLongOrNull() ?: 0L
             CountdownMeta(targetTimeMillis = legacyTime)
         }
-    } catch (e: Exception) { CountdownMeta() }
+    } catch (_: Exception) { CountdownMeta() } // --- FIX: Unused 'e' ---
 
     var timeLeft by remember { mutableLongStateOf(0L) }
     var isTimeSinceMode by remember { mutableStateOf(false) }
@@ -200,15 +201,14 @@ fun CountdownBlockRenderer(
                     timeLeft = kotlin.math.abs(difference)
                     isTimeSinceMode = true
 
-                    // Trigger Confetti exactly when hitting 0!
                     if (!hasTriggeredConfetti && timeLeft < 2000) {
                         hasTriggeredConfetti = true
                         showConfetti = true
-                        delay(3500)
+                        delay(3500.milliseconds) // --- FIX: Duration API ---
                         showConfetti = false
                     }
                 }
-                delay(1000)
+                delay(1000.milliseconds) // --- FIX: Duration API ---
             }
         }
     }
@@ -322,7 +322,7 @@ fun CountdownBlockRenderer(
                         @Composable fun TimeBox(value: Long, label: String) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = String.format("%02d", value),
+                                    text = String.format(Locale.US, "%02d", value), // --- FIX: Explicit Locale ---
                                     style = MaterialTheme.typography.headlineLarge,
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.onSurface

@@ -60,7 +60,8 @@ fun HealthNutrition(viewModel: HealthViewModel) {
 
     if (logDetailsToShow != null) {
         val log = logDetailsToShow!!
-        val timeStr = timelineDateFormatter.format(Date(log.timestamp))
+        // --- FIX: Safely reads from the shared ThreadLocal formatter ---
+        val timeStr = timelineDateFormatter.get()?.format(Date(log.timestamp)) ?: ""
         AlertDialog(
             onDismissRequest = { logDetailsToShow = null },
             title = { Text("Meal Details") },
@@ -170,7 +171,8 @@ fun HealthNutrition(viewModel: HealthViewModel) {
                     if (matchResult != null) {
                         val baseNum = matchResult.value.toFloat()
                         val calculatedNum = baseNum * currentMultiplier
-                        formattedNum = if (calculatedNum % 1f == 0f) calculatedNum.toInt().toString() else String.format(Locale.US, "%.1f", calculatedNum)
+                        formattedNum = if (calculatedNum % 1f == 0f) calculatedNum.toInt().toString() else String.format(
+                            Locale.US, "%.1f", calculatedNum)
                         textPart = unitText.replaceFirst(matchResult.value, "").trim()
                     } else {
                         formattedNum = if (currentMultiplier % 1f == 0f) currentMultiplier.toInt().toString() else String.format(Locale.US, "%.1f", currentMultiplier)
@@ -447,7 +449,7 @@ fun HealthNutrition(viewModel: HealthViewModel) {
                                 }
                             }
                         ) {
-                            val timeStr = timelineDateFormatter.format(Date(log.timestamp))
+                            val timeStr = timelineDateFormatter.get()?.format(Date(log.timestamp)) ?: "" // --- FIX ---
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()

@@ -31,14 +31,33 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.graphics.toColorInt
 import com.example.loom.data.local.entity.FoodItem
 import com.example.loom.data.local.entity.NoteTag
 import com.example.loom.data.local.entity.SubTask
 import com.example.loom.data.local.entity.Task
 import com.example.loom.data.local.entity.TaskSection
+import com.example.loom.data.models.SandboxBlock
+import com.example.loom.data.models.SandboxSpace
 import com.example.loom.ui.home.components.*
+import com.example.loom.ui.sandbox.BlockRenderer
+import com.example.loom.ui.sandbox.cleanBlocksForDB
+import com.example.loom.ui.sandbox.findPinnedCards
+import com.example.loom.ui.sandbox.prepareBlocksForUI
+import com.example.loom.ui.sandbox.removeBlockRecursively
+import com.example.loom.ui.sandbox.replaceBlockRecursively
+import kotlinx.coroutines.DelicateCoroutinesApi
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.NonCancellable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.text.SimpleDateFormat
@@ -47,7 +66,9 @@ import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
 import java.util.UUID
+import kotlin.time.Duration.Companion.milliseconds
 
+@Suppress("DEPRECATION")
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
@@ -55,6 +76,18 @@ fun HomeScreen(
     onNavigateToSettings: () -> Unit,
     onNavigateToSpace: (String) -> Unit
 ) {
+
+    val userName by viewModel.userName.collectAsState()
+    var showWelcomeDialog by remember { mutableStateOf(false) }
+
+    LaunchedEffect(userName) {
+        if (userName.isBlank()) {
+            showWelcomeDialog = true
+        }
+    }
+
+    val hiddenHomeCards by viewModel.hiddenHomeCards.collectAsState()
+    val agendaText by viewModel.agendaText.collectAsState()
 
     val pinnedCards by viewModel.pinnedHomeCards.collectAsState()
     val allSpaces by viewModel.allSpaces.collectAsState()
@@ -74,23 +107,147 @@ fun HomeScreen(
     val targetCarbsInt by viewModel.targetCarbs.collectAsState()
     val targetFatsInt by viewModel.targetFats.collectAsState()
     val defaultWaterIncrement by viewModel.defaultWaterIncrement.collectAsState()
-    val dailyGoal by viewModel.waterDailyGoal.collectAsState() // NEW
+    val dailyGoal by viewModel.waterDailyGoal.collectAsState()
+
     var showNutritionDialog by remember { mutableStateOf(false) }
     var isManualEntry by remember { mutableStateOf(false) }
     var showNewFoodDialog by remember { mutableStateOf(false) }
+    var showDashboardConfig by remember { mutableStateOf(false) }
 
     var showTaskDialog by remember { mutableStateOf(false) }
     var taskToEdit by remember { mutableStateOf<Task?>(null) }
     var isKanbanView by remember { mutableStateOf(false) }
     var sectionToDelete by remember { mutableStateOf<TaskSection?>(null) }
 
+    val shortcutAction by viewModel.shortcutAction.collectAsState()
+
+    // Listen for App Shortcuts from the Home Screen
+    LaunchedEffect(shortcutAction) {
+        if (shortcutAction == "com.example.loom.ACTION_QUICK_TASK") {
+            showTaskDialog = true
+            viewModel.clearShortcutAction() // Reset it so it doesn't trigger again on rotation
+        }
+    }
+
     val currentHour = remember { Calendar.getInstance().get(Calendar.HOUR_OF_DAY) }
-    val greeting = remember(currentHour) {
+    val greeting = remember(currentHour, userName) {
+        val nameDisplay = if (userName.isNotBlank()) ", $userName" else ""
         when (currentHour) {
-            in 5..11 -> "Good Morning, Arian"
-            in 12..17 -> "Good Afternoon, Arian"
-            in 18..23 -> "Good Evening, Arian"
-            else -> "Good Night, Arian"
+            in 5..11 -> "Good Morning$nameDisplay"
+            in 12..17 -> "Good Afternoon$nameDisplay"
+            in 18..23 -> "Good Evening$nameDisplay"
+            else -> "Good Night$nameDisplay"
+        }
+    }
+
+    if (showWelcomeDialog) {
+        var nameInput by remember { mutableStateOf("") }
+
+        AlertDialog(
+            onDismissRequest = { /* Force them to enter a name to proceed */ },
+            title = { Text("Welcome to Loom 👋", fontWeight = FontWeight.Bold) },
+            text = {
+                Column {
+                    Text("What should we call you?", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(modifier = Modifier.height(16.dp))
+                    OutlinedTextField(
+                        value = nameInput,
+                        onValueChange = { nameInput = it },
+                        label = { Text("Your Name") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val finalName = if (nameInput.isNotBlank()) nameInput.trim() else "User"
+                        viewModel.saveUserName(finalName)
+                        showWelcomeDialog = false
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Get Started")
+                }
+            }
+        )
+    }
+
+    if (showDashboardConfig) {
+        ModalBottomSheet(
+            onDismissRequest = { showDashboardConfig = false },
+            containerColor = MaterialTheme.colorScheme.surface,
+            tonalElevation = 0.dp
+        ) {
+            // --- FIX: Scrollable column to prevent overflow if you have many pinned cards ---
+            LazyColumn(modifier = Modifier.padding(horizontal = 24.dp).padding(bottom = 32.dp)) {
+                item {
+                    Text("Customize Dashboard", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text("Select which modules appear on your Home tab.", color = Color.Gray, style = MaterialTheme.typography.bodyMedium)
+                    Spacer(modifier = Modifier.height(24.dp))
+                }
+
+                val availableCards = listOf("Agenda", "Nutrition", "Hydration", "Skincare", "Tasks")
+                items(availableCards) { card ->
+                    val isVisible = !hiddenHomeCards.contains(card)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { viewModel.toggleHomeCardVisibility(card, !isVisible) }
+                            .padding(vertical = 16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(card, style = MaterialTheme.typography.bodyLarge)
+                        Icon(
+                            imageVector = if (isVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                            contentDescription = null,
+                            tint = if (isVisible) MaterialTheme.colorScheme.primary else Color.Gray
+                        )
+                    }
+                }
+
+                // --- NEW: Pinned Space Cards Visibility Section ---
+                if (pinnedCards.isNotEmpty()) {
+                    item {
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
+                        Text("Pinned Space Cards", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
+
+                    items(pinnedCards, key = { "sheet_${it.second.id}" }) { (_, card) ->
+                        val cardKey = "pinned_${card.id}"
+                        val isVisible = !hiddenHomeCards.contains(cardKey)
+                        val cardTitle = card.content.ifBlank { "Untitled Card" }
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { viewModel.toggleHomeCardVisibility(cardKey, !isVisible) }
+                                .padding(vertical = 16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "Space Card: $cardTitle",
+                                style = MaterialTheme.typography.bodyLarge,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Spacer(modifier = Modifier.width(16.dp))
+                            Icon(
+                                imageVector = if (isVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                                contentDescription = null,
+                                tint = if (isVisible) MaterialTheme.colorScheme.primary else Color.Gray
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -138,7 +295,7 @@ fun HomeScreen(
                             Text("Quick Picks", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                             Spacer(modifier = Modifier.height(8.dp))
                             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                items(searchedFoods.take(8)) { food ->
+                                items(searchedFoods.take(8), key = { it.id }) { food ->
                                     Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), modifier = Modifier.clickable { selectedFood = food }) {
                                         Column(modifier = Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                                             Text(food.name, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
@@ -160,7 +317,7 @@ fun HomeScreen(
                             )
 
                             if (searchedFoods.isNotEmpty() && foodDropdownExpanded) {
-                                ExposedDropdownMenu(expanded = foodDropdownExpanded, onDismissRequest = { foodDropdownExpanded = false }, modifier = Modifier.heightIn(max = 250.dp)) {
+                                ExposedDropdownMenu(expanded = true, onDismissRequest = { foodDropdownExpanded = false }, modifier = Modifier.heightIn(max = 250.dp)) {
                                     searchedFoods.forEachIndexed { index, food ->
                                         DropdownMenuItem(
                                             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
@@ -170,7 +327,6 @@ fun HomeScreen(
                                                     Text(text = "P: ${food.protein}g • C: ${food.carbs}g • F: ${food.fats}g", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                                                     Spacer(modifier = Modifier.height(4.dp))
 
-                                                    // --- RTL Format Fix ---
                                                     val uText = food.servingUnit.trim()
                                                     val mResult = "\\d+(\\.\\d+)?".toRegex().find(uText)
                                                     val numStr = mResult?.value ?: ""
@@ -181,14 +337,12 @@ fun HomeScreen(
                                                         horizontalArrangement = Arrangement.SpaceBetween,
                                                         verticalAlignment = Alignment.CenterVertically
                                                     ) {
-                                                        // Left side: Calories (Plain Text)
                                                         Text(
                                                             text = "${food.calories} kcal",
                                                             style = MaterialTheme.typography.bodySmall,
                                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                                         )
 
-                                                        // Right side: Serving Unit (Colored Badge with RTL Row)
                                                         Surface(shape = RoundedCornerShape(6.dp), color = MaterialTheme.colorScheme.secondaryContainer) {
                                                             Row(
                                                                 verticalAlignment = Alignment.CenterVertically,
@@ -344,56 +498,220 @@ fun HomeScreen(
         topBar = {
             TopAppBar(
                 title = { Text(greeting, fontWeight = FontWeight.Bold) },
-                actions = { IconButton(onClick = onNavigateToSettings) { Icon(Icons.Default.Settings, "Settings") } },
+                actions = {
+                    Surface(
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        IconButton(onClick = { showDashboardConfig = true }) {
+                            Icon(Icons.Default.Tune, "Dashboard Config", modifier = Modifier.size(20.dp))
+                        }
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Surface(
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        IconButton(onClick = onNavigateToSettings) {
+                            Icon(Icons.Default.Settings, "Settings", modifier = Modifier.size(20.dp))
+                        }
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background,
                     scrolledContainerColor = MaterialTheme.colorScheme.background,
                     titleContentColor = MaterialTheme.colorScheme.primary,
-                    actionIconContentColor = MaterialTheme.colorScheme.primary
+                    actionIconContentColor = MaterialTheme.colorScheme.onSurface
                 )
             )
         },
     ) { paddingValues ->
-        LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(paddingValues).padding(horizontal = 20.dp),
-            contentPadding = PaddingValues(top = 12.dp, bottom = 80.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
 
-            // --- NEW: RENDER PINNED CARDS AT THE VERY TOP ---
-            if (pinnedCards.isNotEmpty()) {
-                items(pinnedCards, key = { it.second.id }) { (space, card) ->
-                    PinnedCardWidget(
-                        space = space,
-                        cardBlock = card,
-                        allSpaces = allSpaces,
-                        tabName = "Home",
-                        onUpdateSpace = { viewModel.updateSpaceFromWidget(it) },
-                        onNavigateToSpace = onNavigateToSpace
+        // --- FIX: High-performance cached filtering of visible pinned cards ---
+        val visiblePinnedCards = remember(pinnedCards, hiddenHomeCards) {
+            pinnedCards.filter { (_, card) -> !hiddenHomeCards.contains("pinned_${card.id}") }
+        }
+
+        val isDashboardEmpty = visiblePinnedCards.isEmpty() &&
+                hiddenHomeCards.contains("Agenda") &&
+                hiddenHomeCards.contains("Nutrition") &&
+                hiddenHomeCards.contains("Hydration") &&
+                hiddenHomeCards.contains("Skincare") &&
+                hiddenHomeCards.contains("Tasks")
+
+        if (isDashboardEmpty) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(
+                        imageVector = Icons.Default.Dashboard,
+                        contentDescription = null,
+                        modifier = Modifier.size(64.dp),
+                        tint = Color.Gray.copy(alpha = 0.3f)
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = "Your dashboard is clear",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = Color.Gray,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "Tap the tune icon above to customize",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.Gray.copy(alpha = 0.7f)
                     )
                 }
             }
+        } else {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize().padding(paddingValues).padding(horizontal = 20.dp),
+                contentPadding = PaddingValues(top = 12.dp, bottom = 80.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
 
-            item {
-                NutritionLogCard(
-                    todayRecord = todayRecord, targetCaloriesInt = targetCaloriesInt, targetProteinInt = targetProteinInt, targetCarbsInt = targetCarbsInt, targetFatsInt = targetFatsInt,
-                    consumedList = consumedList, viewModel = viewModel, onLogMealClick = { showNutritionDialog = true }
+                if (!hiddenHomeCards.contains("Agenda")) {
+                    item {
+                        AgendaCard(agendaText = agendaText, onUpdateText = { viewModel.updateAgendaText(it) })
+                    }
+                }
+
+                if (visiblePinnedCards.isNotEmpty()) {
+                    items(visiblePinnedCards, key = { it.second.id }) { (space, card) ->
+                        PinnedCardWidget(
+                            space = space,
+                            cardBlock = card,
+                            allSpaces = allSpaces,
+                            tabName = "Home",
+                            onUpdateSpace = { viewModel.updateSpaceFromWidget(it) },
+                            onNavigateToSpace = onNavigateToSpace
+                        )
+                    }
+                }
+
+                if (!hiddenHomeCards.contains("Nutrition")) {
+                    item {
+                        NutritionLogCard(
+                            todayRecord = todayRecord, targetCaloriesInt = targetCaloriesInt, targetProteinInt = targetProteinInt, targetCarbsInt = targetCarbsInt, targetFatsInt = targetFatsInt,
+                            consumedList = consumedList, viewModel = viewModel, onLogMealClick = { showNutritionDialog = true }
+                        )
+                    }
+                }
+
+                if (!hiddenHomeCards.contains("Hydration")) {
+                    item {
+                        HydrationCard(todayRecord = todayRecord, dailyGoal = dailyGoal, defaultWaterIncrement = defaultWaterIncrement, viewModel = viewModel)
+                    }
+                }
+
+                if (!hiddenHomeCards.contains("Skincare")) {
+                    item {
+                        SkincareRoutinesCard(pinnedRoutines = pinnedRoutines, completedRoutines = completedRoutines, completedSteps = completedSteps, viewModel = viewModel)
+                    }
+                }
+
+                if (!hiddenHomeCards.contains("Tasks")) {
+                    item {
+                        TasksAndDeadlinesCard(
+                            sections = sections, allTasks = allTasks, tags = tags, isKanbanView = isKanbanView, viewModel = viewModel,
+                            onToggleKanban = { isKanbanView = !isKanbanView },
+                            onAddTask = { taskToEdit = null; showTaskDialog = true },
+                            onEditTask = { taskToEdit = it; showTaskDialog = true },
+                            onDeleteSection = { sectionToDelete = it }
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun AgendaCard(agendaText: String, onUpdateText: (String) -> Unit) {
+    var isEditing by remember { mutableStateOf(false) }
+    var editText by remember(agendaText) { mutableStateOf(agendaText) }
+
+    ElevatedCard(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 0.dp)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Daily Agenda", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                IconButton(onClick = {
+                    if (isEditing) {
+                        onUpdateText(editText)
+                    }
+                    isEditing = !isEditing
+                }, modifier = Modifier.size(24.dp)) {
+                    Icon(if (isEditing) Icons.Default.Check else Icons.Default.Edit, contentDescription = "Edit", tint = MaterialTheme.colorScheme.primary)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            if (isEditing) {
+                OutlinedTextField(
+                    value = editText,
+                    onValueChange = { editText = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = { Text("What's the plan for today?\n- Chapter 1 Notes\n- Gym @ 6PM") },
+                    minLines = 3
                 )
-            }
-            item {
-                HydrationCard(todayRecord = todayRecord, dailyGoal = dailyGoal, defaultWaterIncrement = defaultWaterIncrement, viewModel = viewModel)
-            }
-            item {
-                SkincareRoutinesCard(pinnedRoutines = pinnedRoutines, completedRoutines = completedRoutines, completedSteps = completedSteps, viewModel = viewModel)
-            }
-            item {
-                TasksAndDeadlinesCard(
-                    sections = sections, allTasks = allTasks, tags = tags, isKanbanView = isKanbanView, viewModel = viewModel,
-                    onToggleKanban = { isKanbanView = !isKanbanView },
-                    onAddTask = { taskToEdit = null; showTaskDialog = true },
-                    onEditTask = { taskToEdit = it; showTaskDialog = true },
-                    onDeleteSection = { sectionToDelete = it }
-                )
+            } else {
+                if (agendaText.isBlank()) {
+                    Text("No agenda set for today. Tap the edit icon to plan your day!", color = Color.Gray, fontStyle = FontStyle.Italic)
+                } else {
+                    val lines = agendaText.split("\n").filter { it.isNotBlank() }
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        lines.forEachIndexed { index, line ->
+                            val isDone = line.trim().startsWith("✓")
+                            val displayText = if (isDone) line.replaceFirst("✓", "").trim() else line.trim()
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth().clickable {
+                                    val newLines = lines.toMutableList()
+                                    if (isDone) {
+                                        newLines[index] = displayText
+                                    } else {
+                                        newLines[index] = "✓ $displayText"
+                                    }
+                                    onUpdateText(newLines.joinToString("\n"))
+                                },
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    if (isDone) Icons.Default.CheckCircle else Icons.Outlined.Circle,
+                                    contentDescription = null,
+                                    tint = if (isDone) MaterialTheme.colorScheme.primary else Color.Gray,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = displayText,
+                                    style = MaterialTheme.typography.bodyLarge.copy(
+                                        textDecoration = if (isDone) TextDecoration.LineThrough else TextDecoration.None
+                                    ),
+                                    color = if (isDone) Color.Gray else MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -413,10 +731,10 @@ fun CreateTaskDialog(
     var selectedSectionId by remember { mutableIntStateOf(initialTask?.sectionId ?: sections.firstOrNull()?.id ?: 1) }
     var status by remember { mutableStateOf(initialTask?.status ?: "TO DO") }
 
-    val initialTags = try { Json.decodeFromString<List<String>>(initialTask?.tagsJson ?: "[]") } catch (e: Exception) { emptyList() }
+    val initialTags = try { Json.decodeFromString<List<String>>(initialTask?.tagsJson ?: "[]") } catch (_: Exception) { emptyList() }
     var selectedTags by remember { mutableStateOf(initialTags.toSet()) }
 
-    val initialSubtasks = try { Json.decodeFromString<List<SubTask>>(initialTask?.subtasksJson ?: "[]") } catch (e: Exception) { emptyList() }
+    val initialSubtasks = try { Json.decodeFromString<List<SubTask>>(initialTask?.subtasksJson ?: "[]") } catch (_: Exception) { emptyList() }
     var subtasks by remember { mutableStateOf(initialSubtasks) }
     var newSubtaskText by remember { mutableStateOf("") }
 
@@ -604,7 +922,7 @@ fun CreateTaskDialog(
                     Text("Deadline:", style = MaterialTheme.typography.labelMedium)
                     OutlinedButton(onClick = { showDatePicker = true }, modifier = Modifier.fillMaxWidth()) {
                         Icon(Icons.Default.CalendarToday, null, modifier = Modifier.size(18.dp)); Spacer(modifier = Modifier.width(8.dp))
-                        Text(if (deadlineStr.isBlank()) "No Deadline" else deadlineStr)
+                        Text(deadlineStr.ifBlank { "No Deadline" })
                     }
                 }
 
@@ -614,7 +932,7 @@ fun CreateTaskDialog(
                         TextButton(onClick = { showNewSectionDialog = true }) { Text("+ Add") }
                     }
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(sections) { sec ->
+                        items(sections, key = { it.id }) { sec ->
                             Surface(
                                 modifier = Modifier
                                     .combinedClickable(
@@ -730,8 +1048,8 @@ fun CreateTaskDialog(
                     }
                     if (tags.isNotEmpty()) {
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            items(tags) { tag ->
-                                val tagColor = try { Color(android.graphics.Color.parseColor(tag.colorHex)) } catch (e: Exception) { MaterialTheme.colorScheme.primary }
+                            items(tags, key = { it.name }) { tag ->
+                                val tagColor = try { Color(tag.colorHex.toColorInt()) } catch (_: Exception) { MaterialTheme.colorScheme.primary }
                                 Surface(
                                     modifier = Modifier.combinedClickable(
                                         onClick = { selectedTags = if (selectedTags.contains(tag.name)) selectedTags - tag.name else selectedTags + tag.name },
@@ -775,47 +1093,40 @@ fun CreateTaskDialog(
         }
     )
 }
-// --- NEW: STRICT DATABASE-MIRRORING WIDGET ---
+
 @Composable
 fun PinnedCardWidget(
-    space: com.example.loom.data.models.SandboxSpace,
-    cardBlock: com.example.loom.data.models.SandboxBlock,
-    allSpaces: List<com.example.loom.data.models.SandboxSpace>,
+    space: SandboxSpace,
+    cardBlock: SandboxBlock,
+    allSpaces: List<SandboxSpace>,
     tabName: String = "Home",
-    onUpdateSpace: (com.example.loom.data.models.SandboxSpace) -> Unit,
+    onUpdateSpace: (SandboxSpace) -> Unit,
     onNavigateToSpace: (String) -> Unit
 ) {
-    val focusRequesters = remember { androidx.compose.runtime.mutableStateMapOf<String, androidx.compose.ui.focus.FocusRequester>() }
-    val recentTableColors = remember { androidx.compose.runtime.mutableStateListOf<androidx.compose.ui.graphics.Color>() }
-    var focusedBlockId by remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
+    val focusRequesters = remember { mutableStateMapOf<String, FocusRequester>() }
+    val recentTableColors = remember { mutableStateListOf<Color>() }
+    var focusedBlockId by remember { mutableStateOf<String?>(null) }
 
-    // 1. Initialize the state buffer
     var localCard by remember {
-        androidx.compose.runtime.mutableStateOf(
-            com.example.loom.ui.sandbox.prepareBlocksForUI(listOf(cardBlock)).first()
-        )
+        mutableStateOf(prepareBlocksForUI(listOf(cardBlock)).first())
     }
 
-    // 2. THE ULTIMATE SYNC: Key explicitly to space.updatedAt!
-    // Whenever the database saves, the timestamp changes. This guarantees the LaunchedEffect runs.
-    androidx.compose.runtime.LaunchedEffect(space.updatedAt) {
-        // Find the fresh block directly from the newly emitted space to ensure we have the latest data
-        val freshCardBlock = com.example.loom.ui.sandbox.findPinnedCards(space.blocks, tabName).find { it.id == cardBlock.id }
+    LaunchedEffect(space.updatedAt) {
+        val freshCardBlock = findPinnedCards(space.blocks, tabName).find { it.id == cardBlock.id }
 
         if (freshCardBlock != null) {
             if (focusedBlockId == null || localCard.isLocked != freshCardBlock.isLocked) {
-                localCard = com.example.loom.ui.sandbox.prepareBlocksForUI(listOf(freshCardBlock)).first()
+                localCard = prepareBlocksForUI(listOf(freshCardBlock)).first()
                 if (freshCardBlock.isLocked) {
-                    focusedBlockId = null // Forcefully hide the keyboard if locked from another tab!
+                    focusedBlockId = null
                 }
             }
         }
     }
 
-    val coroutineScope = androidx.compose.runtime.rememberCoroutineScope()
-    var debounceJob by remember { androidx.compose.runtime.mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    var debounceJob by remember { mutableStateOf<Job?>(null) }
 
-    com.example.loom.ui.sandbox.BlockRenderer(
+    BlockRenderer(
         block = localCard,
         numberIndex = 1,
         allSpaces = allSpaces,
@@ -825,33 +1136,32 @@ fun PinnedCardWidget(
         focusTargetId = focusedBlockId,
         allBlocks = listOf(localCard),
         isWidgetMode = true,
-        isReadOnly = localCard.isLocked, // Use localCard for immediate UI reflection
+        isReadOnly = localCard.isLocked,
         onScrollToBlock = {},
         onMove = {},
         onFocusRequest = { focusedBlockId = it },
         onScrollToTop = {},
         onNavigateToSpace = onNavigateToSpace,
-        onCreateLinkedSpace = { java.util.UUID.randomUUID().toString() },
+        onCreateLinkedSpace = { UUID.randomUUID().toString() },
         onUpdate = { updatedCard ->
-            // Fast UI typing update
             localCard = updatedCard
 
-            // Push to DB
             debounceJob?.cancel()
-            @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
-            debounceJob = kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO + kotlinx.coroutines.NonCancellable) {
-                kotlinx.coroutines.delay(500)
-                val cleanCard = com.example.loom.ui.sandbox.cleanBlocksForDB(listOf(updatedCard)).first()
-                val newBlocks = com.example.loom.ui.sandbox.replaceBlockRecursively(space.blocks, cleanCard)
-                // Bump the timestamp here to trigger the LaunchedEffect for all other widgets!
-                onUpdateSpace(space.copy(blocks = newBlocks, updatedAt = System.currentTimeMillis()))
+            @OptIn(DelicateCoroutinesApi::class)
+            debounceJob = GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                withContext(NonCancellable) {
+                    delay(500.milliseconds)
+                    val cleanCard = cleanBlocksForDB(listOf(updatedCard)).first()
+                    val newBlocks = replaceBlockRecursively(space.blocks, cleanCard)
+                    onUpdateSpace(space.copy(blocks = newBlocks, updatedAt = System.currentTimeMillis()))
+                }
             }
         },
         onSplitBlock = { _, _, _ -> },
         onDeleteBlock = { _, deleteEntirely ->
             if (deleteEntirely) {
                 debounceJob?.cancel()
-                val newBlocks = com.example.loom.ui.sandbox.removeBlockRecursively(space.blocks, localCard.id)
+                val newBlocks = removeBlockRecursively(space.blocks, localCard.id)
                 onUpdateSpace(space.copy(blocks = newBlocks, updatedAt = System.currentTimeMillis()))
             }
         }

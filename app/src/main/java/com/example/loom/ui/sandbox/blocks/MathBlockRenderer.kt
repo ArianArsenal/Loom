@@ -22,7 +22,15 @@ import com.example.loom.ui.sandbox.MathVisualTransformation
 
 
 @Composable
-fun MathBlockRenderer(currentBlock: SandboxBlock, textState: TextFieldValue, handleTextChange: (TextFieldValue) -> Unit, commonModifier: Modifier, placeholderUI: @Composable (@Composable () -> Unit) -> Unit, isReadOnly: Boolean, onUpdate: (SandboxBlock) -> Unit) {
+fun MathBlockRenderer(
+    currentBlock: SandboxBlock,
+    textState: TextFieldValue,
+    handleTextChange: (TextFieldValue) -> Unit,
+    modifier: Modifier, // --- FIX: Renamed modifier ---
+    placeholderUI: @Composable (@Composable () -> Unit) -> Unit,
+    isReadOnly: Boolean,
+    onUpdate: (SandboxBlock) -> Unit
+) {
     var showMathSymbols by remember { mutableStateOf(false) }
     Surface(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha=0.3f), shape = RoundedCornerShape(8.dp), border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant), modifier = Modifier.fillMaxWidth()) {
         Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -41,7 +49,16 @@ fun MathBlockRenderer(currentBlock: SandboxBlock, textState: TextFieldValue, han
                 }
             }
             Spacer(Modifier.width(16.dp))
-            BasicTextField(value = textState, onValueChange = handleTextChange, textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onBackground, fontFamily = FontFamily.Serif, fontStyle = FontStyle.Italic, fontSize = 20.sp), modifier = commonModifier.weight(1f), cursorBrush = SolidColor(MaterialTheme.colorScheme.primary), visualTransformation = MathVisualTransformation(), decorationBox = placeholderUI, readOnly = isReadOnly)
+            BasicTextField(
+                value = textState,
+                onValueChange = handleTextChange,
+                textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onBackground, fontFamily = FontFamily.Serif, fontStyle = FontStyle.Italic, fontSize = 20.sp),
+                modifier = modifier.weight(1f), // --- FIX: Applied renamed modifier ---
+                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                visualTransformation = MathVisualTransformation(),
+                decorationBox = placeholderUI,
+                readOnly = isReadOnly
+            )
         }
     }
 }

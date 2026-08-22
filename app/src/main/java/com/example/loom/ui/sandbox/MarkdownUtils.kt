@@ -84,7 +84,7 @@ fun parseMarkdownToBlocks(md: String): List<SandboxBlock> {
                 val parsedBlock = gson.fromJson(jsonBuilder.toString(), SandboxBlock::class.java)
                 // Assign a fresh UUID so we don't accidentally duplicate IDs if importing into the same space
                 blocks.add(parsedBlock.copy(id = UUID.randomUUID().toString()))
-            } catch (e: Exception) {
+            } catch (_: Exception) { // --- FIX: Unused 'e' ---
                 blocks.add(SandboxBlock(id = UUID.randomUUID().toString(), type = BlockType.TEXT, content = "\u200B[Error parsing interactive block]"))
             }
             i++

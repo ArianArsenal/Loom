@@ -33,6 +33,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 
+import androidx.core.graphics.toColorInt // --- FIX: Using fast KTX extension ---
+
 import com.example.loom.data.models.SandboxBlock
 import com.example.loom.data.models.SketchPoint
 import com.example.loom.data.models.SketchStroke
@@ -42,7 +44,7 @@ fun SketchBlockRenderer(
     block: SandboxBlock,
     textState: TextFieldValue,
     handleTextChange: (TextFieldValue) -> Unit,
-    commonModifier: Modifier,
+    modifier: Modifier, // --- FIX: Renamed modifier ---
     placeholderUI: @Composable (@Composable () -> Unit) -> Unit,
     onUpdate: (SandboxBlock) -> Unit,
     onDeleteBlock: (String, Boolean) -> Unit
@@ -60,7 +62,6 @@ fun SketchBlockRenderer(
         }
     }
 
-    // --- NEW: Faint outer border enclosing the entire Sketch Block ---
     Surface(
         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
         shape = RoundedCornerShape(12.dp),
@@ -69,21 +70,21 @@ fun SketchBlockRenderer(
     ) {
         Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
 
-            // --- TOP TOOLBAR ---
             Row(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 BasicTextField(
                     value = textState, onValueChange = handleTextChange,
                     textStyle = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface),
-                    modifier = commonModifier.weight(1f), cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                    modifier = modifier.weight(1f), // --- FIX: Applied renamed modifier ---
+                    cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                     decorationBox = placeholderUI
                 )
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     recentColors.take(4).forEach { hex ->
-                        Box(modifier = Modifier.size(24.dp).padding(2.dp).background(Color(android.graphics.Color.parseColor(hex)), CircleShape).border(if (currentColor == hex) 2.dp else 0.dp, MaterialTheme.colorScheme.primary, CircleShape).clickable { currentColor = hex })
+                        val colorVal = try { Color(hex.toColorInt()) } catch (_: Exception) { Color.Black } // --- FIX: Fast string parsing & Unused e ---
+                        Box(modifier = Modifier.size(24.dp).padding(2.dp).background(colorVal, CircleShape).border(if (currentColor == hex) 2.dp else 0.dp, MaterialTheme.colorScheme.primary, CircleShape).clickable { currentColor = hex })
                     }
                     IconButton(onClick = { showColorWheel = true }, modifier = Modifier.size(28.dp)) { Icon(Icons.Default.Palette, "Custom Color", tint = Color.Gray, modifier = Modifier.size(20.dp)) }
 
-                    // --- NEW: Real Eraser Icon ---
                     Box(
                         modifier = Modifier
                             .size(28.dp)
@@ -111,11 +112,10 @@ fun SketchBlockRenderer(
                 }
             }
 
-            // --- MODERN SLIDER ---
             Row(modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("Brush Size", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
 
-                val displayColor = try { Color(android.graphics.Color.parseColor(currentColor)) } catch (e: Exception) { Color.Black }
+                val displayColor = try { Color(currentColor.toColorInt()) } catch (_: Exception) { Color.Black } // --- FIX: Fast string parsing & Unused e ---
                 val safeDisplayColor = if (currentColor == "#FAFAFA") Color.LightGray else displayColor
 
                 Slider(
@@ -133,7 +133,6 @@ fun SketchBlockRenderer(
 
             var currentStroke by remember { mutableStateOf<SketchStroke?>(null) }
 
-            // --- CANVAS AREA ---
             Surface(modifier = Modifier.fillMaxWidth().height(300.dp), shape = RoundedCornerShape(12.dp), border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant), color = Color(0xFFFAFAFA)) {
                 Canvas(modifier = Modifier.fillMaxSize().pointerInput(Unit) {
                     detectDragGestures(
@@ -159,7 +158,7 @@ fun SketchBlockRenderer(
                                 moveTo(stroke.points.first().x, stroke.points.first().y)
                                 stroke.points.drop(1).forEach { lineTo(it.x, it.y) }
                             }
-                            drawPath(path, color = try { Color(android.graphics.Color.parseColor(stroke.color)) } catch(e:Exception){Color.Black}, style = Stroke(width = stroke.width, cap = StrokeCap.Round, join = StrokeJoin.Round))
+                            drawPath(path, color = try { Color(stroke.color.toColorInt()) } catch(_: Exception){Color.Black}, style = Stroke(width = stroke.width, cap = StrokeCap.Round, join = StrokeJoin.Round)) // --- FIX: Fast string parsing & Unused e ---
                         }
                     }
                     localStrokes.forEach { drawStroke(it) }
@@ -169,7 +168,6 @@ fun SketchBlockRenderer(
         }
     }
 
-    // --- HSV COLOR WHEEL DIALOG ---
     if (showColorWheel) {
         var hue by remember { mutableFloatStateOf(210f) }
         var saturation by remember { mutableFloatStateOf(0.9f) }

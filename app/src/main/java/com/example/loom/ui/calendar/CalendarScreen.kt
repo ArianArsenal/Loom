@@ -8,7 +8,22 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -23,6 +38,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.outlined.DirectionsRun // --- FIX: Using AutoMirrored version ---
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
@@ -31,25 +47,53 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.Bedtime
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Circle
-import androidx.compose.material.icons.outlined.DirectionsRun
-import androidx.compose.material.icons.outlined.FaceRetouchingNatural
 import androidx.compose.material.icons.outlined.LocalDining
-import androidx.compose.material.icons.outlined.Medication
 import androidx.compose.material.icons.outlined.Scale
 import androidx.compose.material.icons.outlined.WaterDrop
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ElevatedCard
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MenuAnchorType // --- FIX: Required for explicit MenuAnchor typing ---
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberSwipeToDismissBoxState
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -71,21 +115,28 @@ import com.example.loom.data.local.entity.FoodItem
 import com.example.loom.data.local.entity.PresetExercise
 import com.example.loom.data.local.entity.SkincareProduct
 import com.example.loom.data.local.entity.SkincareRoutine
-import com.example.loom.ui.health.GaplessProgressBar
 import com.example.loom.ui.health.ProductProfileDialog
 import com.example.loom.ui.health.ReorderableProductList
+import com.example.loom.ui.health.SegmentedControl
 import com.example.loom.ui.health.SupplementItem
 import com.example.loom.ui.health.supplementTemplates
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.text.SimpleDateFormat
 import java.time.LocalDate
-import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 import java.util.Date
 import java.util.Locale
-import com.example.loom.ui.health.SegmentedControl
-private val timelineDateFormatter = SimpleDateFormat("h:mm a", Locale.getDefault())
+
+// --- OPTIMIZATION: ThreadLocal + Global Formatters prevent heavy memory re-allocation on recomposition ---
+private val timelineDateFormatter = object : ThreadLocal<SimpleDateFormat>() {
+    override fun initialValue(): SimpleDateFormat {
+        return SimpleDateFormat("h:mm a", Locale.getDefault())
+    }
+}
+private val dayMonthYearFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd")
+private val monthYearFormatter = DateTimeFormatter.ofPattern("MMMM yyyy")
+private val fullDateFormatter = DateTimeFormatter.ofPattern("EEEE, MMMM d")
 
 private fun Float.formatWeight(): String {
     return if (this % 1f == 0f) this.toInt().toString() else this.toString()
@@ -119,7 +170,6 @@ fun SimpleMacroRing(calories: Int, modifier: Modifier = Modifier) {
     }
 }
 
-// NEW: Quick helper component for the Analytics Grid
 @Composable
 fun AnalyticsBox(title: String, value: String, icon: ImageVector, modifier: Modifier = Modifier) {
     Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), modifier = modifier) {
@@ -144,14 +194,9 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
     val snapshot by viewModel.selectedDateSnapshot.collectAsState()
     val record = snapshot?.record
 
-    // NEW: Analytics & View States
     val analytics by viewModel.monthlyAnalytics.collectAsState()
     var isMonthView by remember { mutableStateOf(true) }
 
-    // Nutrition states
-    val targetProteinInt by viewModel.targetProtein.collectAsState()
-    val targetCarbsInt by viewModel.targetCarbs.collectAsState()
-    val targetFatsInt by viewModel.targetFats.collectAsState()
     var showFoodDialog by remember { mutableStateOf(false) }
     var showFoodPantryDialog by remember { mutableStateOf(false) }
     var foodToLog by remember { mutableStateOf<FoodItem?>(null) }
@@ -159,7 +204,6 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
     var foodToDelete by remember { mutableStateOf<FoodItem?>(null) }
     var logDetailsToShow by remember { mutableStateOf<ConsumedFoodLog?>(null) }
 
-    // Exercise states
     val allPresets by viewModel.allPresets.collectAsState()
     val globalTemplates by viewModel.exerciseTemplates.collectAsState()
     var showMacroEditDialog by remember { mutableStateOf(false) }
@@ -167,7 +211,6 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
     var exerciseToDelete by remember { mutableStateOf<Exercise?>(null) }
     var selectedTabIndex by remember { mutableIntStateOf(0) }
 
-    // Skincare states
     val skincareRoutines by viewModel.allSkincareRoutines.collectAsState()
     val skincareProducts by viewModel.allSkincareProducts.collectAsState()
     var showSkincareDialog by remember { mutableStateOf(false) }
@@ -176,12 +219,10 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
     var editingProductContext by remember { mutableStateOf<Pair<SkincareRoutine, SkincareProduct>?>(null) }
     var skincareRoutineToRemove by remember { mutableStateOf<String?>(null) }
 
-    // Weight & Sleep states
     val baseWeight by viewModel.weightFlow.collectAsState()
     var showWeightLogDialog by remember { mutableStateOf(false) }
     var showSleepDialog by remember { mutableStateOf(false) }
 
-    // Supplements states
     val supplementsRoster by viewModel.supplementsRoster.collectAsState()
     val todayScheduled by viewModel.selectedDateScheduledSupplements.collectAsState()
     val categories by viewModel.supplementCategories.collectAsState()
@@ -191,10 +232,9 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
     var categoryToDelete by remember { mutableStateOf<String?>(null) }
 
     var selectedDate by remember { mutableStateOf(LocalDate.now()) }
-    val isFuture = selectedDate.isAfter(LocalDate.now())
 
     LaunchedEffect(Unit) {
-        viewModel.selectDate(selectedDate.format(DateTimeFormatter.ofPattern("yyyy-MM-dd")))
+        viewModel.selectDate(selectedDate.format(dayMonthYearFormatter))
     }
 
     // --- DIALOGS REGION ---
@@ -224,7 +264,7 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
                     ) {
                         val minWeight = 20
                         val maxWeight = 250
-                        items(maxWeight - minWeight + 1) { index ->
+                        items(maxWeight - minWeight + 1, key = { it }) { index ->
                             val itemWeight = minWeight + index
                             val isSelected = itemWeight == sliderWeight.toInt()
                             Column(
@@ -294,7 +334,7 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
                     Text("${String.format(Locale.US, "%.1f", sliderHours)} Hours", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
 
                     LazyRow(state = listState, modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp), horizontalArrangement = Arrangement.spacedBy(16.dp), contentPadding = PaddingValues(horizontal = 60.dp)) {
-                        items(24) { index ->
+                        items(24, key = { it }) { index ->
                             val itemHours = 2f + (index * 0.5f)
                             val isSelected = itemHours == sliderHours
                             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clip(RoundedCornerShape(12.dp)).clickable { sliderHours = itemHours }.padding(8.dp)) {
@@ -342,7 +382,7 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
                 Button(onClick = {
                     val routineObj = skincareRoutines.find { it.name == skincareRoutineToRemove }
                     val products = routineObj?.let {
-                        try { Json.decodeFromString<List<SkincareProduct>>(it.productsJson).map { p -> p.name } } catch(e: Exception) { emptyList() }
+                        try { Json.decodeFromString<List<SkincareProduct>>(it.productsJson).map { p -> p.name } } catch(_: Exception) { emptyList() } // --- FIX: Unused 'e' ---
                     } ?: emptyList()
                     viewModel.removeLoggedSkincareRoutine(skincareRoutineToRemove!!, products)
                     skincareRoutineToRemove = null
@@ -374,7 +414,7 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
                     Text("Hold a category to delete it.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(modifier = Modifier.height(8.dp))
                     LazyColumn(modifier = Modifier.heightIn(max = 200.dp)) {
-                        items(categories) { cat ->
+                        items(categories, key = { it }) { cat ->
                             Row(modifier = Modifier.fillMaxWidth().combinedClickable(onClick = {}, onLongClick = { categoryToDelete = cat }).padding(vertical = 12.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                                 Text(cat, style = MaterialTheme.typography.bodyMedium)
                             }
@@ -414,7 +454,7 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
                     if (filtered.isNotEmpty() && showSuggestions) {
                         ElevatedCard(modifier = Modifier.fillMaxWidth().height(160.dp), elevation = CardDefaults.elevatedCardElevation(defaultElevation = 4.dp)) {
                             LazyColumn(modifier = Modifier.fillMaxSize()) {
-                                items(filtered) { template ->
+                                items(filtered, key = { it.name }) { template ->
                                     Row(modifier = Modifier.fillMaxWidth().clickable { editName = template.name; editDosage = template.dosage; editCategory = template.category; editTime = template.timeOfUse; editInstruction = template.instruction; showSuggestions = false; focusManager.clearFocus() }.padding(16.dp), verticalAlignment = Alignment.CenterVertically) { Text(template.name, fontWeight = FontWeight.Bold) }
                                 }
                             }
@@ -422,19 +462,22 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
                     }
                     OutlinedTextField(value = editDosage, onValueChange = { editDosage = it }, label = { Text("Dosage (e.g. 500mg)") }, modifier = Modifier.fillMaxWidth())
                     ExposedDropdownMenuBox(expanded = catExpanded, onExpandedChange = { catExpanded = it }) {
-                        OutlinedTextField(value = editCategory, onValueChange = {}, readOnly = true, label = { Text("Category") }, modifier = Modifier.menuAnchor().fillMaxWidth(), trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = catExpanded) })
+                        // --- FIX: MenuAnchor explicitly set to PrimaryNotEditable ---
+                        OutlinedTextField(value = editCategory, onValueChange = {}, readOnly = true, label = { Text("Category") }, modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable, enabled = true).fillMaxWidth(), trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = catExpanded) })
                         ExposedDropdownMenu(expanded = catExpanded, onDismissRequest = { catExpanded = false }) {
                             categories.forEach { opt -> DropdownMenuItem(text = { Text(opt) }, onClick = { editCategory = opt; catExpanded = false }) }
                         }
                     }
                     ExposedDropdownMenuBox(expanded = timeExpanded, onExpandedChange = { timeExpanded = it }) {
-                        OutlinedTextField(value = editTime, onValueChange = {}, readOnly = true, label = { Text("Time of Use") }, modifier = Modifier.menuAnchor().fillMaxWidth(), trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = timeExpanded) })
+                        // --- FIX: MenuAnchor explicitly set to PrimaryNotEditable ---
+                        OutlinedTextField(value = editTime, onValueChange = {}, readOnly = true, label = { Text("Time of Use") }, modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable, enabled = true).fillMaxWidth(), trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = timeExpanded) })
                         ExposedDropdownMenu(expanded = timeExpanded, onDismissRequest = { timeExpanded = false }) {
                             listOf("Morning", "Afternoon", "Evening", "Before Bed", "Anytime").forEach { opt -> DropdownMenuItem(text = { Text(opt) }, onClick = { editTime = opt; timeExpanded = false }) }
                         }
                     }
                     ExposedDropdownMenuBox(expanded = instExpanded, onExpandedChange = { instExpanded = it }) {
-                        OutlinedTextField(value = editInstruction, onValueChange = {}, readOnly = true, label = { Text("Instructions") }, modifier = Modifier.menuAnchor().fillMaxWidth(), trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = instExpanded) })
+                        // --- FIX: MenuAnchor explicitly set to PrimaryNotEditable ---
+                        OutlinedTextField(value = editInstruction, onValueChange = {}, readOnly = true, label = { Text("Instructions") }, modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable, enabled = true).fillMaxWidth(), trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = instExpanded) })
                         ExposedDropdownMenu(expanded = instExpanded, onDismissRequest = { instExpanded = false }) {
                             listOf("None", "With Food", "Empty Stomach", "With Water").forEach { opt -> DropdownMenuItem(text = { Text(opt) }, onClick = { editInstruction = opt; instExpanded = false }) }
                         }
@@ -457,7 +500,8 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
             },
             confirmButton = {
                 Button(onClick = {
-                    val idToSave = if (editingSupplementItem!!.id.isEmpty()) java.util.UUID.randomUUID().toString() else editingSupplementItem!!.id
+                    // --- FIX: Using ifEmpty correctly for fast UUID generation ---
+                    val idToSave = editingSupplementItem!!.id.ifEmpty { java.util.UUID.randomUUID().toString() }
                     viewModel.saveSupplementItem(SupplementItem(idToSave, editName, editDosage, editCategory, editTime, editRecurrenceType, editRecurrenceVal, editInstruction))
                     editingSupplementItem = null
                 }) { Text("Save") }
@@ -485,7 +529,7 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
                             Text(cat, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 12.dp, bottom = 4.dp))
                             HorizontalDivider(color = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f))
                         }
-                        items(items) { item ->
+                        items(items, key = { it.id }) { item ->
                             Row(modifier = Modifier.fillMaxWidth().clickable { editingSupplementItem = item }.padding(vertical = 12.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(item.name, fontWeight = FontWeight.Bold)
@@ -513,7 +557,7 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
 
     if (logDetailsToShow != null) {
         val log = logDetailsToShow!!
-        val timeStr = timelineDateFormatter.format(Date(log.timestamp))
+        val timeStr = timelineDateFormatter.get()?.format(Date(log.timestamp)) ?: ""
         AlertDialog(
             onDismissRequest = { logDetailsToShow = null },
             title = { Text("Meal Details") },
@@ -619,7 +663,7 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
                     Spacer(modifier = Modifier.height(8.dp))
                     LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         item { TextButton(onClick = { showNewFoodDialog = true }, modifier = Modifier.fillMaxWidth()) { Text("+ Create New Food") } }
-                        items(searchedFoods) { food ->
+                        items(searchedFoods, key = { it.id }) { food ->
                             Surface(
                                 shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
                                 modifier = Modifier.fillMaxWidth().combinedClickable(onClick = { foodToLog = food; showFoodDialog = true; showFoodPantryDialog = false }, onLongClick = { foodToDelete = food })
@@ -763,12 +807,13 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
                             Column(modifier = Modifier.fillMaxSize()) {
                                 Column(modifier = Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
                                     ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
-                                        OutlinedTextField(value = inputName, onValueChange = { inputName = it; expanded = true }, label = { Text("Search Exercise") }, leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search") }, modifier = Modifier.menuAnchor().fillMaxWidth())
+                                        // --- FIX: MenuAnchor explicitly set to PrimaryEditable ---
+                                        OutlinedTextField(value = inputName, onValueChange = { inputName = it; expanded = true }, label = { Text("Search Exercise") }, leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search") }, modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryEditable, true).fillMaxWidth())
                                         val filtered = globalTemplates.filter { it.name.contains(inputName, true) }
                                         val exactMatch = globalTemplates.any { it.name.equals(inputName, ignoreCase = true) }
 
                                         if ((filtered.isNotEmpty() || (inputName.isNotBlank() && !exactMatch)) && expanded) {
-                                            ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }, modifier = Modifier.heightIn(max = 200.dp)) {
+                                            ExposedDropdownMenu(expanded = true, onDismissRequest = { expanded = false }, modifier = Modifier.heightIn(max = 200.dp)) {
                                                 filtered.forEach { option -> Box(modifier = Modifier.fillMaxWidth().clickable { inputName = option.name; expanded = false }.padding(16.dp)) { Text(option.name) } }
                                                 if (inputName.isNotBlank() && !exactMatch) { Box(modifier = Modifier.fillMaxWidth().clickable { viewModel.createExerciseTemplate(inputName); expanded = false }.padding(16.dp)) { Text("Create new exercise: \"$inputName\"", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold) } }
                                             }
@@ -826,9 +871,34 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
                             Column(modifier = Modifier.fillMaxSize()) {
                                 Column(modifier = Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
                                     ExposedDropdownMenuBox(expanded = presetDropdownExpanded, onExpandedChange = { presetDropdownExpanded = it }, modifier = Modifier.fillMaxWidth()) {
-                                        OutlinedTextField(value = if (activePresetName.isEmpty()) "Select a Preset..." else activePresetName, onValueChange = {}, readOnly = true, modifier = Modifier.menuAnchor().fillMaxWidth(), trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = presetDropdownExpanded) }, colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors())
-                                        ExposedDropdownMenu(expanded = presetDropdownExpanded, onDismissRequest = { presetDropdownExpanded = false }) {
-                                            allPresets.forEach { preset -> DropdownMenuItem(text = { Text(preset.presetName) }, onClick = { activePresetName = preset.presetName; activeExercises = preset.exercises; presetDropdownExpanded = false }) }
+                                        // --- FIX: MenuAnchor explicitly set to PrimaryNotEditable ---
+                                        OutlinedTextField(
+                                            value = activePresetName.ifEmpty { "Select a Preset..." },
+                                            onValueChange = {},
+                                            readOnly = true,
+                                            modifier = Modifier
+                                                .menuAnchor(MenuAnchorType.PrimaryNotEditable, true)
+                                                .fillMaxWidth(),
+                                            trailingIcon = {
+                                                ExposedDropdownMenuDefaults.TrailingIcon(expanded = presetDropdownExpanded)
+                                            },
+                                            colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors()
+                                        )
+
+                                        ExposedDropdownMenu(
+                                            expanded = presetDropdownExpanded,
+                                            onDismissRequest = { presetDropdownExpanded = false }
+                                        ) {
+                                            allPresets.forEach { preset ->
+                                                DropdownMenuItem(
+                                                    text = { Text(preset.presetName) },
+                                                    onClick = {
+                                                        activePresetName = preset.presetName
+                                                        activeExercises = preset.exercises
+                                                        presetDropdownExpanded = false
+                                                    }
+                                                )
+                                            }
                                         }
                                     }
 
@@ -841,7 +911,7 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
                                                 Column(modifier = Modifier.weight(1f)) {
                                                     Text(ex.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
                                                     if (ex.isTimeBased) { Text("${ex.sets} Sets × ${ex.durationInSeconds} Secs", style = MaterialTheme.typography.bodySmall) }
-                                                    else { val wList = try { Json.decodeFromString<List<Float>>(ex.weightListJson) } catch(e:Exception){ emptyList() }; if (wList.isNotEmpty()) { Text("${ex.sets} Sets × ${ex.reps} Reps @ ${wList.joinToString(", ") { it.formatWeight() }}kg", style = MaterialTheme.typography.bodySmall) } else { Text("${ex.sets} Sets × ${ex.reps} Reps @ ${ex.weight.formatWeight()}kg", style = MaterialTheme.typography.bodySmall) } }
+                                                    else { val wList = try { Json.decodeFromString<List<Float>>(ex.weightListJson) } catch(_:Exception){ emptyList() }; if (wList.isNotEmpty()) { Text("${ex.sets} Sets × ${ex.reps} Reps @ ${wList.joinToString(", ") { it.formatWeight() }}kg", style = MaterialTheme.typography.bodySmall) } else { Text("${ex.sets} Sets × ${ex.reps} Reps @ ${ex.weight.formatWeight()}kg", style = MaterialTheme.typography.bodySmall) } }
                                                 }
                                             }
                                         }
@@ -868,13 +938,13 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
             initialProduct = oldProduct,
             onDismiss = { editingProductContext = null },
             onSave = { updatedProduct ->
-                val currentProducts = try { Json.decodeFromString<List<SkincareProduct>>(routineContext.productsJson) } catch (e: Exception) { emptyList() }
+                val currentProducts = try { Json.decodeFromString<List<SkincareProduct>>(routineContext.productsJson) } catch (_: Exception) { emptyList() }
                 val updatedList = currentProducts.map { if (it.name == oldProduct.name) updatedProduct else it }
                 viewModel.saveSkincareRoutine(routineContext.copy(productsJson = Json.encodeToString(updatedList)))
                 editingProductContext = null
             },
             onDelete = {
-                val currentProducts = try { Json.decodeFromString<List<SkincareProduct>>(routineContext.productsJson) } catch (e: Exception) { emptyList() }
+                val currentProducts = try { Json.decodeFromString<List<SkincareProduct>>(routineContext.productsJson) } catch (_: Exception) { emptyList() }
                 val updatedList = currentProducts.filter { it.name != oldProduct.name }
                 viewModel.saveSkincareRoutine(routineContext.copy(productsJson = Json.encodeToString(updatedList)))
                 editingProductContext = null
@@ -896,7 +966,7 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
         var inputRoutineName by remember(routineToEdit) { mutableStateOf(routineToEdit?.name ?: "") }
         var isPinnedToHome by remember(routineToEdit) { mutableStateOf(routineToEdit?.isPinnedToHome ?: true) }
         val initialProducts = remember(routineToEdit) {
-            try { Json.decodeFromString<List<SkincareProduct>>(routineToEdit?.productsJson ?: "[]") } catch(e: Exception){ try { Json.decodeFromString<List<String>>(routineToEdit?.productsJson ?: "[]").map { SkincareProduct(name = it) } } catch (e2: Exception) { emptyList() } }
+            try { Json.decodeFromString<List<SkincareProduct>>(routineToEdit?.productsJson ?: "[]") } catch(_: Exception){ try { Json.decodeFromString<List<String>>(routineToEdit?.productsJson ?: "[]").map { SkincareProduct(name = it) } } catch (_: Exception) { emptyList() } }
         }
         var selectedProducts by remember(routineToEdit) { mutableStateOf(initialProducts) }
         var routineDropdownExpanded by remember { mutableStateOf(false) }
@@ -920,10 +990,11 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
                 LazyColumn {
                     item {
                         ExposedDropdownMenuBox(expanded = routineDropdownExpanded, onExpandedChange = { routineDropdownExpanded = it }) {
-                            OutlinedTextField(value = inputRoutineName, onValueChange = { inputRoutineName = it; routineDropdownExpanded = true }, label = { Text("Routine Name (e.g., Morning Wash)") }, modifier = Modifier.fillMaxWidth().menuAnchor(), trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = routineDropdownExpanded) }, colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(), singleLine = true)
+                            // --- FIX: MenuAnchor explicitly set to PrimaryEditable ---
+                            OutlinedTextField(value = inputRoutineName, onValueChange = { inputRoutineName = it; routineDropdownExpanded = true }, label = { Text("Routine Name (e.g., Morning Wash)") }, modifier = Modifier.fillMaxWidth().menuAnchor(MenuAnchorType.PrimaryEditable, true), trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = routineDropdownExpanded) }, colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(), singleLine = true)
                             val filteredRoutines = skincareRoutines.filter { it.name.contains(inputRoutineName, true) }
                             if (filteredRoutines.isNotEmpty() && routineDropdownExpanded) {
-                                ExposedDropdownMenu(expanded = routineDropdownExpanded, onDismissRequest = { routineDropdownExpanded = false }, modifier = Modifier.heightIn(max = 200.dp)) {
+                                ExposedDropdownMenu(expanded = true, onDismissRequest = { routineDropdownExpanded = false }, modifier = Modifier.heightIn(max = 200.dp)) {
                                     filteredRoutines.forEach { routine -> DropdownMenuItem(text = { Text(routine.name) }, onClick = { routineToEdit = routine; routineDropdownExpanded = false }) }
                                 }
                             }
@@ -940,11 +1011,12 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
 
                         Row(modifier = Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                             ExposedDropdownMenuBox(expanded = productDropdownExpanded, onExpandedChange = { productDropdownExpanded = it }, modifier = Modifier.weight(1f)) {
-                                OutlinedTextField(value = productSearchText, onValueChange = { productSearchText = it; productDropdownExpanded = true }, placeholder = { Text("Search or add...") }, modifier = Modifier.menuAnchor().fillMaxWidth(), singleLine = true)
+                                // --- FIX: MenuAnchor explicitly set to PrimaryEditable ---
+                                OutlinedTextField(value = productSearchText, onValueChange = { productSearchText = it; productDropdownExpanded = true }, placeholder = { Text("Search or add...") }, modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryEditable, true).fillMaxWidth(), singleLine = true)
                                 val filteredProducts = skincareProducts.filter { it.name.contains(productSearchText, true) && !selectedProducts.any { sp -> sp.name == it.name } }
                                 val exactMatch = skincareProducts.any { it.name.equals(productSearchText.trim(), ignoreCase = true) }
                                 if ((filteredProducts.isNotEmpty() || (productSearchText.isNotBlank() && !exactMatch)) && productDropdownExpanded) {
-                                    ExposedDropdownMenu(expanded = productDropdownExpanded, onDismissRequest = { productDropdownExpanded = false }, modifier = Modifier.heightIn(max = 200.dp)) {
+                                    ExposedDropdownMenu(expanded = true, onDismissRequest = { productDropdownExpanded = false }, modifier = Modifier.heightIn(max = 200.dp)) {
                                         filteredProducts.forEach { product -> Box(modifier = Modifier.fillMaxWidth().clickable(onClick = { selectedProducts = selectedProducts + product; productSearchText = ""; productDropdownExpanded = false }).padding(16.dp)) { Text(product.name) } }
                                         if (productSearchText.isNotBlank() && !exactMatch) {
                                             DropdownMenuItem(text = { Text("Create new: \"${productSearchText.trim()}\"", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold) }, onClick = { val trimmed = productSearchText.trim(); viewModel.addSkincareProduct(trimmed); selectedProducts = selectedProducts + SkincareProduct(name = trimmed); productSearchText = ""; productDropdownExpanded = false })
@@ -1021,7 +1093,7 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
                     Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "Previous Month")
                 }
                 Text(
-                    text = currentMonth.format(DateTimeFormatter.ofPattern("MMMM yyyy")),
+                    text = currentMonth.format(monthYearFormatter),
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onBackground,
@@ -1070,10 +1142,10 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
                 ) {
                     items(dayOfWeekOffset) { Spacer(modifier = Modifier.size(40.dp)) }
 
-                    items(daysInMonth) { dayIndex ->
+                    items(daysInMonth, key = { it }) { dayIndex ->
                         val dayNumber = dayIndex + 1
                         val date = currentMonth.atDay(dayNumber)
-                        val dateIdStr = date.format(DateTimeFormatter.ofPattern("yyyy-MM-dd"))
+                        val dateIdStr = date.format(dayMonthYearFormatter)
                         val hasData = activeDays.contains(dateIdStr)
                         val isSelected = date == selectedDate
 
@@ -1111,7 +1183,7 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
                     val weekDays = (0..6).map { startOfWeek.plusDays(it.toLong()) }
 
                     weekDays.forEach { date ->
-                        val dateIdStr = date.format(DateTimeFormatter.ofPattern("yyyy-MM-dd"))
+                        val dateIdStr = date.format(dayMonthYearFormatter)
                         val hasData = activeDays.contains(dateIdStr)
                         val isSelected = date == selectedDate
 
@@ -1157,12 +1229,12 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
                     colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)
                 ) {
                     Column(modifier = Modifier.padding(20.dp).verticalScroll(rememberScrollState())) {
-                        Text("${currentMonth.format(DateTimeFormatter.ofPattern("MMMM yyyy"))} Overview", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                        Text("${currentMonth.format(monthYearFormatter)} Overview", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                         Spacer(modifier = Modifier.height(16.dp))
 
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             AnalyticsBox(title = "Avg Sleep", value = "${String.format(Locale.US, "%.1f", analytics.averageSleep)}h", icon = Icons.Outlined.Bedtime, modifier = Modifier.weight(1f))
-                            AnalyticsBox(title = "Workouts", value = "${analytics.workoutDays} Days", icon = Icons.Outlined.DirectionsRun, modifier = Modifier.weight(1f))
+                            AnalyticsBox(title = "Workouts", value = "${analytics.workoutDays} Days", icon = Icons.AutoMirrored.Outlined.DirectionsRun, modifier = Modifier.weight(1f))
                         }
                         Spacer(modifier = Modifier.height(12.dp))
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -1185,7 +1257,7 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
 
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                             Text(
-                                text = selectedDate.format(DateTimeFormatter.ofPattern("EEEE, MMMM d")),
+                                text = selectedDate.format(fullDateFormatter),
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.primary
@@ -1224,8 +1296,13 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
                             }
                         }
 
+                        // --- OPTIMIZATION: Shift JSON parsing to remember blocks so they only parse when the string actually changes! ---
+                        val consumedList = remember(record?.consumedFoodsJson) { try { Json.decodeFromString<List<ConsumedFoodLog>>(record?.consumedFoodsJson ?: "[]") } catch(_: Exception){ emptyList() } }
+                        val completedSupplements = remember(record?.completedSupplementsJson) { try { Json.decodeFromString<List<String>>(record?.completedSupplementsJson ?: "[]") } catch(_: Exception){ emptyList() } }
+                        val completedRoutines = remember(record?.completedSkincareRoutinesJson) { try { Json.decodeFromString<List<String>>(record?.completedSkincareRoutinesJson ?: "[]") } catch(_: Exception){ emptyList() } }
+                        val completedSteps = remember(record?.completedSkincareStepsJson) { try { Json.decodeFromString<List<String>>(record?.completedSkincareStepsJson ?: "[]") } catch(_: Exception){ emptyList() } }
+
                         // --- 2. NUTRITION LOGS (Swipeable, Compact) ---
-                        val consumedList = try { Json.decodeFromString<List<ConsumedFoodLog>>(record?.consumedFoodsJson ?: "[]") } catch(e: Exception){ emptyList() }
                         Spacer(modifier = Modifier.height(16.dp))
                         HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
                         Spacer(modifier = Modifier.height(8.dp))
@@ -1262,7 +1339,8 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
                                                 Text(" · ${log.calories} kcal", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface)
                                             }
                                             Spacer(modifier = Modifier.width(8.dp))
-                                            Text(timelineDateFormatter.format(Date(log.timestamp)), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                            val formatT = timelineDateFormatter.get()?.format(Date(log.timestamp)) ?: ""
+                                            Text(formatT, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                         }
                                     }
                                 }
@@ -1270,7 +1348,6 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
                         }
 
                         // --- 3. SUPPLEMENTS (Swipeable, Compact) ---
-                        val completedSupplements = try { Json.decodeFromString<List<String>>(record?.completedSupplementsJson ?: "[]") } catch(e: Exception){ emptyList() }
                         Spacer(modifier = Modifier.height(12.dp))
                         HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
                         Spacer(modifier = Modifier.height(8.dp))
@@ -1330,7 +1407,7 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
                             Text("Rest day.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         } else {
                             exercises.forEach { ex ->
-                                val wList = try { Json.decodeFromString<List<Float>>(ex.weightListJson) } catch(e:Exception){ emptyList() }
+                                val wList = remember(ex.weightListJson) { try { Json.decodeFromString<List<Float>>(ex.weightListJson) } catch(_:Exception){ emptyList() } }
                                 val weightStr = if (wList.isNotEmpty()) wList.joinToString(",") { it.formatWeight() } else ex.weight.formatWeight()
                                 val details = if (ex.isTimeBased) "${ex.sets}x${ex.durationInSeconds}s" else "${ex.sets}x${ex.reps} | ${weightStr}kg"
 
@@ -1346,8 +1423,6 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
                         }
 
                         // --- 5. SKINCARE (Compact) ---
-                        val completedRoutines = try { Json.decodeFromString<List<String>>(record?.completedSkincareRoutinesJson ?: "[]") } catch(e:Exception){ emptyList() }
-                        val completedSteps = try { Json.decodeFromString<List<String>>(record?.completedSkincareStepsJson ?: "[]") } catch(e:Exception){ emptyList() }
                         val visibleRoutines = skincareRoutines.filter { completedRoutines.contains(it.name) }
 
                         Spacer(modifier = Modifier.height(12.dp))
@@ -1363,7 +1438,7 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
                             Text("No routines logged.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         } else {
                             visibleRoutines.forEach { routine ->
-                                val products = try { Json.decodeFromString<List<SkincareProduct>>(routine.productsJson) } catch (e: Exception) { emptyList() }
+                                val products = remember(routine.productsJson) { try { Json.decodeFromString<List<SkincareProduct>>(routine.productsJson) } catch (_: Exception) { emptyList() } }
                                 Row(modifier = Modifier.fillMaxWidth().combinedClickable(onClick = {}, onLongClick = { skincareRoutineToRemove = routine.name }).padding(top = 4.dp, bottom = 2.dp)) {
                                     Text(routine.name, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }

@@ -8,9 +8,9 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ViewList // FIX: Correct AutoMirrored import
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Circle
@@ -25,6 +25,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.graphics.toColorInt // FIX: Using fast KTX color engine
 import com.example.loom.data.local.entity.NoteTag
 import com.example.loom.data.local.entity.SubTask
 import com.example.loom.data.local.entity.Task
@@ -56,7 +57,7 @@ fun TasksAndDeadlinesCard(
                     Text("Tasks & Deadlines", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(modifier = Modifier.width(4.dp))
                     IconButton(onClick = onToggleKanban, modifier = Modifier.size(32.dp)) {
-                        Icon(imageVector = if (isKanbanView) Icons.Default.ViewKanban else Icons.Default.ViewList, contentDescription = "Toggle View", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                        Icon(imageVector = if (isKanbanView) Icons.Default.ViewKanban else Icons.AutoMirrored.Filled.ViewList, contentDescription = "Toggle View", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
                     }
                 }
                 Button(onClick = onAddTask, shape = RoundedCornerShape(12.dp), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp)) {
@@ -123,8 +124,8 @@ fun TaskCard(task: Task, allTags: List<NoteTag>, viewModel: HomeViewModel, isKan
     val priorityColor = when (task.priority) { 1 -> Color(0xFF4CAF50); 2 -> Color(0xFF8BC34A); 3 -> Color(0xFFFFEB3B); 4 -> Color(0xFFFF9800); 5 -> Color(0xFFF44336); else -> Color.Gray }
     var showMenu by remember { mutableStateOf(false) }
 
-    val subtasks = remember(task.subtasksJson) { try { Json.decodeFromString<List<SubTask>>(task.subtasksJson) } catch (e: Exception) { emptyList() } }
-    val taskTags = remember(task.tagsJson) { try { Json.decodeFromString<List<String>>(task.tagsJson) } catch (e: Exception) { emptyList() } }
+    val subtasks = remember(task.subtasksJson) { try { Json.decodeFromString<List<SubTask>>(task.subtasksJson) } catch (_: Exception) { emptyList() } } // FIX: Unused 'e'
+    val taskTags = remember(task.tagsJson) { try { Json.decodeFromString<List<String>>(task.tagsJson) } catch (_: Exception) { emptyList() } } // FIX: Unused 'e'
 
     ElevatedCard(
         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).combinedClickable(onClick = { viewModel.toggleTaskCompletion(task) }, onLongClick = { onEdit(task) }),
@@ -166,7 +167,8 @@ fun TaskCard(task: Task, allTags: List<NoteTag>, viewModel: HomeViewModel, isKan
                     if (taskTags.isNotEmpty()) {
                         Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.horizontalScroll(rememberScrollState()).weight(1f, fill = false)) {
                             taskTags.forEach { tagName ->
-                                val tagColor = allTags.find { it.name == tagName }?.colorHex?.let { Color(android.graphics.Color.parseColor(it)) } ?: MaterialTheme.colorScheme.primary
+                                // --- FIX: Uses strict, fast toColorInt() parsing ---
+                                val tagColor = allTags.find { it.name == tagName }?.colorHex?.let { try { Color(it.toColorInt()) } catch (_: Exception) { MaterialTheme.colorScheme.primary } } ?: MaterialTheme.colorScheme.primary
                                 Surface(color = tagColor.copy(alpha = 0.2f), shape = RoundedCornerShape(4.dp)) { Text(tagName, style = MaterialTheme.typography.labelSmall, color = tagColor, modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)) }
                             }
                         }

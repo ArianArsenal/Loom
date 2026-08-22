@@ -11,8 +11,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Assignment // --- FIX: Updated deprecated import ---
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Assignment
 import androidx.compose.material.icons.filled.Create
 import androidx.compose.material.icons.filled.LocalDrink
 import androidx.compose.material3.FloatingActionButton
@@ -27,6 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.unit.dp
 
+@Suppress("unused") // --- FIX: Tells compiler to keep it even if not currently called in the nav graph ---
 @Composable
 fun LoomExpandableFab(
     expanded: Boolean,
@@ -49,7 +50,7 @@ fun LoomExpandableFab(
                 modifier = Modifier.padding(bottom = 16.dp)
             ) {
                 FabOption(icon = Icons.Default.Create, label = "Add Note", onClick = onAddNoteClick)
-                FabOption(icon = Icons.Default.Assignment, label = "Add Task", onClick = onAddTaskClick)
+                FabOption(icon = Icons.AutoMirrored.Filled.Assignment, label = "Add Task", onClick = onAddTaskClick) // --- FIX: Using AutoMirrored version ---
                 FabOption(icon = Icons.Default.LocalDrink, label = "Add Water", onClick = onAddWaterClick)
             }
         }

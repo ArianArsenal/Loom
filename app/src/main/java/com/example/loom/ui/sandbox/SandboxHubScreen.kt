@@ -32,15 +32,33 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.graphics.toColorInt
 import com.example.loom.data.models.SandboxBlock
 import com.example.loom.data.models.SandboxSpace
+import com.example.loom.util.SpaceTemplate
+import com.example.loom.util.TemplateManager
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+private val hubDateFormatter = object : ThreadLocal<SimpleDateFormat>() {
+    override fun initialValue(): SimpleDateFormat {
+        return SimpleDateFormat("MMM d, yyyy • h:mm a", Locale.getDefault())
+    }
+}
+
+private val trashDateFormatter = object : ThreadLocal<SimpleDateFormat>() {
+    override fun initialValue(): SimpleDateFormat {
+        return SimpleDateFormat("MMM d", Locale.getDefault())
+    }
+}
+
+private val globalGson = Gson()
+
 @OptIn(ExperimentalMaterial3Api::class)
+@Suppress("DiscouragedApi", "KotlinConstantConditions") // --- FIX: Suppressed Compose State false-positive ---
 @Composable
 fun SandboxHubScreen(
     viewModel: SandboxViewModel,
@@ -50,20 +68,18 @@ fun SandboxHubScreen(
     var editingTagsForSpace by remember { mutableStateOf<SandboxSpace?>(null) }
     var showCreateDialog by remember { mutableStateOf(false) }
 
-    var templateToDelete by remember { mutableStateOf<com.example.loom.utils.SpaceTemplate?>(null) }
+    var templateToDelete by remember { mutableStateOf<SpaceTemplate?>(null) }
 
-    // UI State for Trash
     var showingTrash by remember { mutableStateOf(false) }
-    var templateTrashTrigger by remember { mutableIntStateOf(0) } // Forces recomposition when templates are trashed/restored
+    var templateTrashTrigger by remember { mutableIntStateOf(0) }
 
     val trashedSpaces by viewModel.trashedSpaces.collectAsState(initial = emptyList())
 
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
 
-    // Fetch Trashed Templates Reactively
-    val trashedAppTemplates = remember(showingTrash, templateTrashTrigger) { com.example.loom.utils.TemplateManager.getTrashedAppTemplates(context) }
-    val trashedCustomTemplates = remember(showingTrash, templateTrashTrigger) { com.example.loom.utils.TemplateManager.getTrashedCustomTemplates(context) }
+    val trashedAppTemplates = remember(showingTrash, templateTrashTrigger) { TemplateManager.getTrashedAppTemplates(context) }
+    val trashedCustomTemplates = remember(showingTrash, templateTrashTrigger) { TemplateManager.getTrashedCustomTemplates(context) }
     val allTrashedTemplates = trashedAppTemplates + trashedCustomTemplates
 
     Scaffold(
@@ -76,8 +92,8 @@ fun SandboxHubScreen(
                     if (showingTrash && (trashedSpaces.isNotEmpty() || allTrashedTemplates.isNotEmpty())) {
                         TextButton(onClick = {
                             viewModel.emptyTrash()
-                            com.example.loom.utils.TemplateManager.emptyTemplateTrash(context)
-                            templateTrashTrigger++ // Refresh the lists instantly
+                            TemplateManager.emptyTemplateTrash(context)
+                            templateTrashTrigger++
                         }) {
                             Text("Empty", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
                         }
@@ -131,11 +147,11 @@ fun SandboxHubScreen(
                                 colors = FilterChipDefaults.filterChipColors(selectedContainerColor = MaterialTheme.colorScheme.primary, selectedLabelColor = MaterialTheme.colorScheme.onPrimary)
                             )
                         }
-                        items(allTags) { tag ->
+                        items(allTags, key = { it }) { tag ->
                             val parts = tag.split("|")
                             val text = parts[0]
                             val hex = parts.getOrNull(1) ?: "#4CAF50"
-                            val tagColor = try { Color(android.graphics.Color.parseColor(hex)) } catch (e:Exception) { MaterialTheme.colorScheme.primary }
+                            val tagColor = try { Color(hex.toColorInt()) } catch (_: Exception) { MaterialTheme.colorScheme.primary }
 
                             FilterChip(
                                 selected = selectedTag == tag,
@@ -213,7 +229,7 @@ fun SandboxHubScreen(
                                                 if (isCustomIcon) {
                                                     val iconName = iconParts[0]
                                                     val iconColorHex = iconParts[1]
-                                                    val iconTint = try { Color(android.graphics.Color.parseColor(iconColorHex)) } catch (e: Exception) { MaterialTheme.colorScheme.onSurface }
+                                                    val iconTint = try { Color(iconColorHex.toColorInt()) } catch (_: Exception) { MaterialTheme.colorScheme.onSurface }
                                                     val resId = context.resources.getIdentifier(iconName, "drawable", context.packageName)
                                                     if (resId != 0) {
                                                         Icon(painterResource(resId), contentDescription = null, tint = iconTint, modifier = Modifier.size(28.dp))
@@ -240,7 +256,7 @@ fun SandboxHubScreen(
                                                 Text(space.title.ifBlank { "Untitled Space" }, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                             }
 
-                                            val dateStr = SimpleDateFormat("MMM d, yyyy • h:mm a", Locale.getDefault()).format(Date(space.updatedAt))
+                                            val dateStr = hubDateFormatter.get()?.format(Date(space.updatedAt)) ?: ""
                                             Text("Last edited: $dateStr", color = Color.Gray, fontSize = 11.sp, modifier = Modifier.padding(top = 2.dp))
 
                                             if (space.tags.isNotEmpty()) {
@@ -250,7 +266,7 @@ fun SandboxHubScreen(
                                                         val parts = tag.split("|")
                                                         val text = parts[0]
                                                         val hex = parts.getOrNull(1) ?: "#4CAF50"
-                                                        val tagColor = try { Color(android.graphics.Color.parseColor(hex)) } catch (e:Exception) { MaterialTheme.colorScheme.primary }
+                                                        val tagColor = try { Color(hex.toColorInt()) } catch (_: Exception) { MaterialTheme.colorScheme.primary }
 
                                                         Surface(
                                                             color = tagColor.copy(alpha = 0.2f),
@@ -349,14 +365,13 @@ fun SandboxHubScreen(
                                             color = MaterialTheme.colorScheme.surfaceVariant,
                                             modifier = Modifier.size(56.dp)
                                         ) {
-                                            // FIX: Now renders the actual original Space icon in the Trash
                                             val iconParts = space.icon.split("|")
                                             val isCustomIcon = iconParts.size == 2
                                             Box(contentAlignment = Alignment.Center) {
                                                 if (isCustomIcon) {
                                                     val iconName = iconParts[0]
                                                     val iconColorHex = iconParts[1]
-                                                    val iconTint = try { Color(android.graphics.Color.parseColor(iconColorHex)) } catch (e: Exception) { MaterialTheme.colorScheme.onSurface }
+                                                    val iconTint = try { Color(iconColorHex.toColorInt()) } catch (_: Exception) { MaterialTheme.colorScheme.onSurface }
                                                     val resId = context.resources.getIdentifier(iconName, "drawable", context.packageName)
                                                     if (resId != 0) {
                                                         Icon(painterResource(resId), contentDescription = null, tint = iconTint.copy(alpha = 0.5f), modifier = Modifier.size(28.dp))
@@ -371,7 +386,7 @@ fun SandboxHubScreen(
                                         Spacer(modifier = Modifier.width(16.dp))
                                         Column(modifier = Modifier.weight(1f)) {
                                             Text(space.title.ifBlank { "Untitled Space" }, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                            val dateStr = SimpleDateFormat("MMM d", Locale.getDefault()).format(Date(space.updatedAt))
+                                            val dateStr = trashDateFormatter.get()?.format(Date(space.updatedAt)) ?: ""
                                             Text("Deleted Space: $dateStr", color = Color.Gray, fontSize = 11.sp, modifier = Modifier.padding(top = 2.dp))
                                         }
 
@@ -419,11 +434,11 @@ fun SandboxHubScreen(
                                     confirmValueChange = {
                                         if (it == SwipeToDismissBoxValue.EndToStart) {
                                             if (template.isAppDefault) {
-                                                com.example.loom.utils.TemplateManager.permanentlyDeleteAppTemplate(context, template.id)
+                                                TemplateManager.permanentlyDeleteAppTemplate(context, template.id)
                                             } else {
-                                                com.example.loom.utils.TemplateManager.permanentlyDeleteCustomTemplate(context, template.name)
+                                                TemplateManager.permanentlyDeleteCustomTemplate(context, template.name)
                                             }
-                                            templateTrashTrigger++ // Refresh list instantly
+                                            templateTrashTrigger++
                                             true
                                         } else false
                                     }
@@ -456,7 +471,7 @@ fun SandboxHubScreen(
                                                 val iconParts = template.icon.split("|")
                                                 Box(contentAlignment = Alignment.Center) {
                                                     if (iconParts.size == 2) {
-                                                        val iconTint = try { Color(android.graphics.Color.parseColor(iconParts[1])) } catch (e: Exception) { MaterialTheme.colorScheme.onSurface }
+                                                        val iconTint = try { Color(iconParts[1].toColorInt()) } catch (_: Exception) { MaterialTheme.colorScheme.onSurface }
                                                         val resId = context.resources.getIdentifier(iconParts[0], "drawable", context.packageName)
                                                         if (resId != 0) Icon(painterResource(resId), null, tint = iconTint.copy(alpha=0.5f), modifier = Modifier.size(28.dp))
                                                     } else {
@@ -481,9 +496,9 @@ fun SandboxHubScreen(
                                                         leadingIcon = { Icon(Icons.Default.Restore, null) },
                                                         onClick = {
                                                             if (template.isAppDefault) {
-                                                                com.example.loom.utils.TemplateManager.restoreAppTemplate(context, template.id)
+                                                                TemplateManager.restoreAppTemplate(context, template.id)
                                                             } else {
-                                                                com.example.loom.utils.TemplateManager.restoreCustomTemplate(context, template.name)
+                                                                TemplateManager.restoreCustomTemplate(context, template.name)
                                                             }
                                                             templateTrashTrigger++
                                                             showTrashMenu = false
@@ -495,9 +510,9 @@ fun SandboxHubScreen(
                                                         leadingIcon = { Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error) },
                                                         onClick = {
                                                             if (template.isAppDefault) {
-                                                                com.example.loom.utils.TemplateManager.permanentlyDeleteAppTemplate(context, template.id)
+                                                                TemplateManager.permanentlyDeleteAppTemplate(context, template.id)
                                                             } else {
-                                                                com.example.loom.utils.TemplateManager.permanentlyDeleteCustomTemplate(context, template.name)
+                                                                TemplateManager.permanentlyDeleteCustomTemplate(context, template.name)
                                                             }
                                                             templateTrashTrigger++
                                                             showTrashMenu = false
@@ -538,9 +553,8 @@ fun SandboxHubScreen(
     }
 
     if (showCreateDialog) {
-        val appTemplates = remember(showCreateDialog, templateTrashTrigger) { com.example.loom.utils.TemplateManager.getActiveAppTemplates(context) }
-        val userTemplates = remember(showCreateDialog, templateTrashTrigger) { com.example.loom.utils.TemplateManager.getCustomTemplates(context) }
-        val gson = remember { Gson() }
+        val appTemplates = remember(showCreateDialog, templateTrashTrigger) { TemplateManager.getActiveAppTemplates(context) }
+        val userTemplates = remember(showCreateDialog, templateTrashTrigger) { TemplateManager.getCustomTemplates(context) }
 
         AlertDialog(
             onDismissRequest = { showCreateDialog = false },
@@ -551,7 +565,7 @@ fun SandboxHubScreen(
                     if (appTemplates.isNotEmpty()) {
                         item { Text("App Layouts", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 8.dp, top = 8.dp)) }
 
-                        items(appTemplates) { template ->
+                        items(appTemplates, key = { it.id }) { template ->
                             ListItem(
                                 headlineContent = { Text(template.name, fontWeight = FontWeight.SemiBold) },
                                 leadingContent = {
@@ -559,7 +573,7 @@ fun SandboxHubScreen(
                                     if (iconParts.size == 2) {
                                         val iconName = iconParts[0]
                                         val iconColorHex = iconParts[1]
-                                        val iconTint = try { Color(android.graphics.Color.parseColor(iconColorHex)) } catch (e: Exception) { MaterialTheme.colorScheme.onSurface }
+                                        val iconTint = try { Color(iconColorHex.toColorInt()) } catch (_: Exception) { MaterialTheme.colorScheme.onSurface }
                                         val resId = context.resources.getIdentifier(iconName, "drawable", context.packageName)
                                         if (resId != 0) {
                                             Icon(painterResource(resId), contentDescription = null, tint = iconTint, modifier = Modifier.size(24.dp))
@@ -583,10 +597,11 @@ fun SandboxHubScreen(
                                     }
                                 },
                                 modifier = Modifier.clickable {
-                                    val type = object : TypeToken<List<SandboxBlock>>() {}.type
+                                    // --- FIX: R8-Proof Type Token ---
+                                    val type = TypeToken.getParameterized(List::class.java, SandboxBlock::class.java).type
                                     val initialBlocks: List<SandboxBlock> = try {
-                                        gson.fromJson(template.blocksJson, type) ?: listOf(SandboxBlock(content = "\u200B"))
-                                    } catch(e: Exception) { listOf(SandboxBlock(content = "\u200B")) }
+                                        globalGson.fromJson(template.blocksJson, type) ?: listOf(SandboxBlock(content = "\u200B"))
+                                    } catch(_: Exception) { listOf(SandboxBlock(content = "\u200B")) }
 
                                     val newSpace = SandboxSpace(
                                         title = if (template.id == "empty") "" else template.name,
@@ -604,7 +619,7 @@ fun SandboxHubScreen(
                     if (userTemplates.isNotEmpty()) {
                         item { Text("Your Layouts", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 8.dp, top = 16.dp)) }
 
-                        items(userTemplates) { template ->
+                        items(userTemplates, key = { it.id }) { template ->
                             ListItem(
                                 headlineContent = { Text(template.name, fontWeight = FontWeight.SemiBold) },
                                 leadingContent = {
@@ -612,7 +627,7 @@ fun SandboxHubScreen(
                                     if (iconParts.size == 2) {
                                         val iconName = iconParts[0]
                                         val iconColorHex = iconParts[1]
-                                        val iconTint = try { Color(android.graphics.Color.parseColor(iconColorHex)) } catch (e: Exception) { MaterialTheme.colorScheme.onSurface }
+                                        val iconTint = try { Color(iconColorHex.toColorInt()) } catch (_: Exception) { MaterialTheme.colorScheme.onSurface }
                                         val resId = context.resources.getIdentifier(iconName, "drawable", context.packageName)
                                         if (resId != 0) {
                                             Icon(painterResource(resId), contentDescription = null, tint = iconTint, modifier = Modifier.size(24.dp))
@@ -634,10 +649,11 @@ fun SandboxHubScreen(
                                     }
                                 },
                                 modifier = Modifier.clickable {
-                                    val type = object : TypeToken<List<SandboxBlock>>() {}.type
+                                    // --- FIX: R8-Proof Type Token ---
+                                    val type = TypeToken.getParameterized(List::class.java, SandboxBlock::class.java).type
                                     val initialBlocks: List<SandboxBlock> = try {
-                                        gson.fromJson(template.blocksJson, type) ?: listOf(SandboxBlock(content = "\u200B"))
-                                    } catch(e: Exception) { listOf(SandboxBlock(content = "\u200B")) }
+                                        globalGson.fromJson(template.blocksJson, type) ?: listOf(SandboxBlock(content = "\u200B"))
+                                    } catch(_: Exception) { listOf(SandboxBlock(content = "\u200B")) }
 
                                     val newSpace = SandboxSpace(
                                         title = template.name,
@@ -670,11 +686,11 @@ fun SandboxHubScreen(
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
                     onClick = {
                         if (templateToDelete!!.isAppDefault) {
-                            com.example.loom.utils.TemplateManager.deleteAppTemplate(context, templateToDelete!!.id)
+                            TemplateManager.deleteAppTemplate(context, templateToDelete!!.id)
                         } else {
-                            com.example.loom.utils.TemplateManager.deleteCustomTemplate(context, templateToDelete!!.name)
+                            TemplateManager.deleteCustomTemplate(context, templateToDelete!!.name)
                         }
-                        templateTrashTrigger++ // Push update
+                        templateTrashTrigger++
                         templateToDelete = null
                         showCreateDialog = true
                     }

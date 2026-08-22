@@ -22,7 +22,6 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Coffee
 import androidx.compose.material.icons.outlined.EmojiFoodBeverage
 import androidx.compose.material.icons.outlined.LocalCafe
@@ -49,7 +48,6 @@ import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.UUID
 
-// Predefined modern icon map
 val containerIcons = mapOf(
     "LocalDrink" to Icons.Outlined.LocalDrink,
     "WaterDrop" to Icons.Outlined.WaterDrop,
@@ -65,20 +63,17 @@ fun getContainerIcon(key: String): ImageVector {
     return containerIcons[key] ?: Icons.Outlined.LocalDrink
 }
 
-// NEW: Custom Animated Flowing Water Progress Bar
 @Composable
 fun AnimatedWaterProgressBar(
     progress: Float,
     modifier: Modifier = Modifier
 ) {
-    // 1. Smoothly animate the physical width of the progress bar when logging
     val animatedProgress by animateFloatAsState(
         targetValue = progress.coerceIn(0f, 1f),
         animationSpec = tween(durationMillis = 1200, easing = FastOutSlowInEasing),
         label = "WaterProgressHorizontal"
     )
 
-    // 2. Create a continuous horizontal flowing gradient effect
     val infiniteTransition = rememberInfiniteTransition(label = "flow")
     val offsetX by infiniteTransition.animateFloat(
         initialValue = 0f,
@@ -114,6 +109,13 @@ fun AnimatedWaterProgressBar(
     }
 }
 
+// --- OPTIMIZATION: ThreadLocal date formatter ---
+private val hydrationTimeFormatter = object : ThreadLocal<SimpleDateFormat>() {
+    override fun initialValue(): SimpleDateFormat {
+        return SimpleDateFormat("h:mm a", Locale.getDefault())
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HealthHydration(viewModel: HealthViewModel) {
@@ -126,7 +128,6 @@ fun HealthHydration(viewModel: HealthViewModel) {
 
     var showGoalDialog by remember { mutableStateOf(false) }
     var showContainerDialog by remember { mutableStateOf(false) }
-    val timeFormatter = remember { SimpleDateFormat("h:mm a", Locale.getDefault()) }
 
     if (showGoalDialog) {
         var inputGoal by remember { mutableStateOf(dailyGoal.toString()) }
@@ -172,7 +173,7 @@ fun HealthHydration(viewModel: HealthViewModel) {
             title = { Text("Manage Containers") },
             text = {
                 LazyColumn {
-                    items(localContainers) { container ->
+                    items(localContainers, key = { it.id }) { container -> // --- FIX ---
                         Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(getContainerIcon(container.iconEmoji), contentDescription = null, tint = MaterialTheme.colorScheme.primary)
@@ -198,7 +199,7 @@ fun HealthHydration(viewModel: HealthViewModel) {
 
                                 Text("Select Icon", style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(bottom = 8.dp))
                                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    items(containerIcons.keys.toList()) { key ->
+                                    items(containerIcons.keys.toList(), key = { it }) { key -> // --- FIX ---
                                         IconButton(
                                             onClick = { newIconKey = key },
                                             modifier = Modifier.background(if (newIconKey == key) MaterialTheme.colorScheme.primaryContainer else Color.Transparent, CircleShape)
@@ -246,7 +247,6 @@ fun HealthHydration(viewModel: HealthViewModel) {
 
     ElevatedCard(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp), colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)) {
         Column(modifier = Modifier.padding(20.dp)) {
-            // Header & Goal Progress
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text("Hydration", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 IconButton(onClick = { showGoalDialog = true }, modifier = Modifier.size(24.dp)) { Icon(Icons.Default.Edit, "Edit Goal", tint = MaterialTheme.colorScheme.primary) }
@@ -261,18 +261,15 @@ fun HealthHydration(viewModel: HealthViewModel) {
             }
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Replaced GaplessProgressBar with our new Animated Water Progress Bar
             AnimatedWaterProgressBar(progress = progress, modifier = Modifier.fillMaxWidth().height(14.dp))
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // Container Quick Select
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text("Hydration Quick-Add", style = MaterialTheme.typography.labelMedium)
                 TextButton(onClick = { showContainerDialog = true }) { Text("Edit Setup") }
             }
 
-            // Selection Row
             Row(modifier = Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 customContainers.forEach { container ->
                     val isDefault = defaultIncrement == container.volumeMl
@@ -292,7 +289,6 @@ fun HealthHydration(viewModel: HealthViewModel) {
                 }
             }
 
-            // Dedicated Log Button
             Spacer(modifier = Modifier.height(12.dp))
             Button(
                 onClick = {
@@ -310,7 +306,6 @@ fun HealthHydration(viewModel: HealthViewModel) {
                 Text("Log ${defaultIncrement}ml", fontWeight = FontWeight.Bold)
             }
 
-            // Timeline History
             if (logs.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(24.dp))
                 Text("Today's Logs", style = MaterialTheme.typography.labelMedium)
@@ -323,7 +318,8 @@ fun HealthHydration(viewModel: HealthViewModel) {
                                 Spacer(modifier = Modifier.width(12.dp))
                                 Column {
                                     Text(log.containerName, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
-                                    Text(timeFormatter.format(log.timestamp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    // --- FIX: Formatter now dynamically reads current time using ThreadLocal wrapper ---
+                                    Text(hydrationTimeFormatter.get()?.format(log.timestamp) ?: "", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                             }
                             Row(verticalAlignment = Alignment.CenterVertically) {

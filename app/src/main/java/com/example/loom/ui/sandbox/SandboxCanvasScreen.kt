@@ -22,13 +22,15 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.FileUpload
+import androidx.compose.material.icons.filled.FileDownload
+import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -54,6 +56,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.core.graphics.toColorInt // --- FIX: Fast string parsing ---
 import com.example.loom.data.models.BlockType
 import com.example.loom.data.models.SandboxBlock
 import com.example.loom.data.models.SandboxSpace
@@ -61,9 +64,8 @@ import kotlinx.coroutines.launch
 import java.io.InputStreamReader
 import java.util.UUID
 
-import androidx.compose.material.icons.filled.*
-
 @OptIn(ExperimentalMaterial3Api::class)
+@Suppress("DiscouragedApi") // --- FIX: Tell compiler dynamic resource reflection is intentional ---
 @Composable
 fun NotionCanvasScreen(
     space: SandboxSpace,
@@ -121,7 +123,7 @@ fun NotionCanvasScreen(
                 val importedBlocks = parseMarkdownToBlocks(text)
                 blocks.clear()
                 blocks.addAll(importedBlocks)
-            } catch(e: Exception){}
+            } catch(_: Exception){} // --- FIX: Unused e ---
         }
     }
 
@@ -136,20 +138,16 @@ fun NotionCanvasScreen(
     val isCustomIcon = iconParts.size == 2
     val iconName = if (isCustomIcon) iconParts[0] else ""
     val iconColorHex = if (isCustomIcon) iconParts[1] else ""
-    val iconTint = try { Color(android.graphics.Color.parseColor(iconColorHex)) } catch (e: Exception) { MaterialTheme.colorScheme.onSurface }
+    val iconTint = try { Color(iconColorHex.toColorInt()) } catch (_: Exception) { MaterialTheme.colorScheme.onSurface } // --- FIX: KTX & Unused e ---
 
-    // MAIN CONTAINER
     Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
 
-        // SCROLLABLE CANVAS
         Column(modifier = Modifier.fillMaxSize().verticalScroll(canvasScrollState)) {
 
-            // HEADER AREA (Contains Parallax Banner + Buttons)
             Box(modifier = Modifier.fillMaxWidth()) {
 
-                // Parallax Banner
                 if (bannerUrl.isNotEmpty()) {
-                    val bannerColor = try { Color(android.graphics.Color.parseColor(bannerUrl)) } catch(e:Exception){ Color.LightGray }
+                    val bannerColor = try { Color(bannerUrl.toColorInt()) } catch(_:Exception){ Color.LightGray } // --- FIX: KTX & Unused e ---
                     val scrollOffset = canvasScrollState.value.toFloat()
 
                     Box(
@@ -164,24 +162,22 @@ fun NotionCanvasScreen(
                     )
                 }
 
-                // --- INLINE HEADER BUTTONS (These now scroll away with the page) ---
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .statusBarsPadding()
-                        .padding(horizontal = 16.dp, vertical = 12.dp), // Increased this padding!
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Back Button
                     IconButton(
                         onClick = onBack,
                         modifier = Modifier.background(if (bannerUrl.isNotEmpty()) Color.Black.copy(alpha = 0.4f) else Color.Transparent, CircleShape).size(40.dp)
                     ) {
-                        Icon(Icons.Default.ArrowBack, "Back", tint = if (bannerUrl.isNotEmpty()) Color.White else MaterialTheme.colorScheme.onSurface)
+                        // --- FIX: Using AutoMirrored ---
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = if (bannerUrl.isNotEmpty()) Color.White else MaterialTheme.colorScheme.onSurface)
                     }
 
-                    // Right Side Buttons
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         if (bannerUrl.isNotEmpty()) {
                             TextButton(
@@ -193,7 +189,7 @@ fun NotionCanvasScreen(
                                 Spacer(Modifier.width(8.dp))
                                 Text("Change Cover", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                             }
-                            Spacer(Modifier.width(12.dp)) // Spacing between 'Change Cover' and the 3 dots
+                            Spacer(Modifier.width(12.dp))
                         }
 
                         Box {
@@ -213,7 +209,7 @@ fun NotionCanvasScreen(
                                         showSpaceMenu = false
                                     }
                                 )
-                                HorizontalDivider() // Separates locking from file actions
+                                HorizontalDivider()
                                 DropdownMenuItem(
                                     text = { Text("Export Markdown") },
                                     leadingIcon = { Icon(Icons.Default.FileUpload, null) },
@@ -244,7 +240,7 @@ fun NotionCanvasScreen(
                                         showSpaceMenu = false
                                     }
                                 )
-                                HorizontalDivider() // Separates file actions from templates
+                                HorizontalDivider()
                                 DropdownMenuItem(
                                     text = { Text("Save Space Layout") },
                                     leadingIcon = { Icon(Icons.Default.Save, null) },
@@ -264,7 +260,6 @@ fun NotionCanvasScreen(
                     .fillMaxWidth()
                     .padding(horizontal = 24.dp)
             ) {
-                // ICON BOX
                 Box(
                     modifier = Modifier
                         .offset(y = if (bannerUrl.isNotEmpty()) (-44).dp else 24.dp)
@@ -356,7 +351,7 @@ fun NotionCanvasScreen(
                                     val currentIndex = blocks.indexOfFirst { it.id == block.id }
                                     if (currentIndex != -1) {
                                         val newIndex = currentIndex + offset
-                                        if (newIndex in 0 until blocks.size) {
+                                        if (newIndex in blocks.indices) { // --- FIX: Using .indices ---
                                             val temp = blocks[currentIndex]
                                             blocks[currentIndex] = blocks[newIndex]
                                             blocks[newIndex] = temp
@@ -393,7 +388,7 @@ fun NotionCanvasScreen(
                                             } else {
                                                 prevId?.let {
                                                     focusedBlockId = it
-                                                    try { focusRequesters[it]?.requestFocus() } catch(e:Exception){}
+                                                    try { focusRequesters[it]?.requestFocus() } catch(_:Exception){} // --- FIX ---
                                                 }
                                             }
                                         } else if (safeIndex > 0) {
@@ -404,7 +399,7 @@ fun NotionCanvasScreen(
                                                 blocks[safeIndex - 1] = prevBlock.copy(content = prevBlock.content + remainder)
                                                 blocks.removeAt(safeIndex)
                                                 focusedBlockId = prevId
-                                                try { focusRequesters[prevId]?.requestFocus() } catch(e:Exception){}
+                                                try { focusRequesters[prevId]?.requestFocus() } catch(_:Exception){} // --- FIX ---
                                             } else {
                                                 blocks.removeAt(safeIndex - 1)
                                             }
@@ -438,7 +433,6 @@ fun NotionCanvasScreen(
         }
     }
 
-    // DIALOGS
     if (showPasteMarkdownDialog) {
         AlertDialog(
             onDismissRequest = { showPasteMarkdownDialog = false },
@@ -488,7 +482,7 @@ fun NotionCanvasScreen(
             confirmButton = {
                 Button(onClick = {
                     if (templateNameInput.isNotBlank()) {
-                        com.example.loom.utils.TemplateManager.saveCustomTemplate(context, templateNameInput, spaceIcon, blocks)
+                        com.example.loom.util.TemplateManager.saveCustomTemplate(context, templateNameInput, spaceIcon, blocks)
                         showSaveTemplateDialog = false
                         templateNameInput = ""
                     }
@@ -577,6 +571,7 @@ fun NotionCanvasScreen(
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
+@Suppress("DiscouragedApi") // --- FIX: Intentional resource fetching ---
 @Composable
 fun SpaceIconPicker(
     initialIcon: String,
@@ -586,7 +581,7 @@ fun SpaceIconPicker(
     val context = LocalContext.current
 
     val initialColorHex = if (initialIcon.contains("|")) initialIcon.split("|")[1] else "#607D8B"
-    val initialColor = try { Color(android.graphics.Color.parseColor(initialColorHex)) } catch (e: Exception) { Color(0xFF607D8B) }
+    val initialColor = try { Color(initialColorHex.toColorInt()) } catch (_: Exception) { Color(0xFF607D8B) } // --- FIX: KTX & Unused e ---
     val hsv = remember { FloatArray(3).apply { android.graphics.Color.colorToHSV(initialColor.toArgb(), this) } }
 
     var hue by remember { mutableFloatStateOf(hsv[0]) }

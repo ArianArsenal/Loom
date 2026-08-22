@@ -29,6 +29,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager // --- FIX ---
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -36,12 +37,18 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.graphics.toColorInt // --- FIX ---
 import com.example.loom.data.local.entity.DiaryNote
 import com.example.loom.data.local.entity.NoteTag
 import com.example.loom.ui.home.HomeViewModel
+import com.example.loom.util.SecurityManager // --- FIX ---
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
+import java.text.SimpleDateFormat // --- FIX ---
+import java.util.Date // --- FIX ---
+import java.util.Locale // --- FIX ---
+import kotlin.time.Duration.Companion.milliseconds
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -82,7 +89,7 @@ fun NoteListScreen(
     }
 
     if (showPinFallback && noteToUnlock != null) {
-        val savedPin = com.example.loom.utils.SecurityManager.getPin(context)
+        val savedPin = SecurityManager.getPin(context)
 
         AlertDialog(
             onDismissRequest = { noteToUnlock = null; passwordInput = ""; passwordError = false; showPinFallback = false; isCardLocked = false },
@@ -168,7 +175,7 @@ fun NoteListScreen(
 
             LazyRow(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(allTags) { tag ->
-                    val tagColor = try { Color(android.graphics.Color.parseColor(tag.colorHex)) } catch (e: Exception) { MaterialTheme.colorScheme.primary }
+                    val tagColor = try { Color(tag.colorHex.toColorInt()) } catch (_: Exception) { MaterialTheme.colorScheme.primary }
                     Surface(
                         shape = RoundedCornerShape(8.dp),
                         color = if (searchQuery == tag.name) tagColor.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surfaceVariant,
@@ -190,8 +197,8 @@ fun NoteListScreen(
                 val gridColumns = when (viewMode) { 0 -> 1; 1 -> 2; else -> 3 }
                 val cardHeight = when (viewMode) { 0 -> 140.dp; 1 -> 180.dp; else -> 160.dp }
 
-                val savedPin = com.example.loom.utils.SecurityManager.getPin(context)
-                val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
+                val savedPin = SecurityManager.getPin(context)
+                val focusManager = LocalFocusManager.current
                 val scope = rememberCoroutineScope()
 
                 val handleUnlockRequest: (DiaryNote) -> Unit = { note ->
@@ -200,14 +207,14 @@ fun NoteListScreen(
                         focusManager.clearFocus()
 
                         val hasPin = !savedPin.isNullOrBlank()
-                        val hasBio = isBiometricEnabled && com.example.loom.utils.SecurityManager.hasBiometricHardware(context)
+                        val hasBio = isBiometricEnabled && SecurityManager.hasBiometricHardware(context)
 
                         if (!hasPin && !hasBio) {
                             showNoSecurityDialog = true
                         } else if (hasBio) {
                             scope.launch {
-                                kotlinx.coroutines.delay(100)
-                                com.example.loom.utils.SecurityManager.authenticate(
+                                delay(100.milliseconds) // --- FIX ---
+                                SecurityManager.authenticate(
                                     context = context,
                                     title = "Unlock Private Note",
                                     onSuccess = {
@@ -265,7 +272,7 @@ fun NoteListScreen(
 @Composable
 fun NoteCard(note: DiaryNote, allTags: List<NoteTag>, height: androidx.compose.ui.unit.Dp, onNoteClick: (DiaryNote) -> Unit, onDeleteNote: (DiaryNote) -> Unit, onUnlockRequest: (DiaryNote) -> Unit) {
     val tagObj = allTags.find { it.name == note.tag }
-    val tagColor = try { tagObj?.colorHex?.let { Color(android.graphics.Color.parseColor(it)) } } catch (e: Exception) { null }
+    val tagColor = try { tagObj?.colorHex?.let { Color(it.toColorInt()) } } catch (_: Exception) { null } // --- FIX ---
     val containerColor = tagColor?.copy(alpha = 0.2f) ?: MaterialTheme.colorScheme.primaryContainer
 
     val dismissState = rememberSwipeToDismissBoxState(
@@ -291,7 +298,7 @@ fun NoteCard(note: DiaryNote, allTags: List<NoteTag>, height: androidx.compose.u
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
                         if (note.isPinned) Icon(Icons.Default.PushPin, "Pinned", modifier = Modifier.size(16.dp).padding(end = 4.dp), tint = MaterialTheme.colorScheme.primary)
                         if (note.isFavorite) Icon(Icons.Default.Favorite, "Fav", tint = Color.Red, modifier = Modifier.size(16.dp).padding(end = 4.dp))
-                        Text(note.title.ifBlank { "Untitled" }, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(note.title.ifBlank { "Untitled" }, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis) // --- FIX ---
                     }
                 }
 
@@ -304,22 +311,21 @@ fun NoteCard(note: DiaryNote, allTags: List<NoteTag>, height: androidx.compose.u
                         Text("Locked", style = MaterialTheme.typography.bodySmall, fontStyle = FontStyle.Italic)
                     }
                 } else {
-                    val blocks = try { Json.decodeFromString<List<NoteBlock>>(note.blocksJson) } catch (e: Exception) { emptyList() }
+                    val blocks = try { Json.decodeFromString<List<NoteBlock>>(note.blocksJson) } catch (_: Exception) { emptyList() }
                     val previewText = blocks.filter { it.type == "text" || it.type == "check" }
                         .joinToString("\n") { if (it.type == "check") (if (it.isChecked) "[x] " else "[ ] ") + it.content.replace(ZWSP, "") else it.content.replace(ZWSP, "") }
 
-                    Text(if (previewText.isBlank()) note.content else previewText, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                    Text(previewText.ifBlank { note.content }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 3, overflow = TextOverflow.Ellipsis) // --- FIX ---
                 }
 
                 Spacer(modifier = Modifier.weight(1f))
 
-                // NEW: Date/Time aligned to the right, Tag aligned to the left
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
                     Surface(color = containerColor, shape = RoundedCornerShape(8.dp)) {
                         Text(note.tag, style = MaterialTheme.typography.labelSmall, color = tagColor ?: MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
                     }
 
-                    val timeStr = java.text.SimpleDateFormat("MMM d • h:mm a", java.util.Locale.getDefault()).format(java.util.Date(note.timestamp))
+                    val timeStr = SimpleDateFormat("MMM d • h:mm a", Locale.getDefault()).format(Date(note.timestamp)) // --- FIX ---
                     Text(timeStr, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha=0.6f))
                 }
             }

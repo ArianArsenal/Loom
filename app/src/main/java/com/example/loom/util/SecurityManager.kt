@@ -1,4 +1,4 @@
-package com.example.loom.utils
+package com.example.loom.util // --- FIX: Corrected package path ---
 
 import android.content.Context
 import android.content.ContextWrapper
@@ -7,6 +7,7 @@ import android.os.Looper
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
+import androidx.core.content.edit // --- FIX: Imported KTX edit extension ---
 import androidx.fragment.app.FragmentActivity
 
 object SecurityManager {
@@ -29,7 +30,8 @@ object SecurityManager {
 
     fun savePin(context: Context, pin: String) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        prefs.edit().putString(KEY_PIN, pin).apply()
+        // --- FIX: Using the fast-path KTX edit function ---
+        prefs.edit { putString(KEY_PIN, pin) }
     }
 
     fun hasBiometricHardware(context: Context): Boolean {
@@ -44,7 +46,6 @@ object SecurityManager {
         onSuccess: () -> Unit,
         onFallback: () -> Unit
     ) {
-        // If a prompt is already processing, completely ignore the new request!
         if (isAuthenticating) return
 
         val activity = context.getActivity()

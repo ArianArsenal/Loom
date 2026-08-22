@@ -25,12 +25,15 @@ fun GaplessProgressBar(
     }
 }
 
-val globalDateFormatter = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+// --- FIX: Formatter is now dynamically generated to ensure it always uses the current Locale ---
+fun getGlobalDateFormatter(): SimpleDateFormat {
+    return SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+}
 
 fun getRemainingDaysText(targetDate: String): String? {
     if (targetDate.isBlank()) return null
     return try {
-        val target = globalDateFormatter.parse(targetDate) ?: return null
+        val target = getGlobalDateFormatter().parse(targetDate) ?: return null
         val today = Calendar.getInstance().apply {
             set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
         }.time
@@ -41,5 +44,5 @@ fun getRemainingDaysText(targetDate: String): String? {
             days == 0L -> "Today"
             else -> "${days}d left"
         }
-    } catch (e: Exception) { null }
+    } catch (_: Exception) { null } // --- FIX: Removed unused 'e' parameter ---
 }
