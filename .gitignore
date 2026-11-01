@@ -14,3 +14,15 @@
 .cxx
 local.properties
 loom_keystore.jks
+
+# IDE / Kotlin caches
+.idea/
+.kotlin/
+
+# Build outputs & release artifacts (published via GitHub Releases)
+app/build/
+baselineProfile/build/
+app/release/
+*.apk
+*.aab
+*.dm
