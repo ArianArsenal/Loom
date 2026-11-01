@@ -2,6 +2,7 @@ package com.example.loom.ui.sandbox.blocks
 
 import android.content.Intent
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -22,7 +23,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.core.net.toUri // --- FIX: Extracted specific KTX extension ---
+import androidx.core.net.toUri
 import coil.compose.AsyncImage
 import com.example.loom.data.models.SandboxBlock
 import kotlinx.coroutines.withContext
@@ -34,7 +35,7 @@ fun LinkBlockRenderer(
     block: SandboxBlock,
     textState: TextFieldValue,
     handleTextChange: (TextFieldValue) -> Unit,
-    modifier: Modifier, // --- FIX: Renamed modifier ---
+    modifier: Modifier,
     placeholderUI: @Composable (@Composable () -> Unit) -> Unit,
     onUpdate: (SandboxBlock) -> Unit,
     onDeleteBlock: (String, Boolean) -> Unit
@@ -61,7 +62,7 @@ fun LinkBlockRenderer(
         } else {
             Surface(
                 modifier = Modifier.fillMaxWidth().clickable {
-                    try { context.startActivity(Intent(Intent.ACTION_VIEW, block.url.toUri())) } catch (_: Exception) {} // --- FIX: KTX URI & Unused e ---
+                    try { context.startActivity(Intent(Intent.ACTION_VIEW, block.url.toUri())) } catch (_: Exception) {}
                 },
                 shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha=0.5f),
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
@@ -73,10 +74,14 @@ fun LinkBlockRenderer(
                         Text(block.url.removePrefix("https://").removePrefix("http://").substringBefore("/"), fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Text(block.url, style = MaterialTheme.typography.bodySmall, color = Color.Gray, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
-                    IconButton(onClick = { showBlockMenu = true }) { Icon(Icons.Default.MoreVert, "Options", tint = Color.Gray) }
-                    DropdownMenu(expanded = showBlockMenu, onDismissRequest = { showBlockMenu = false }) {
-                        DropdownMenuItem(text = { Text("Delete Link", color = MaterialTheme.colorScheme.error) }, onClick = { onDeleteBlock("", true) })
-                        DropdownMenuItem(text = { Text("Edit Link") }, onClick = { onUpdate(block.copy(url = "", secondaryContent = block.url)); showBlockMenu = false })
+
+                    // --- FIX: Wrapped in Box for exact anchoring ---
+                    Box {
+                        IconButton(onClick = { showBlockMenu = true }) { Icon(Icons.Default.MoreVert, "Options", tint = Color.Gray) }
+                        DropdownMenu(expanded = showBlockMenu, onDismissRequest = { showBlockMenu = false }, modifier = Modifier.background(MaterialTheme.colorScheme.surface)) {
+                            DropdownMenuItem(text = { Text("Delete Link", color = MaterialTheme.colorScheme.error) }, onClick = { onDeleteBlock("", true) })
+                            DropdownMenuItem(text = { Text("Edit Link") }, onClick = { onUpdate(block.copy(url = "", secondaryContent = block.url)); showBlockMenu = false })
+                        }
                     }
                 }
             }
@@ -85,7 +90,7 @@ fun LinkBlockRenderer(
         BasicTextField(
             value = textState, onValueChange = handleTextChange,
             textStyle = MaterialTheme.typography.bodySmall.copy(color = Color.Gray),
-            modifier = modifier.padding(top = 4.dp, start = 4.dp), cursorBrush = SolidColor(MaterialTheme.colorScheme.primary), // --- FIX: Applied renamed modifier ---
+            modifier = modifier.padding(top = 4.dp, start = 4.dp), cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
             decorationBox = placeholderUI
         )
     }
@@ -128,7 +133,7 @@ fun BookmarkBlockRenderer(
                     tempTitle = doc.select("meta[property=og:title]").attr("content").ifEmpty { doc.title() }
                     tempDesc = doc.select("meta[property=og:description]").attr("content").ifEmpty { doc.select("meta[name=description]").attr("content") }
                     tempImage = doc.select("meta[property=og:image]").attr("content").ifEmpty { doc.select("meta[name=twitter:image]").attr("content") }
-                } catch (_: Exception) { // --- FIX: Unused e ---
+                } catch (_: Exception) {
                     tempTitle = "Preview unavailable"
                     tempDesc = "Could not load metadata for this link."
                     tempImage = ""
@@ -151,11 +156,14 @@ fun BookmarkBlockRenderer(
     Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Text("Web Bookmark", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-            IconButton(onClick = { showBlockMenu = true }, modifier = Modifier.size(24.dp)) { Icon(Icons.Default.MoreVert, "Options", tint = Color.Gray) }
-        }
 
-        DropdownMenu(expanded = showBlockMenu, onDismissRequest = { showBlockMenu = false }) {
-            DropdownMenuItem(text = { Text("Delete", color = MaterialTheme.colorScheme.error) }, onClick = { onDeleteBlock("", true) })
+            // --- FIX: Wrapped in Box for exact anchoring ---
+            Box {
+                IconButton(onClick = { showBlockMenu = true }, modifier = Modifier.size(24.dp)) { Icon(Icons.Default.MoreVert, "Options", tint = Color.Gray) }
+                DropdownMenu(expanded = showBlockMenu, onDismissRequest = { showBlockMenu = false }, modifier = Modifier.background(MaterialTheme.colorScheme.surface)) {
+                    DropdownMenuItem(text = { Text("Delete", color = MaterialTheme.colorScheme.error) }, onClick = { onDeleteBlock("", true) })
+                }
+            }
         }
 
         OutlinedTextField(
@@ -177,8 +185,8 @@ fun BookmarkBlockRenderer(
                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp).clickable {
                     try {
                         val clickUrl = if (!block.url.startsWith("http")) "https://${block.url}" else block.url
-                        context.startActivity(Intent(Intent.ACTION_VIEW, clickUrl.toUri())) // --- FIX: KTX URI ---
-                    } catch (_: Exception) {} // --- FIX: Unused e ---
+                        context.startActivity(Intent(Intent.ACTION_VIEW, clickUrl.toUri()))
+                    } catch (_: Exception) {}
                 },
                 shape = RoundedCornerShape(12.dp),
                 colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))

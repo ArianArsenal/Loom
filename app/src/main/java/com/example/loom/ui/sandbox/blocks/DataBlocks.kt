@@ -11,7 +11,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ShowChart // --- FIX: Using AutoMirrored ---
+import androidx.compose.material.icons.automirrored.filled.ShowChart
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Close
@@ -40,7 +40,7 @@ import com.example.loom.data.models.SandboxBlock
 import com.example.loom.ui.sandbox.ZWSP
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json // --- FIX: Removed redundant inline qualifiers below ---
+import kotlinx.serialization.json.Json
 
 @Serializable
 data class ProgressMeta(
@@ -71,10 +71,9 @@ fun ChartBlockRenderer(
     Column(modifier = Modifier.fillMaxWidth().border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp)).padding(12.dp)) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Row(modifier = Modifier.background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp))) {
-
                 val chartIcons = listOf(
                     "BAR" to Icons.Default.BarChart,
-                    "LINE" to Icons.AutoMirrored.Filled.ShowChart, // --- FIX: Replaced with AutoMirrored ---
+                    "LINE" to Icons.AutoMirrored.Filled.ShowChart,
                     "PIE" to Icons.Default.PieChart
                 )
 
@@ -99,11 +98,17 @@ fun ChartBlockRenderer(
                     }
                 }
             }
-            IconButton(onClick = { showBlockMenu = true }, modifier = Modifier.size(24.dp)) { Icon(Icons.Default.MoreVert, "Options", tint = Color.Gray) }
-        }
 
-        DropdownMenu(expanded = showBlockMenu, onDismissRequest = { showBlockMenu = false }) {
-            DropdownMenuItem(text = { Text("Delete Chart", color = MaterialTheme.colorScheme.error) }, onClick = { onDeleteBlock("", true) })
+            Box {
+                IconButton(onClick = { showBlockMenu = true }, modifier = Modifier.size(24.dp)) { Icon(Icons.Default.MoreVert, "Options", tint = Color.Gray) }
+                DropdownMenu(
+                    expanded = showBlockMenu,
+                    onDismissRequest = { showBlockMenu = false },
+                    modifier = Modifier.background(MaterialTheme.colorScheme.surface)
+                ) {
+                    DropdownMenuItem(text = { Text("Delete Chart", color = MaterialTheme.colorScheme.error) }, onClick = { onDeleteBlock("", true) })
+                }
+            }
         }
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -262,7 +267,7 @@ fun ProgressBlockRenderer(
     block: SandboxBlock,
     textState: TextFieldValue,
     handleTextChange: (TextFieldValue) -> Unit,
-    modifier: Modifier, // --- FIX: Renamed modifier ---
+    modifier: Modifier,
     placeholderUI: @Composable (@Composable () -> Unit) -> Unit,
     onUpdate: (SandboxBlock) -> Unit,
     onDeleteBlock: (String, Boolean) -> Unit
@@ -276,7 +281,7 @@ fun ProgressBlockRenderer(
         } else {
             ProgressMeta(current = block.progress * 100f, max = 100f, unit = "%")
         }
-    } catch (_: Exception) { // --- FIX: Unused e ---
+    } catch (_: Exception) {
         ProgressMeta(current = block.progress * 100f, max = 100f, unit = "%")
     }
 
@@ -301,7 +306,7 @@ fun ProgressBlockRenderer(
             BasicTextField(
                 value = textState, onValueChange = handleTextChange,
                 textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onBackground, fontWeight = FontWeight.Bold),
-                modifier = modifier.weight(1f), // --- FIX: Applied renamed modifier ---
+                modifier = modifier.weight(1f),
                 cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                 decorationBox = placeholderUI
             )
@@ -335,12 +340,18 @@ fun ProgressBlockRenderer(
                 }
             }
 
-            IconButton(onClick = { showBlockMenu = true }, modifier = Modifier.size(24.dp).padding(start = 4.dp)) {
-                Icon(Icons.Default.MoreVert, "Options", tint = Color.Gray)
-            }
-            DropdownMenu(expanded = showBlockMenu, onDismissRequest = { showBlockMenu = false }) {
-                DropdownMenuItem(text = { Text("Edit Target & Unit") }, onClick = { showEditDialog = true; showBlockMenu = false })
-                DropdownMenuItem(text = { Text("Delete Tracker", color = MaterialTheme.colorScheme.error) }, onClick = { onDeleteBlock("", true) })
+            Box {
+                IconButton(onClick = { showBlockMenu = true }, modifier = Modifier.size(24.dp).padding(start = 4.dp)) {
+                    Icon(Icons.Default.MoreVert, "Options", tint = Color.Gray)
+                }
+                DropdownMenu(
+                    expanded = showBlockMenu,
+                    onDismissRequest = { showBlockMenu = false },
+                    modifier = Modifier.background(MaterialTheme.colorScheme.surface)
+                ) {
+                    DropdownMenuItem(text = { Text("Edit Target & Unit") }, onClick = { showEditDialog = true; showBlockMenu = false })
+                    DropdownMenuItem(text = { Text("Delete Tracker", color = MaterialTheme.colorScheme.error) }, onClick = { onDeleteBlock("", true) })
+                }
             }
         }
 
@@ -364,7 +375,6 @@ fun ProgressBlockRenderer(
                     )
                 }
                 .pointerInput(Unit) {
-                    // --- FIX: Standard extension call relying on Kotlin's type inference ---
                     detectDragGestures { change, _ ->
                         change.consume()
                         val newRatio = (change.position.x / size.width.toFloat()).coerceIn(0f, 1f)

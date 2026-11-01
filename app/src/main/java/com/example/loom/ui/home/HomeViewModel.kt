@@ -83,7 +83,8 @@ data class LoomBackup(
     val targetFats: Int = 75,
     val defaultWaterIncrement: Int = 250,
     val appTheme: String = "System",
-    val isBiometricEnabled: Boolean = true
+    val isBiometricEnabled: Boolean = true,
+    val dayRolloverHour: Int = 2 // --- NEW: Added to Backup ---
 )
 
 @HiltViewModel
@@ -129,6 +130,15 @@ class HomeViewModel @Inject constructor(
 
     fun setAppTheme(theme: String) = viewModelScope.launch {
         userPreferences.saveAppTheme(theme)
+    }
+
+    // --- NEW: Night Owl Mode State ---
+    val dayRolloverHour: StateFlow<Int> = userPreferences.dayRolloverHourFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 2)
+
+    fun setDayRolloverHour(hour: Int) = viewModelScope.launch {
+        userPreferences.saveDayRolloverHour(hour)
+        com.example.loom.util.DateUtils.rolloverOffsetHours = hour
     }
 
     val todayRecord: StateFlow<DailyRecord?> = repository.getTodayRecord()
@@ -206,7 +216,6 @@ class HomeViewModel @Inject constructor(
     val waterDailyGoal: StateFlow<Int> = userPreferences.waterDailyGoalFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 3000)
 
-    // --- NEW: Hierarchical Pantry State ---
     private val _selectedFoodVariants = MutableStateFlow<List<FoodItem>>(emptyList())
     val selectedFoodVariants: StateFlow<List<FoodItem>> = _selectedFoodVariants.asStateFlow()
 
@@ -232,6 +241,12 @@ class HomeViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     init {
+        viewModelScope.launch(Dispatchers.IO) {
+            // --- NEW: Instantly sync the Rollover hour to DateUtils on launch ---
+            userPreferences.dayRolloverHourFlow.collect { hour ->
+                com.example.loom.util.DateUtils.rolloverOffsetHours = hour
+            }
+        }
         viewModelScope.launch(Dispatchers.IO) {
             repository.initializeTodayRecord()
             repository.prepopulateTemplatesIfEmpty()
@@ -275,7 +290,8 @@ class HomeViewModel @Inject constructor(
                     targetFats = targetFats.value,
                     defaultWaterIncrement = defaultWaterIncrement.value,
                     appTheme = appTheme.value,
-                    isBiometricEnabled = isBiometricEnabled.value
+                    isBiometricEnabled = isBiometricEnabled.value,
+                    dayRolloverHour = dayRolloverHour.value // --- NEW: Added to JSON payload ---
                 )
 
                 val gson = com.google.gson.GsonBuilder().setPrettyPrinting().create()
@@ -316,7 +332,7 @@ class HomeViewModel @Inject constructor(
                     trackerDao.wipeUserCreatedFoodItems()
                     sandboxDao.wipeAllSpaces()
 
-                    // 2. BULK INSERT FROM BACKUP (Lightning Fast)
+                    // 2. BULK INSERT FROM BACKUP
                     trackerDao.insertDailyRecords(backup.dailyRecords)
                     trackerDao.insertTasks(backup.tasks)
                     trackerDao.insertTaskSections(backup.taskSections)
@@ -342,6 +358,7 @@ class HomeViewModel @Inject constructor(
                     userPreferences.saveDefaultWaterIncrement(backup.defaultWaterIncrement)
                     userPreferences.saveAppTheme(backup.appTheme)
                     userPreferences.setBiometricEnabled(backup.isBiometricEnabled)
+                    userPreferences.saveDayRolloverHour(backup.dayRolloverHour) // --- NEW: Restore Rollover Hour ---
 
                     // 5. FILL GAPS
                     repository.initializeTodayRecord()
@@ -381,6 +398,7 @@ class HomeViewModel @Inject constructor(
                 userPreferences.saveDefaultWaterIncrement(250)
                 userPreferences.saveAppTheme("System")
                 userPreferences.setBiometricEnabled(true)
+                userPreferences.saveDayRolloverHour(2) // --- NEW: Reset to 2 AM default ---
 
                 repository.initializeTodayRecord()
                 repository.prepopulateTemplatesIfEmpty()
@@ -571,7 +589,6 @@ class HomeViewModel @Inject constructor(
         repository.logConsumedFood(-log.calories, -log.protein, -log.carbs, -log.fats, Json.encodeToString(updatedLogs))
     }
 
-    // --- App Shortcut State ---
     private val _shortcutAction = MutableStateFlow<String?>(null)
     val shortcutAction: StateFlow<String?> = _shortcutAction.asStateFlow()
 

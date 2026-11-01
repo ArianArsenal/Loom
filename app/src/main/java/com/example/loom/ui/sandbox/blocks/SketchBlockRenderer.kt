@@ -28,13 +28,10 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
-
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
-
-import androidx.core.graphics.toColorInt // --- FIX: Using fast KTX extension ---
-
+import androidx.core.graphics.toColorInt
 import com.example.loom.data.models.SandboxBlock
 import com.example.loom.data.models.SketchPoint
 import com.example.loom.data.models.SketchStroke
@@ -44,7 +41,7 @@ fun SketchBlockRenderer(
     block: SandboxBlock,
     textState: TextFieldValue,
     handleTextChange: (TextFieldValue) -> Unit,
-    modifier: Modifier, // --- FIX: Renamed modifier ---
+    modifier: Modifier,
     placeholderUI: @Composable (@Composable () -> Unit) -> Unit,
     onUpdate: (SandboxBlock) -> Unit,
     onDeleteBlock: (String, Boolean) -> Unit
@@ -74,13 +71,13 @@ fun SketchBlockRenderer(
                 BasicTextField(
                     value = textState, onValueChange = handleTextChange,
                     textStyle = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface),
-                    modifier = modifier.weight(1f), // --- FIX: Applied renamed modifier ---
+                    modifier = modifier.weight(1f),
                     cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                     decorationBox = placeholderUI
                 )
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     recentColors.take(4).forEach { hex ->
-                        val colorVal = try { Color(hex.toColorInt()) } catch (_: Exception) { Color.Black } // --- FIX: Fast string parsing & Unused e ---
+                        val colorVal = try { Color(hex.toColorInt()) } catch (_: Exception) { Color.Black }
                         Box(modifier = Modifier.size(24.dp).padding(2.dp).background(colorVal, CircleShape).border(if (currentColor == hex) 2.dp else 0.dp, MaterialTheme.colorScheme.primary, CircleShape).clickable { currentColor = hex })
                     }
                     IconButton(onClick = { showColorWheel = true }, modifier = Modifier.size(28.dp)) { Icon(Icons.Default.Palette, "Custom Color", tint = Color.Gray, modifier = Modifier.size(20.dp)) }
@@ -105,9 +102,19 @@ fun SketchBlockRenderer(
                         localStrokes = emptyList()
                         onUpdate(block.copy(sketchStrokes = emptyList()))
                     }) { Text("Clear", color = MaterialTheme.colorScheme.error) }
-                    IconButton(onClick = { showBlockMenu = true }, modifier = Modifier.size(32.dp)) { Icon(Icons.Default.MoreVert, "Options", tint = Color.Gray) }
-                    DropdownMenu(expanded = showBlockMenu, onDismissRequest = { showBlockMenu = false }) {
-                        DropdownMenuItem(text = { Text("Delete Canvas", color = MaterialTheme.colorScheme.error) }, onClick = { onDeleteBlock("", true) })
+
+                    // --- FIX: Anchored Box + Removed Purple Tint ---
+                    Box {
+                        IconButton(onClick = { showBlockMenu = true }, modifier = Modifier.size(32.dp)) { Icon(Icons.Default.MoreVert, "Options", tint = Color.Gray) }
+                        MaterialTheme(colorScheme = MaterialTheme.colorScheme.copy(surfaceTint = Color.Transparent, surface = MaterialTheme.colorScheme.background)) {
+                            DropdownMenu(
+                                expanded = showBlockMenu,
+                                onDismissRequest = { showBlockMenu = false },
+                                modifier = Modifier.background(MaterialTheme.colorScheme.surface)
+                            ) {
+                                DropdownMenuItem(text = { Text("Delete Canvas", color = MaterialTheme.colorScheme.error) }, onClick = { onDeleteBlock("", true) })
+                            }
+                        }
                     }
                 }
             }
@@ -115,7 +122,7 @@ fun SketchBlockRenderer(
             Row(modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("Brush Size", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
 
-                val displayColor = try { Color(currentColor.toColorInt()) } catch (_: Exception) { Color.Black } // --- FIX: Fast string parsing & Unused e ---
+                val displayColor = try { Color(currentColor.toColorInt()) } catch (_: Exception) { Color.Black }
                 val safeDisplayColor = if (currentColor == "#FAFAFA") Color.LightGray else displayColor
 
                 Slider(
@@ -158,7 +165,7 @@ fun SketchBlockRenderer(
                                 moveTo(stroke.points.first().x, stroke.points.first().y)
                                 stroke.points.drop(1).forEach { lineTo(it.x, it.y) }
                             }
-                            drawPath(path, color = try { Color(stroke.color.toColorInt()) } catch(_: Exception){Color.Black}, style = Stroke(width = stroke.width, cap = StrokeCap.Round, join = StrokeJoin.Round)) // --- FIX: Fast string parsing & Unused e ---
+                            drawPath(path, color = try { Color(stroke.color.toColorInt()) } catch(_: Exception){Color.Black}, style = Stroke(width = stroke.width, cap = StrokeCap.Round, join = StrokeJoin.Round))
                         }
                     }
                     localStrokes.forEach { drawStroke(it) }

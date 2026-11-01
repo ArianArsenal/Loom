@@ -64,11 +64,16 @@ fun TableBlockRenderer(
 
     Column(modifier = Modifier.fillMaxWidth().border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp)).padding(4.dp)) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            // --- FIX: Added the surface background modifier to remove the purple tint ---
             Box {
                 IconButton(onClick = { showTableOptions = true }, modifier = Modifier.size(24.dp)) {
                     Icon(Icons.Default.MoreHoriz, "Table Options", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                DropdownMenu(expanded = showTableOptions, onDismissRequest = { showTableOptions = false }) {
+                DropdownMenu(
+                    expanded = showTableOptions,
+                    onDismissRequest = { showTableOptions = false },
+                    modifier = Modifier.background(MaterialTheme.colorScheme.surface)
+                ) {
                     DropdownMenuItem(text = { Text("Delete Table", color = MaterialTheme.colorScheme.error) }, onClick = { onDeleteBlock("", true) })
                 }
             }
@@ -147,7 +152,6 @@ fun TableBlockRenderer(
             }
         }
 
-        // --- FIX: Safely check boundaries to prevent crash if row/col is deleted ---
         focusedCell?.let { (r, c) ->
             if (r in block.tableData.indices && c in block.tableData[r].indices) {
                 val cell = parseCell(block.tableData[r][c])
@@ -282,7 +286,6 @@ fun TableBlockRenderer(
                             cellOptionsTarget = null
                         }) { Text("Delete Cell (Leave Blank)") }
 
-                        // --- FIX: Safely delete the block if it's the last row/column ---
                         TextButton(onClick = {
                             if (block.tableData.size <= 1) {
                                 onDeleteBlock("", true)

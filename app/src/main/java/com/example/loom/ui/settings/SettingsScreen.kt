@@ -6,16 +6,20 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.BugReport
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.ColorLens
+import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.DeleteForever
+import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Person
@@ -30,16 +34,19 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.example.loom.ui.home.HomeViewModel
+import com.example.loom.ui.health.HealthViewModel
 import com.example.loom.util.SecurityManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     viewModel: HomeViewModel,
+    healthViewModel: HealthViewModel,
     onNavigateBack: () -> Unit,
-    onNavigateToBugReport: () -> Unit // --- NEW CALLBACK ---
+    onNavigateToBugReport: () -> Unit
 ) {
     val context = LocalContext.current
 
@@ -47,6 +54,21 @@ fun SettingsScreen(
     val appTheme by viewModel.appTheme.collectAsState()
     val isBiometricEnabled by viewModel.isBiometricEnabled.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
+
+    // --- NEW: Collect Night Owl State ---
+    val rolloverHour by viewModel.dayRolloverHour.collectAsState()
+
+    // --- BIO METRICS SYNC ---
+    val weight by healthViewModel.weight.collectAsState()
+    val height by healthViewModel.height.collectAsState()
+    val age by healthViewModel.age.collectAsState()
+    val gender by healthViewModel.gender.collectAsState()
+    val activity by healthViewModel.activity.collectAsState()
+    val goal by healthViewModel.goal.collectAsState()
+    val bodyFat by healthViewModel.bodyFat.collectAsState()
+    val dietType by healthViewModel.dietType.collectAsState()
+    val phaseWeeks by healthViewModel.phaseWeeks.collectAsState()
+    val isCycling by healthViewModel.calorieCycling.collectAsState()
 
     var currentPin by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(Unit) {
@@ -62,7 +84,8 @@ fun SettingsScreen(
     var showSetPinDialog by remember { mutableStateOf(false) }
     var showAuthPinDialog by remember { mutableStateOf(false) }
     var showWipeConfirmDialog by remember { mutableStateOf(false) }
-    var showEditNameDialog by remember { mutableStateOf(false) }
+    var showEditProfileDialog by remember { mutableStateOf(false) }
+
     var pinInput by remember { mutableStateOf("") }
     var pinError by remember { mutableStateOf(false) }
     var pendingDisableBiometric by remember { mutableStateOf(false) }
@@ -91,31 +114,73 @@ fun SettingsScreen(
         }
     )
 
-    // --- NEW: Edit Name Dialog ---
-    if (showEditNameDialog) {
+    if (showEditProfileDialog) {
         var nameInput by remember { mutableStateOf(userName) }
+        var ageInput by remember { mutableStateOf(if (age > 0) age.toString() else "") }
+        var heightInput by remember { mutableStateOf(if (height > 0) height.toString() else "") }
+        var weightInput by remember { mutableStateOf(if (weight > 0f) weight.toString() else "") }
+
         AlertDialog(
-            onDismissRequest = { showEditNameDialog = false },
+            onDismissRequest = { showEditProfileDialog = false },
             title = { Text("Edit Profile") },
             text = {
-                OutlinedTextField(
-                    value = nameInput,
-                    onValueChange = { nameInput = it },
-                    label = { Text("Your Name") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = nameInput,
+                        onValueChange = { nameInput = it },
+                        label = { Text("Your Name") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(
+                            value = ageInput,
+                            onValueChange = { ageInput = it },
+                            label = { Text("Age") },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier.weight(1f)
+                        )
+                        OutlinedTextField(
+                            value = heightInput,
+                            onValueChange = { heightInput = it },
+                            label = { Text("Height (cm)") },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                    OutlinedTextField(
+                        value = weightInput,
+                        onValueChange = { weightInput = it },
+                        label = { Text("Weight (kg)") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
             },
             confirmButton = {
                 Button(onClick = {
-                    if (nameInput.isNotBlank()) {
-                        viewModel.saveUserName(nameInput.trim())
-                    }
-                    showEditNameDialog = false
+                    if (nameInput.isNotBlank()) viewModel.saveUserName(nameInput.trim())
+
+                    healthViewModel.saveBioMetrics(
+                        weight = weightInput.toFloatOrNull() ?: weight,
+                        height = heightInput.toIntOrNull() ?: height,
+                        age = ageInput.toIntOrNull() ?: age,
+                        gender = gender,
+                        activity = activity,
+                        goal = goal,
+                        bodyFat = bodyFat,
+                        dietType = dietType,
+                        phaseWeeks = phaseWeeks,
+                        isCycling = isCycling
+                    )
+                    showEditProfileDialog = false
                 }) { Text("Save") }
             },
             dismissButton = {
-                TextButton(onClick = { showEditNameDialog = false }) { Text("Cancel") }
+                TextButton(onClick = { showEditProfileDialog = false }) { Text("Cancel") }
             }
         )
     }
@@ -284,12 +349,12 @@ fun SettingsScreen(
         ) {
             Spacer(modifier = Modifier.height(8.dp))
 
-            // --- NEW: PROFILE SECTION ---
+            // --- PROFILE SECTION ---
             Text("Profile", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
             Spacer(modifier = Modifier.height(8.dp))
 
             ElevatedCard(
-                modifier = Modifier.fillMaxWidth().clickable { showEditNameDialog = true },
+                modifier = Modifier.fillMaxWidth().clickable { showEditProfileDialog = true },
                 shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)
             ) {
@@ -297,11 +362,25 @@ fun SettingsScreen(
                     modifier = Modifier.padding(16.dp).fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(Icons.Default.Person, contentDescription = "Profile", tint = MaterialTheme.colorScheme.primary)
+                    Surface(
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.primaryContainer,
+                        modifier = Modifier.size(48.dp)
+                    ) {
+                        Icon(Icons.Default.Person, contentDescription = "Profile", tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.padding(12.dp))
+                    }
                     Spacer(modifier = Modifier.width(16.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(userName.ifBlank { "User" }, fontWeight = FontWeight.Bold)
-                        Text("Tap to edit your name", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+                        val weightStr = if (weight % 1f == 0f) weight.toInt().toString() else String.format(Locale.US, "%.1f", weight)
+                        val statsText = if (age > 0 && height > 0 && weight > 0f) {
+                            "$age yrs  •  $height cm  •  $weightStr kg"
+                        } else {
+                            "Tap to set physical stats"
+                        }
+
+                        Text(statsText, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
@@ -388,37 +467,78 @@ fun SettingsScreen(
             Spacer(modifier = Modifier.height(8.dp))
 
             var themeDropdownExpanded by remember { mutableStateOf(false) }
+            var rolloverDropdownExpanded by remember { mutableStateOf(false) }
 
             ElevatedCard(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                Box {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { themeDropdownExpanded = true }
-                            .padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(Icons.Default.ColorLens, contentDescription = "Theme", tint = MaterialTheme.colorScheme.primary)
-                        Spacer(modifier = Modifier.width(16.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("App Theme", fontWeight = FontWeight.Bold)
-                            Text(appTheme, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Column {
+                    Box {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { themeDropdownExpanded = true }
+                                .padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.ColorLens, contentDescription = "Theme", tint = MaterialTheme.colorScheme.primary)
+                            Spacer(modifier = Modifier.width(16.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("App Theme", fontWeight = FontWeight.Bold)
+                                Text(appTheme, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+
+                        DropdownMenu(
+                            expanded = themeDropdownExpanded,
+                            onDismissRequest = { themeDropdownExpanded = false },
+                            modifier = Modifier.fillMaxWidth(0.8f)
+                        ) {
+                            listOf("System", "Light", "Dark").forEach { themeOption ->
+                                DropdownMenuItem(
+                                    text = { Text(themeOption) },
+                                    onClick = {
+                                        viewModel.setAppTheme(themeOption)
+                                        themeDropdownExpanded = false
+                                    }
+                                )
+                            }
                         }
                     }
 
-                    DropdownMenu(
-                        expanded = themeDropdownExpanded,
-                        onDismissRequest = { themeDropdownExpanded = false },
-                        modifier = Modifier.fillMaxWidth(0.8f)
-                    ) {
-                        listOf("System", "Light", "Dark").forEach { themeOption ->
-                            DropdownMenuItem(
-                                text = { Text(themeOption) },
-                                onClick = {
-                                    viewModel.setAppTheme(themeOption)
-                                    themeDropdownExpanded = false
-                                }
-                            )
+                    HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.padding(horizontal = 16.dp))
+
+                    // --- NEW: Night Owl Rollover Selection ---
+                    Box {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { rolloverDropdownExpanded = true }
+                                .padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.DateRange, contentDescription = "Rollover", tint = MaterialTheme.colorScheme.primary)
+                            Spacer(modifier = Modifier.width(16.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("New Day Starts At", fontWeight = FontWeight.Bold)
+                                val displayHour = if (rolloverHour == 0) "12:00 AM (Midnight)" else "$rolloverHour:00 AM"
+                                Text(displayHour, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+
+                        DropdownMenu(
+                            expanded = rolloverDropdownExpanded,
+                            onDismissRequest = { rolloverDropdownExpanded = false },
+                            modifier = Modifier.fillMaxWidth(0.8f)
+                        ) {
+                            (0..6).forEach { hour ->
+                                val text = if (hour == 0) "12:00 AM (Midnight)" else "$hour:00 AM"
+                                DropdownMenuItem(
+                                    text = { Text(text) },
+                                    onClick = {
+                                        viewModel.setDayRolloverHour(hour)
+                                        rolloverDropdownExpanded = false
+                                    }
+                                )
+                            }
                         }
                     }
                 }
@@ -462,7 +582,7 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // --- NEW: SUPPORT & FEEDBACK SECTION ---
+            // --- SUPPORT & FEEDBACK SECTION ---
             Text("Support & Feedback", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
             Spacer(modifier = Modifier.height(8.dp))
 

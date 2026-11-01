@@ -69,13 +69,11 @@ import java.util.TimeZone
 import java.util.UUID
 import kotlin.time.Duration.Companion.milliseconds
 
-// --- PERFECT PRECISION FIX: Max 3 decimals, strip trailing zeros ---
 private fun Float.formatWeight(): String {
     val formatted = String.format(Locale.US, "%.3f", this)
     return formatted.trimEnd('0').trimEnd('.')
 }
 
-// --- RTL MASTER FIX: Explicitly splits the number from the text to enforce visual order ---
 @Composable
 fun ServingUnitDisplay(servingUnit: String, textStyle: androidx.compose.ui.text.TextStyle, modifier: Modifier = Modifier) {
     val mResult = "\\d+(\\.\\d+)?".toRegex().find(servingUnit)
@@ -89,11 +87,9 @@ fun ServingUnitDisplay(servingUnit: String, textStyle: androidx.compose.ui.text.
         verticalAlignment = Alignment.CenterVertically
     ) {
         if (isPersian) {
-            // Visual LTR order for Persian: [Text] then [Number] (Reads RTL correctly)
             if (textStr.isNotBlank()) Text(textStr, style = textStyle.copy(textDirection = TextDirection.Rtl))
             if (numStr.isNotBlank()) Text(numStr, style = textStyle, fontWeight = FontWeight.Bold)
         } else {
-            // Visual LTR order for English: [Number] then [Text]
             if (numStr.isNotBlank()) Text(numStr, style = textStyle, fontWeight = FontWeight.Bold)
             if (textStr.isNotBlank()) Text(textStr, style = textStyle.copy(textDirection = TextDirection.Ltr))
         }
@@ -504,7 +500,6 @@ fun HomeScreen(
                                         Text(text = "×", style = MaterialTheme.typography.titleMedium)
                                         Spacer(modifier = Modifier.width(6.dp))
 
-                                        // --- RTL FIX: Apply the flawless unit display ---
                                         ServingUnitDisplay(selectedVariant!!.servingUnit, MaterialTheme.typography.titleMedium)
 
                                         Spacer(modifier = Modifier.width(12.dp))
@@ -864,9 +859,8 @@ fun AgendaCard(agendaText: String, onUpdateText: (String) -> Unit) {
 
     ElevatedCard(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
-        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 0.dp)
+        shape = RoundedCornerShape(24.dp), // --- FIX: Updated rounded corners to match other cards ---
+        colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface) // --- FIX: Updated container color ---
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(

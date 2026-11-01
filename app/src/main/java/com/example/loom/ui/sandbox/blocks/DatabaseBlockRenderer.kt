@@ -1,6 +1,5 @@
 package com.example.loom.ui.sandbox.blocks
 
-
 import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -40,8 +39,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.core.graphics.toColorInt // --- FIX: KTX Color ---
-import androidx.core.net.toUri // --- FIX: KTX URI ---
+import androidx.core.graphics.toColorInt
+import androidx.core.net.toUri
 import coil.compose.AsyncImage
 import com.example.loom.data.models.DatabaseProperty
 import com.example.loom.data.models.PropertyType
@@ -68,14 +67,14 @@ fun getSchema(block: SandboxBlock): DatabaseSchema {
     return try {
         if (block.secondaryContent.isNotBlank()) Json.decodeFromString(block.secondaryContent)
         else DatabaseSchema()
-    } catch (_: Exception) { DatabaseSchema() } // --- FIX: Unused 'e' ---
+    } catch (_: Exception) { DatabaseSchema() }
 }
 
 @Composable
 fun DatabaseBlockRenderer(
     block: SandboxBlock,
     allSpaces: List<SandboxSpace>,
-    currentSpaceId: String, // --- FIX: Left as-is, required by signature though currently unused in local scope ---
+    currentSpaceId: String,
     onNavigateToSpace: (String) -> Unit,
     onUpdate: (SandboxBlock) -> Unit,
     onDeleteBlock: (String, Boolean) -> Unit
@@ -95,7 +94,11 @@ fun DatabaseBlockRenderer(
                 IconButton(onClick = { showTableOptions = true }, modifier = Modifier.size(24.dp)) {
                     Icon(Icons.Default.MoreHoriz, "Database Options", tint = Color.Gray)
                 }
-                DropdownMenu(expanded = showTableOptions, onDismissRequest = { showTableOptions = false }) {
+                DropdownMenu(
+                    expanded = showTableOptions,
+                    onDismissRequest = { showTableOptions = false },
+                    modifier = Modifier.background(MaterialTheme.colorScheme.surface)
+                ) {
                     DropdownMenuItem(text = { Text("Delete Database", color = MaterialTheme.colorScheme.error) }, onClick = { onDeleteBlock("", true) })
                 }
             }
@@ -154,7 +157,6 @@ fun DatabaseBlockRenderer(
                         }
                     }
 
-                    // --- "+ Add Property" Column Header ---
                     Box(
                         modifier = Modifier
                             .width(150.dp)
@@ -180,7 +182,6 @@ fun DatabaseBlockRenderer(
                     }
                 }
 
-                // --- BOLD HORIZONTAL DIVIDER ---
                 Box(
                     modifier = Modifier
                         .width(totalWidthDp)
@@ -237,6 +238,7 @@ fun DatabaseBlockRenderer(
                     Row(modifier = Modifier.height(IntrinsicSize.Min).background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha=0.2f))) {
                         schema.properties.forEachIndexed { cIndex, prop ->
                             val calcType = schema.calculations[cIndex]
+
                             Box(
                                 modifier = Modifier
                                     .width(colWidths[cIndex].dp)
@@ -259,27 +261,37 @@ fun DatabaseBlockRenderer(
                                     val formattedRes = if (result % 1f == 0f) result.toInt().toString() else result.toString()
 
                                     var showCalcMenu by remember { mutableStateOf(false) }
-                                    Text("$calcType: $formattedRes", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, modifier = Modifier.clickable { showCalcMenu = true })
-
-                                    DropdownMenu(expanded = showCalcMenu, onDismissRequest = { showCalcMenu = false }) {
-                                        DropdownMenuItem(text = { Text("Remove Calculation", color = MaterialTheme.colorScheme.error) }, onClick = {
-                                            val newCalcs = schema.calculations.toMutableMap().apply { remove(cIndex) }
-                                            onUpdate(block.copy(secondaryContent = Json.encodeToString(schema.copy(calculations = newCalcs))))
-                                            showCalcMenu = false
-                                        })
+                                    Box {
+                                        Text("$calcType: $formattedRes", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, modifier = Modifier.clickable { showCalcMenu = true })
+                                        DropdownMenu(
+                                            expanded = showCalcMenu,
+                                            onDismissRequest = { showCalcMenu = false },
+                                            modifier = Modifier.background(MaterialTheme.colorScheme.surface)
+                                        ) {
+                                            DropdownMenuItem(text = { Text("Remove Calculation", color = MaterialTheme.colorScheme.error) }, onClick = {
+                                                val newCalcs = schema.calculations.toMutableMap().apply { remove(cIndex) }
+                                                onUpdate(block.copy(secondaryContent = Json.encodeToString(schema.copy(calculations = newCalcs))))
+                                                showCalcMenu = false
+                                            })
+                                        }
                                     }
-
                                 } else {
                                     if (prop.type in listOf(PropertyType.NUMBER, PropertyType.FORMULA)) {
                                         var showCalcMenu by remember { mutableStateOf(false) }
-                                        Text("Calculate", style = MaterialTheme.typography.labelSmall, color = Color.Gray, modifier = Modifier.clickable { showCalcMenu = true })
-                                        DropdownMenu(expanded = showCalcMenu, onDismissRequest = { showCalcMenu = false }) {
-                                            listOf("SUM", "AVG", "MIN", "MAX").forEach { cType ->
-                                                DropdownMenuItem(text = { Text(cType) }, onClick = {
-                                                    val newCalcs = schema.calculations.toMutableMap().apply { put(cIndex, cType) }
-                                                    onUpdate(block.copy(secondaryContent = Json.encodeToString(schema.copy(calculations = newCalcs))))
-                                                    showCalcMenu = false
-                                                })
+                                        Box {
+                                            Text("Calculate", style = MaterialTheme.typography.labelSmall, color = Color.Gray, modifier = Modifier.clickable { showCalcMenu = true })
+                                            DropdownMenu(
+                                                expanded = showCalcMenu,
+                                                onDismissRequest = { showCalcMenu = false },
+                                                modifier = Modifier.background(MaterialTheme.colorScheme.surface)
+                                            ) {
+                                                listOf("SUM", "AVG", "MIN", "MAX").forEach { cType ->
+                                                    DropdownMenuItem(text = { Text(cType) }, onClick = {
+                                                        val newCalcs = schema.calculations.toMutableMap().apply { put(cIndex, cType) }
+                                                        onUpdate(block.copy(secondaryContent = Json.encodeToString(schema.copy(calculations = newCalcs))))
+                                                        showCalcMenu = false
+                                                    })
+                                                }
                                             }
                                         }
                                     }
@@ -292,7 +304,6 @@ fun DatabaseBlockRenderer(
             }
         }
 
-        // Add Row Button
         TextButton(
             onClick = {
                 val newRows = rows.toMutableList().apply { add(List(schema.properties.size) { "" }) }
@@ -303,6 +314,7 @@ fun DatabaseBlockRenderer(
     }
 }
 
+// ... PropertyEditDialog and getPropertyIcon remain identical ...
 @Composable
 fun PropertyEditDialog(property: DatabaseProperty, canDelete: Boolean, onDismiss: () -> Unit, onUpdateProp: (DatabaseProperty) -> Unit, onDeleteProp: () -> Unit) {
     var editName by remember { mutableStateOf(property.name) }
@@ -319,7 +331,7 @@ fun PropertyEditDialog(property: DatabaseProperty, canDelete: Boolean, onDismiss
                 Spacer(Modifier.height(8.dp))
 
                 Column(modifier = Modifier.background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha=0.3f), RoundedCornerShape(8.dp)).border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp))) {
-                    PropertyType.entries.forEach { t -> // --- FIX: Used .entries instead of .values() ---
+                    PropertyType.entries.forEach { t ->
                         Row(
                             modifier = Modifier.fillMaxWidth().clickable { editType = t }.padding(12.dp),
                             verticalAlignment = Alignment.CenterVertically
@@ -338,7 +350,7 @@ fun PropertyEditDialog(property: DatabaseProperty, canDelete: Boolean, onDismiss
                     Spacer(Modifier.height(8.dp))
 
                     property.options.forEach { (optName, optColor) ->
-                        val col = try { Color(optColor.toColorInt()) } catch(_: Exception){Color.Gray} // --- FIX: KTX Color & Unused e ---
+                        val col = try { Color(optColor.toColorInt()) } catch(_: Exception){Color.Gray}
                         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 4.dp)) {
                             Surface(color = col.copy(alpha=0.2f), shape = RoundedCornerShape(4.dp)) {
                                 Text(optName, color = col, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp), style = MaterialTheme.typography.labelSmall)
@@ -474,7 +486,6 @@ fun DatabaseCell(
             }
 
             Text(
-                // --- FIX: Replaced with ifEmpty ---
                 text = value.ifEmpty { "Empty" },
                 color = if (value.isEmpty()) Color.LightGray else MaterialTheme.colorScheme.onSurface,
                 style = MaterialTheme.typography.bodyMedium,
@@ -493,7 +504,7 @@ fun DatabaseCell(
                         Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.horizontalScroll(rememberScrollState()).weight(1f)) {
                             selectedTags.forEach { tag ->
                                 val tagColorHex = property.options[tag] ?: "#808080"
-                                val tagColor = try { Color(tagColorHex.toColorInt()) } catch (_: Exception) { Color.Gray } // --- FIX: KTX Color & Unused e ---
+                                val tagColor = try { Color(tagColorHex.toColorInt()) } catch (_: Exception) { Color.Gray }
 
                                 Surface(color = tagColor.copy(alpha=0.2f), shape = RoundedCornerShape(4.dp)) {
                                     Text(tag, color = tagColor, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
@@ -504,13 +515,17 @@ fun DatabaseCell(
                     Icon(Icons.Default.ArrowDropDown, null, tint = Color.Gray, modifier = Modifier.size(16.dp))
                 }
 
-                DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                DropdownMenu(
+                    expanded = expanded,
+                    onDismissRequest = { expanded = false },
+                    modifier = Modifier.background(MaterialTheme.colorScheme.surface)
+                ) {
                     if (property.options.isEmpty()) {
                         DropdownMenuItem(text = { Text("No tags in Schema. Click header to add.") }, onClick = {})
                     } else {
                         property.options.forEach { (optName, optColorHex) ->
                             val isSelected = selectedTags.contains(optName)
-                            val optColor = try { Color(optColorHex.toColorInt()) } catch (_: Exception) { Color.Gray } // --- FIX: KTX Color & Unused e ---
+                            val optColor = try { Color(optColorHex.toColorInt()) } catch (_: Exception) { Color.Gray }
 
                             DropdownMenuItem(
                                 text = {
@@ -546,7 +561,11 @@ fun DatabaseCell(
                 ) {
                     Text(currentStatus.first, color = currentStatus.second, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
                 }
-                DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                DropdownMenu(
+                    expanded = expanded,
+                    onDismissRequest = { expanded = false },
+                    modifier = Modifier.background(MaterialTheme.colorScheme.surface)
+                ) {
                     statuses.forEach { (sName, sColor) ->
                         DropdownMenuItem(text = { Text(sName, color = sColor, fontWeight = FontWeight.Bold) }, onClick = { onValueChange(sName); expanded = false })
                     }
@@ -573,7 +592,7 @@ fun DatabaseCell(
             )
             if (value.isNotEmpty() && !value.contains("http://")) {
                 Spacer(Modifier.fillMaxWidth().height(24.dp).clickable {
-                    try { context.startActivity(Intent(Intent.ACTION_VIEW, "https://$value".toUri())) } catch (_: Exception) {} // --- FIX: KTX URI & Unused e ---
+                    try { context.startActivity(Intent(Intent.ACTION_VIEW, "https://$value".toUri())) } catch (_: Exception) {}
                 })
             }
         }
@@ -602,7 +621,11 @@ fun DatabaseCell(
                     }
                 }
 
-                DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                DropdownMenu(
+                    expanded = expanded,
+                    onDismissRequest = { expanded = false },
+                    modifier = Modifier.background(MaterialTheme.colorScheme.surface)
+                ) {
                     allSpaces.forEach { s ->
                         DropdownMenuItem(
                             text = { Row(verticalAlignment = Alignment.CenterVertically) { SpaceDynamicIcon(s.icon, Modifier.size(16.dp)); Spacer(Modifier.width(8.dp)); Text(s.title) } },

@@ -4,6 +4,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -79,9 +80,16 @@ fun CalendarBlockRenderer(
                 Text("${currentMonth.month.getDisplayName(TextStyle.FULL, Locale.getDefault())} ${currentMonth.year}", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = { currentMonth = currentMonth.plusMonths(1) }) { Icon(Icons.Default.ChevronRight, "Next") }
-                    IconButton(onClick = { showBlockMenu = true }) { Icon(Icons.Default.MoreVert, "Options", tint = Color.Gray) }
-                    DropdownMenu(expanded = showBlockMenu, onDismissRequest = { showBlockMenu = false }) {
-                        DropdownMenuItem(text = { Text("Delete Calendar", color = MaterialTheme.colorScheme.error) }, onClick = { onDeleteBlock("", true) })
+
+                    Box {
+                        IconButton(onClick = { showBlockMenu = true }) { Icon(Icons.Default.MoreVert, "Options", tint = Color.Gray) }
+                        DropdownMenu(
+                            expanded = showBlockMenu,
+                            onDismissRequest = { showBlockMenu = false },
+                            modifier = Modifier.background(MaterialTheme.colorScheme.surface)
+                        ) {
+                            DropdownMenuItem(text = { Text("Delete Calendar", color = MaterialTheme.colorScheme.error) }, onClick = { onDeleteBlock("", true) })
+                        }
                     }
                 }
             }
@@ -270,7 +278,11 @@ fun CalendarBlockRenderer(
                         var showAddMenu by remember { mutableStateOf(false) }
                         Box(modifier = Modifier.fillMaxWidth()) {
                             Button(onClick = { showAddMenu = true }, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) { Text("+ Create Card") }
-                            DropdownMenu(expanded = showAddMenu, onDismissRequest = { showAddMenu = false }) {
+                            DropdownMenu(
+                                expanded = showAddMenu,
+                                onDismissRequest = { showAddMenu = false },
+                                modifier = Modifier.background(MaterialTheme.colorScheme.surface)
+                            ) {
                                 DropdownMenuItem(text = { Text("Task") }, onClick = {
                                     val newEvents = eventsForDay.toMutableList().apply { add(CalendarEvent(type = "Task")) }
                                     onUpdate(block.copy(calendarEvents = block.calendarEvents + (dateStr to newEvents)))

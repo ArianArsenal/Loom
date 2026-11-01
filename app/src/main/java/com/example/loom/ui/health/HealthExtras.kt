@@ -19,7 +19,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Star
@@ -505,7 +504,7 @@ fun SupplementsCard(viewModel: HealthViewModel) {
             confirmButton = {
                 Button(onClick = {
                     val idToSave = editingItem!!.id.ifEmpty { java.util.UUID.randomUUID().toString() }
-                    // --- FIX: Preserve isActive state when saving ---
+                    // --- FIX: Ensure the item defaults to active (true) so it actually shows up! ---
                     viewModel.saveSupplementItem(SupplementItem(idToSave, editName, editDosage, editCategory, editTime, editRecurrenceType, editRecurrenceVal, editInstruction, isActive = editingItem?.isActive ?: true))
                     editingItem = null
                 }) { Text("Save") }
@@ -524,7 +523,6 @@ fun SupplementsCard(viewModel: HealthViewModel) {
         )
     }
 
-    // --- FIX: The Manage Dialog now shows ALL master templates with Toggle Switches ---
     if (showManageDialog && editingItem == null) {
         val allOptions = remember(supplementTemplates, roster) {
             (supplementTemplates + roster).distinctBy { it.name.lowercase() }
@@ -593,7 +591,15 @@ fun SupplementsCard(viewModel: HealthViewModel) {
                     color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.4f)
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = { editingItem = SupplementItem("", "", "") }, modifier = Modifier.size(36.dp)) {
+                        // --- FIX: Safely initialize a blank active item ---
+                        IconButton(onClick = {
+                            editingItem = SupplementItem(
+                                id = "", name = "", dosage = "",
+                                category = categories.firstOrNull() ?: "Supplement",
+                                timeOfUse = "Anytime", recurrenceType = "DAILY", recurrenceValue = "",
+                                instruction = "None", isActive = true
+                            )
+                        }, modifier = Modifier.size(36.dp)) {
                             Icon(Icons.Default.Add, contentDescription = "Add New", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
                         }
                         Box(modifier = Modifier.width(1.dp).height(20.dp).background(MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha=0.2f)))
@@ -628,85 +634,60 @@ fun SupplementsCard(viewModel: HealthViewModel) {
                                 items.forEach { item ->
                                     key(item.id) {
                                         val isDone = completed.contains(item.id)
+                                        val cardBgColor by animateColorAsState(targetValue = if (isDone) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
+                                        val textColor by animateColorAsState(targetValue = if (isDone) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f) else MaterialTheme.colorScheme.onSurface)
 
-                                        val dismissState = rememberSwipeToDismissBoxState(
-                                            confirmValueChange = { value ->
-                                                if (value == SwipeToDismissBoxValue.EndToStart) {
-                                                    viewModel.deleteSupplementItem(item.id)
-                                                    true
-                                                } else false
-                                            }
-                                        )
-
-                                        SwipeToDismissBox(
-                                            state = dismissState,
-                                            enableDismissFromStartToEnd = false,
-                                            backgroundContent = {
-                                                val isSwiping = dismissState.targetValue == SwipeToDismissBoxValue.EndToStart || dismissState.currentValue == SwipeToDismissBoxValue.EndToStart
-                                                val color by animateColorAsState(targetValue = if (isSwiping) Color(0xFFE53935) else Color.Transparent)
-
-                                                Box(modifier = Modifier.fillMaxSize().padding(vertical = 2.dp).clip(RoundedCornerShape(12.dp)).background(color).padding(end = 16.dp), contentAlignment = Alignment.CenterEnd) {
-                                                    if (isSwiping) {
-                                                        Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Color.White)
+                                        // --- FIX: Removed SwipeToDismissBox completely so users can't accidentally global-delete ---
+                                        Surface(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clip(RoundedCornerShape(12.dp))
+                                                .combinedClickable(
+                                                    onClick = { viewModel.toggleSupplement(item.id) },
+                                                    onLongClick = { editingItem = item }
+                                                ),
+                                            color = cardBgColor
+                                        ) {
+                                            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                                        Icon(
+                                                            imageVector = if (isDone) Icons.Outlined.CheckCircle else Icons.Outlined.Circle,
+                                                            contentDescription = null,
+                                                            tint = if (isDone) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f) else MaterialTheme.colorScheme.onSurfaceVariant
+                                                        )
+                                                        Spacer(modifier = Modifier.width(12.dp))
+                                                        Text(
+                                                            text = item.name,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = textColor,
+                                                            textDecoration = if (isDone) TextDecoration.LineThrough else null
+                                                        )
                                                     }
+                                                    Text(
+                                                        text = item.dosage,
+                                                        style = MaterialTheme.typography.labelMedium,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = if (isDone) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f) else MaterialTheme.colorScheme.onSurfaceVariant
+                                                    )
                                                 }
-                                            },
-                                            content = {
-                                                val cardBgColor by animateColorAsState(targetValue = if (isDone) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
-                                                val textColor by animateColorAsState(targetValue = if (isDone) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f) else MaterialTheme.colorScheme.onSurface)
 
-                                                Surface(
-                                                    modifier = Modifier
-                                                        .fillMaxWidth()
-                                                        .clip(RoundedCornerShape(12.dp))
-                                                        .combinedClickable(
-                                                            onClick = { viewModel.toggleSupplement(item.id) },
-                                                            onLongClick = { editingItem = item }
-                                                        ),
-                                                    color = cardBgColor
-                                                ) {
-                                                    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-                                                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                                                Icon(
-                                                                    imageVector = if (isDone) Icons.Outlined.CheckCircle else Icons.Outlined.Circle,
-                                                                    contentDescription = null,
-                                                                    tint = if (isDone) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f) else MaterialTheme.colorScheme.onSurfaceVariant
-                                                                )
-                                                                Spacer(modifier = Modifier.width(12.dp))
-                                                                Text(
-                                                                    text = item.name,
-                                                                    fontWeight = FontWeight.Bold,
-                                                                    color = textColor,
-                                                                    textDecoration = if (isDone) TextDecoration.LineThrough else null
-                                                                )
+                                                if (item.timeOfUse != "Anytime" || item.instruction != "None") {
+                                                    Row(modifier = Modifier.padding(top = 8.dp, start = 36.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                        if (item.timeOfUse != "Anytime") {
+                                                            Surface(color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = if (isDone) 0.2f else 0.5f), shape = RoundedCornerShape(4.dp)) {
+                                                                Text(item.timeOfUse, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp), color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = if (isDone) 0.5f else 1f))
                                                             }
-                                                            Text(
-                                                                text = item.dosage,
-                                                                style = MaterialTheme.typography.labelMedium,
-                                                                fontWeight = FontWeight.Bold,
-                                                                color = if (isDone) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f) else MaterialTheme.colorScheme.onSurfaceVariant
-                                                            )
                                                         }
-
-                                                        if (item.timeOfUse != "Anytime" || item.instruction != "None") {
-                                                            Row(modifier = Modifier.padding(top = 8.dp, start = 36.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                                                if (item.timeOfUse != "Anytime") {
-                                                                    Surface(color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = if (isDone) 0.2f else 0.5f), shape = RoundedCornerShape(4.dp)) {
-                                                                        Text(item.timeOfUse, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp), color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = if (isDone) 0.5f else 1f))
-                                                                    }
-                                                                }
-                                                                if (item.instruction != "None") {
-                                                                    Surface(color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = if (isDone) 0.2f else 0.5f), shape = RoundedCornerShape(4.dp)) {
-                                                                        Text(item.instruction, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp), color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = if (isDone) 0.5f else 1f))
-                                                                    }
-                                                                }
+                                                        if (item.instruction != "None") {
+                                                            Surface(color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = if (isDone) 0.2f else 0.5f), shape = RoundedCornerShape(4.dp)) {
+                                                                Text(item.instruction, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp), color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = if (isDone) 0.5f else 1f))
                                                             }
                                                         }
                                                     }
                                                 }
                                             }
-                                        )
+                                        }
                                     }
                                 }
                             }

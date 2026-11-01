@@ -569,7 +569,6 @@ fun NotionCanvasScreen(
         )
     }
 }
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Suppress("DiscouragedApi") // --- FIX: Intentional resource fetching ---
 @Composable
@@ -580,8 +579,13 @@ fun SpaceIconPicker(
 ) {
     val context = LocalContext.current
 
-    val initialColorHex = if (initialIcon.contains("|")) initialIcon.split("|")[1] else "#607D8B"
-    val initialColor = try { Color(initialColorHex.toColorInt()) } catch (_: Exception) { Color(0xFF607D8B) } // --- FIX: KTX & Unused e ---
+    val iconParts = initialIcon.split("|")
+    val initialColorHex = if (iconParts.size == 2) iconParts[1] else "#607D8B"
+    // --- FIX: Extract the initial icon name to track selection before saving ---
+    val initialIconName = if (iconParts.size == 2) iconParts[0] else ""
+    var selectedIconName by remember { mutableStateOf(initialIconName) }
+
+    val initialColor = try { Color(initialColorHex.toColorInt()) } catch (_: Exception) { Color(0xFF607D8B) }
     val hsv = remember { FloatArray(3).apply { android.graphics.Color.colorToHSV(initialColor.toArgb(), this) } }
 
     var hue by remember { mutableFloatStateOf(hsv[0]) }
@@ -723,13 +727,16 @@ fun SpaceIconPicker(
                         val resId = context.resources.getIdentifier(iconName, "drawable", context.packageName)
 
                         if (resId != 0) {
+                            val isSelected = selectedIconName == iconName
                             Box(
                                 modifier = Modifier
                                     .size(44.dp)
                                     .clip(RoundedCornerShape(8.dp))
+                                    .background(if (isSelected) MaterialTheme.colorScheme.surfaceVariant else Color.Transparent)
+                                    .border(if (isSelected) 2.dp else 0.dp, if (isSelected) selectedColor else Color.Transparent, RoundedCornerShape(8.dp))
                                     .clickable {
-                                        val hexColor = String.format("#%06X", (0xFFFFFF and selectedColor.toArgb()))
-                                        onIconSelected("$iconName|$hexColor")
+                                        // --- FIX: Only track the selection internally, do not trigger save yet ---
+                                        selectedIconName = iconName
                                     },
                                 contentAlignment = Alignment.Center
                             ) {
@@ -742,6 +749,18 @@ fun SpaceIconPicker(
                             }
                         }
                     }
+                }
+
+                // --- FIX: Added explicit Action Row to save the configuration ---
+                Spacer(modifier = Modifier.height(16.dp))
+                Button(
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = {
+                        val hexColor = String.format("#%06X", (0xFFFFFF and selectedColor.toArgb()))
+                        onIconSelected("$selectedIconName|$hexColor")
+                    }
+                ) {
+                    Text("Save Icon & Color")
                 }
             }
         }

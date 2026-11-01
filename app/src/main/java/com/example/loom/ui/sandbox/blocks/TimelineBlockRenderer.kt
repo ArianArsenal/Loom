@@ -699,7 +699,23 @@ fun TimelineBlockRenderer(
                         cardToEditProps = newEvent
                         isNewCard = true
                     }, modifier = Modifier.size(32.dp)) { Icon(Icons.Default.Add, "Add Event", tint = MaterialTheme.colorScheme.primary) }
-                    IconButton(onClick = { showSettings = true }, modifier = Modifier.size(32.dp)) { Icon(Icons.Default.MoreVert, "Settings", tint = Color.Gray) }
+
+                    // --- FIX: Menu properly anchored with gray options icon ---
+                    Box {
+                        var showTimelineMenu by remember { mutableStateOf(false) }
+                        IconButton(onClick = { showTimelineMenu = true }, modifier = Modifier.size(32.dp)) { Icon(Icons.Default.MoreVert, "Options", tint = Color.Gray) }
+
+                        MaterialTheme(colorScheme = MaterialTheme.colorScheme.copy(surfaceTint = Color.Transparent, surface = MaterialTheme.colorScheme.background)) {
+                            DropdownMenu(
+                                expanded = showTimelineMenu,
+                                onDismissRequest = { showTimelineMenu = false },
+                                modifier = Modifier.background(MaterialTheme.colorScheme.surface)
+                            ) {
+                                DropdownMenuItem(text = { Text("Timeline Settings") }, onClick = { showSettings = true; showTimelineMenu = false })
+                                DropdownMenuItem(text = { Text("Delete Timeline", color = MaterialTheme.colorScheme.error) }, onClick = { onDeleteBlock("", true) })
+                            }
+                        }
+                    }
                 }
             }
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -751,12 +767,12 @@ fun TimelineBlockRenderer(
                             }
 
                             currentBlock.children.forEach { childCard ->
-                                val meta = try { Json.decodeFromString<TimelineCardMeta>(childCard.secondaryContent) } catch (_: Exception) { TimelineCardMeta() } // --- FIX: Unused 'e' ---
+                                val meta = try { Json.decodeFromString<TimelineCardMeta>(childCard.secondaryContent) } catch (_: Exception) { TimelineCardMeta() }
                                 val cardStartTotalMin = meta.startTimeMin
                                 val visibleStartMin = settings.startHour * 60
 
                                 if (cardStartTotalMin >= visibleStartMin && cardStartTotalMin < settings.endHour * 60) {
-                                    val cardColor = try { Color(meta.colorHex.toColorInt()) } catch (_: Exception) { MaterialTheme.colorScheme.primary } // --- FIX: KTX Color & Unused 'e' ---
+                                    val cardColor = try { Color(meta.colorHex.toColorInt()) } catch (_: Exception) { MaterialTheme.colorScheme.primary }
 
                                     val cardXDp = minuteWidthDp * (cardStartTotalMin - visibleStartMin)
                                     val cardYDp = rowHeight * meta.dayIndex

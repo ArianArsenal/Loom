@@ -148,8 +148,12 @@ fun LoomMainScreen(viewModel: HomeViewModel) {
 
             composable("settings") {
                 isBottomBarVisible = true
+                // --- FIX: Tell Hilt to get the running instance of the ViewModel ---
+                val healthViewModel: HealthViewModel = androidx.hilt.navigation.compose.hiltViewModel()
+
                 SettingsScreen(
                     viewModel = viewModel,
+                    healthViewModel = healthViewModel,
                     onNavigateBack = { navController.popBackStack() },
                     onNavigateToBugReport = { navController.navigate("bug_report") }
                 )

@@ -1,15 +1,20 @@
 package com.example.loom.ui.sandbox.blocks
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Headset
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Pause
@@ -32,10 +37,10 @@ import java.util.concurrent.TimeUnit
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import java.util.Locale // --- FIX: Imported Locale ---
-import kotlin.time.Duration.Companion.milliseconds // --- FIX: Imported Duration ---
+import java.util.Locale
+import kotlin.time.Duration.Companion.milliseconds
 
-@Suppress("unused", "DiscouragedApi") // --- FIX: Suppress intentional parameter and dynamic sound loading ---
+@Suppress("unused", "DiscouragedApi")
 @Composable
 fun TimerBlockRenderer(
     block: SandboxBlock,
@@ -48,27 +53,45 @@ fun TimerBlockRenderer(
     var timeLeft by remember { mutableIntStateOf(maxTime) }
     var isRunning by remember { mutableStateOf(false) }
 
+    // --- UPDATED: Mapped to your 4 ambient tracks ---
     var selectedAmbient by remember { mutableStateOf("None") }
-    val ambientSounds = listOf("None", "Rain", "Forest", "Focus") // --- FIX: Typo corrected ---
-    var mediaPlayer by remember { mutableStateOf<android.media.MediaPlayer?>(null) }
+    val ambientSounds = listOf("None", "Lofi", "Airplane", "Rain", "Cafe")
 
+    var mediaPlayer by remember { mutableStateOf<android.media.MediaPlayer?>(null) }
+    var ambientVolume by remember { mutableFloatStateOf(0.5f) }
+
+    // OPTIMIZATION: Safely release the ambient player memory when the timer is deleted or screen closed
     DisposableEffect(Unit) {
-        onDispose { mediaPlayer?.release() }
+        onDispose {
+            mediaPlayer?.release()
+            mediaPlayer = null
+        }
     }
 
+    // --- ENGINE 1: The Ambient Native Looper ---
     LaunchedEffect(isRunning, selectedAmbient) {
         if (isRunning && selectedAmbient != "None") {
-            mediaPlayer?.release()
-            val resId = when(selectedAmbient) {
-                "Rain" -> context.resources.getIdentifier("rain", "raw", context.packageName)
-                "Forest" -> context.resources.getIdentifier("forest", "raw", context.packageName)
-                "Focus" -> context.resources.getIdentifier("focus", "raw", context.packageName)
-                else -> 0
+            mediaPlayer?.release() // Clean up previous track if switching
+
+            val rawFileName = when (selectedAmbient) {
+                "Lofi" -> "lofi"
+                "Airplane" -> "airplane"
+                "Rain" -> "rain"
+                "Cafe" -> "cafe"
+                else -> ""
             }
+
+            val resId = context.resources.getIdentifier(rawFileName, "raw", context.packageName)
+
             if (resId != 0) {
-                mediaPlayer = android.media.MediaPlayer.create(context, resId).apply {
-                    isLooping = true
-                    start()
+                try {
+                    mediaPlayer = android.media.MediaPlayer.create(context, resId).apply {
+                        isLooping = true // Defers looping optimization to Android's native AudioFlinger
+                        setVolume(ambientVolume, ambientVolume)
+                        start()
+                    }
+                } catch (e: Exception) {
+                    // Fail gracefully if the raw file isn't loaded properly
                 }
             }
         } else {
@@ -76,12 +99,35 @@ fun TimerBlockRenderer(
         }
     }
 
+    // Dynamically update volume without restarting the track
+    LaunchedEffect(ambientVolume) {
+        mediaPlayer?.setVolume(ambientVolume, ambientVolume)
+    }
+
+    // --- ENGINE 2: The Countdown & Throwaway Chime Trigger ---
     LaunchedEffect(isRunning, isWorkMode) {
         while (isRunning && timeLeft > 0) {
-            delay(1000.milliseconds) // --- FIX: Duration API ---
+            delay(1000.milliseconds)
             timeLeft--
         }
-        if (timeLeft == 0) isRunning = false
+
+        // When timer hits 0 naturally while running
+        if (isRunning && timeLeft == 0) {
+            isRunning = false
+
+            // Fire the completion chime using your 'chimes' file
+            val chimeId = context.resources.getIdentifier("chimes", "raw", context.packageName)
+            if (chimeId != 0) {
+                try {
+                    val chimePlayer = android.media.MediaPlayer.create(context, chimeId)
+                    // OPTIMIZATION: Instantly release the memory the millisecond the chime stops
+                    chimePlayer.setOnCompletionListener { it.release() }
+                    chimePlayer.start()
+                } catch (e: Exception) {
+                    // Fail gracefully
+                }
+            }
+        }
     }
 
     Column(modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha=0.3f), RoundedCornerShape(12.dp)).border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(12.dp)).padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -105,7 +151,7 @@ fun TimerBlockRenderer(
 
         Box(contentAlignment = Alignment.Center, modifier = Modifier.size(120.dp)) {
             CircularProgressIndicator(progress = { timeLeft.toFloat() / maxTime.toFloat() }, modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.primary, strokeWidth = 6.dp, trackColor = MaterialTheme.colorScheme.outlineVariant)
-            Text(String.format(Locale.US, "%02d:%02d", timeLeft / 60, timeLeft % 60), fontSize = 32.sp, fontWeight = FontWeight.Bold) // --- FIX: Explicit Locale ---
+            Text(String.format(Locale.US, "%02d:%02d", timeLeft / 60, timeLeft % 60), fontSize = 32.sp, fontWeight = FontWeight.Bold)
         }
 
         Spacer(Modifier.height(16.dp))
@@ -114,22 +160,62 @@ fun TimerBlockRenderer(
             Icon(if (isRunning) Icons.Default.Pause else Icons.Default.PlayArrow, "Play/Pause", tint = Color.White)
         }
 
-        Spacer(modifier = Modifier.height(12.dp))
-        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
-            Icon(Icons.Default.Headset, "Ambient Audio", tint = Color.Gray, modifier = Modifier.size(16.dp))
-            Spacer(Modifier.width(8.dp))
-            ambientSounds.forEach { ambient ->
-                @OptIn(ExperimentalMaterial3Api::class)
-                FilterChip(
-                    selected = selectedAmbient == ambient,
-                    onClick = { selectedAmbient = ambient },
-                    label = { Text(ambient, fontSize = 12.sp) },
-                    modifier = Modifier.padding(horizontal = 4.dp),
-                    colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                        selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
-                    )
-                )
+        Spacer(modifier = Modifier.height(24.dp))
+
+        // --- Ambient Audio Control UI ---
+        Surface(
+            shape = RoundedCornerShape(12.dp),
+            color = MaterialTheme.colorScheme.surface,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.padding(12.dp)) {
+                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Headset, "Ambient Audio", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Ambient Sound", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                }
+
+                Spacer(Modifier.height(8.dp))
+
+                // Allow the chips to scroll horizontally if the user adds more tracks later
+                Row(modifier = Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ambientSounds.forEach { ambient ->
+                        @OptIn(ExperimentalMaterial3Api::class)
+                        FilterChip(
+                            selected = selectedAmbient == ambient,
+                            onClick = { selectedAmbient = ambient },
+                            label = { Text(ambient, fontSize = 11.sp) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = MaterialTheme.colorScheme.primary,
+                                selectedLabelColor = MaterialTheme.colorScheme.onPrimary
+                            )
+                        )
+                    }
+                }
+
+                AnimatedVisibility(
+                    visible = selectedAmbient != "None",
+                    enter = expandVertically(),
+                    exit = shrinkVertically()
+                ) {
+                    Column {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                            Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = "Volume", tint = Color.Gray, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Slider(
+                                value = ambientVolume,
+                                onValueChange = { ambientVolume = it },
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = SliderDefaults.colors(
+                                    thumbColor = MaterialTheme.colorScheme.primary,
+                                    activeTrackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
+                                    inactiveTrackColor = MaterialTheme.colorScheme.outlineVariant
+                                )
+                            )
+                        }
+                    }
+                }
             }
         }
     }
@@ -183,7 +269,7 @@ fun CountdownBlockRenderer(
             val legacyTime = block.content.toLongOrNull() ?: 0L
             CountdownMeta(targetTimeMillis = legacyTime)
         }
-    } catch (_: Exception) { CountdownMeta() } // --- FIX: Unused 'e' ---
+    } catch (_: Exception) { CountdownMeta() }
 
     var timeLeft by remember { mutableLongStateOf(0L) }
     var isTimeSinceMode by remember { mutableStateOf(false) }
@@ -204,11 +290,11 @@ fun CountdownBlockRenderer(
                     if (!hasTriggeredConfetti && timeLeft < 2000) {
                         hasTriggeredConfetti = true
                         showConfetti = true
-                        delay(3500.milliseconds) // --- FIX: Duration API ---
+                        delay(3500.milliseconds)
                         showConfetti = false
                     }
                 }
-                delay(1000.milliseconds) // --- FIX: Duration API ---
+                delay(1000.milliseconds)
             }
         }
     }
@@ -322,7 +408,7 @@ fun CountdownBlockRenderer(
                         @Composable fun TimeBox(value: Long, label: String) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = String.format(Locale.US, "%02d", value), // --- FIX: Explicit Locale ---
+                                    text = String.format(Locale.US, "%02d", value),
                                     style = MaterialTheme.typography.headlineLarge,
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.onSurface

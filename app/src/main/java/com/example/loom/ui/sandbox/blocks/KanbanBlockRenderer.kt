@@ -43,7 +43,7 @@ fun KanbanBlockRenderer(
     block: SandboxBlock,
     textState: TextFieldValue,
     handleTextChange: (TextFieldValue) -> Unit,
-    modifier: Modifier, // --- FIX: Renamed modifier ---
+    modifier: Modifier,
     placeholderUI: @Composable (@Composable () -> Unit) -> Unit,
     onUpdate: (SandboxBlock) -> Unit,
     onDeleteBlock: (String, Boolean) -> Unit
@@ -56,16 +56,22 @@ fun KanbanBlockRenderer(
             BasicTextField(
                 value = textState, onValueChange = handleTextChange,
                 textStyle = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface),
-                modifier = modifier.weight(1f), cursorBrush = SolidColor(MaterialTheme.colorScheme.primary), // --- FIX: Applied renamed modifier ---
+                modifier = modifier.weight(1f), cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                 decorationBox = placeholderUI
             )
-            IconButton(onClick = { showBlockMenu = true }) { Icon(Icons.Default.MoreVert, "Options", tint = Color.Gray) }
-            DropdownMenu(expanded = showBlockMenu, onDismissRequest = { showBlockMenu = false }) {
-                DropdownMenuItem(text = { Text("Delete Board", color = MaterialTheme.colorScheme.error) }, onClick = { onDeleteBlock("", true) })
+
+            Box {
+                IconButton(onClick = { showBlockMenu = true }) { Icon(Icons.Default.MoreVert, "Options", tint = Color.Gray) }
+                DropdownMenu(
+                    expanded = showBlockMenu,
+                    onDismissRequest = { showBlockMenu = false },
+                    modifier = Modifier.background(MaterialTheme.colorScheme.surface)
+                ) {
+                    DropdownMenuItem(text = { Text("Delete Board", color = MaterialTheme.colorScheme.error) }, onClick = { onDeleteBlock("", true) })
+                }
             }
         }
 
-        // --- FIX: Replaced with ifEmpty ---
         val columns = block.kanbanColumns.ifEmpty { listOf(KanbanColumn(title = "To Do"), KanbanColumn(title = "In Progress"), KanbanColumn(title = "Done")) }
 
         Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).height(IntrinsicSize.Max), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -132,7 +138,6 @@ fun KanbanBlockRenderer(
                                         if (card.tags.isNotEmpty()) {
                                             Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.horizontalScroll(rememberScrollState()).weight(1f, fill = false)) {
                                                 card.tags.forEach { tagName ->
-                                                    // --- FIX: Using Kotlin's native math library ---
                                                     val tagHash = kotlin.math.abs(tagName.hashCode()) % 5
                                                     val tagColor = when(tagHash) { 0->Color(0xFF2196F3); 1->Color(0xFF9C27B0); 2->Color(0xFFFF9800); 3->Color(0xFF00BCD4); else->Color(0xFFE91E63) }
                                                     Surface(color = tagColor.copy(alpha = 0.2f), shape = RoundedCornerShape(4.dp)) { Text(tagName, style = MaterialTheme.typography.labelSmall, color = tagColor, modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)) }
@@ -210,7 +215,6 @@ fun KanbanBlockRenderer(
 
                         Spacer(Modifier.height(16.dp))
                         Text("Priority (1-5)", style = MaterialTheme.typography.labelMedium)
-                        // --- FIX: Using Kotlin method reference Float::roundToInt ---
                         Slider(value = editPriority.toFloat(), onValueChange = { editPriority = it.roundToInt() }, valueRange = 1f..5f, steps = 3)
 
                         Spacer(Modifier.height(16.dp))

@@ -38,7 +38,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.automirrored.outlined.DirectionsRun // --- FIX: Using AutoMirrored version ---
+import androidx.compose.material.icons.automirrored.outlined.DirectionsRun
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
@@ -67,7 +67,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.MenuAnchorType // --- FIX: Required for explicit MenuAnchor typing ---
+import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -128,7 +128,6 @@ import java.time.format.DateTimeFormatter
 import java.util.Date
 import java.util.Locale
 
-// --- OPTIMIZATION: ThreadLocal + Global Formatters prevent heavy memory re-allocation on recomposition ---
 private val timelineDateFormatter = object : ThreadLocal<SimpleDateFormat>() {
     override fun initialValue(): SimpleDateFormat {
         return SimpleDateFormat("h:mm a", Locale.getDefault())
@@ -236,8 +235,6 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
     LaunchedEffect(Unit) {
         viewModel.selectDate(selectedDate.format(dayMonthYearFormatter))
     }
-
-    // --- DIALOGS REGION ---
 
     if (showWeightLogDialog) {
         val currentLoggedWeight = record?.weightLogKg ?: 0f
@@ -382,7 +379,7 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
                 Button(onClick = {
                     val routineObj = skincareRoutines.find { it.name == skincareRoutineToRemove }
                     val products = routineObj?.let {
-                        try { Json.decodeFromString<List<SkincareProduct>>(it.productsJson).map { p -> p.name } } catch(_: Exception) { emptyList() } // --- FIX: Unused 'e' ---
+                        try { Json.decodeFromString<List<SkincareProduct>>(it.productsJson).map { p -> p.name } } catch(_: Exception) { emptyList() }
                     } ?: emptyList()
                     viewModel.removeLoggedSkincareRoutine(skincareRoutineToRemove!!, products)
                     skincareRoutineToRemove = null
@@ -442,7 +439,7 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
         var timeExpanded by remember { mutableStateOf(false) }
         var instExpanded by remember { mutableStateOf(false) }
 
-        val allOptions = (supplementTemplates + supplementsRoster).distinctBy { it.name.lowercase() }
+        val allOptions = (supplementTemplates + supplementsRoster).distinctBy { it.name.lowercase(Locale.getDefault()) }
 
         AlertDialog(
             onDismissRequest = { editingSupplementItem = null },
@@ -462,21 +459,18 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
                     }
                     OutlinedTextField(value = editDosage, onValueChange = { editDosage = it }, label = { Text("Dosage (e.g. 500mg)") }, modifier = Modifier.fillMaxWidth())
                     ExposedDropdownMenuBox(expanded = catExpanded, onExpandedChange = { catExpanded = it }) {
-                        // --- FIX: MenuAnchor explicitly set to PrimaryNotEditable ---
                         OutlinedTextField(value = editCategory, onValueChange = {}, readOnly = true, label = { Text("Category") }, modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable, enabled = true).fillMaxWidth(), trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = catExpanded) })
                         ExposedDropdownMenu(expanded = catExpanded, onDismissRequest = { catExpanded = false }) {
                             categories.forEach { opt -> DropdownMenuItem(text = { Text(opt) }, onClick = { editCategory = opt; catExpanded = false }) }
                         }
                     }
                     ExposedDropdownMenuBox(expanded = timeExpanded, onExpandedChange = { timeExpanded = it }) {
-                        // --- FIX: MenuAnchor explicitly set to PrimaryNotEditable ---
                         OutlinedTextField(value = editTime, onValueChange = {}, readOnly = true, label = { Text("Time of Use") }, modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable, enabled = true).fillMaxWidth(), trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = timeExpanded) })
                         ExposedDropdownMenu(expanded = timeExpanded, onDismissRequest = { timeExpanded = false }) {
                             listOf("Morning", "Afternoon", "Evening", "Before Bed", "Anytime").forEach { opt -> DropdownMenuItem(text = { Text(opt) }, onClick = { editTime = opt; timeExpanded = false }) }
                         }
                     }
                     ExposedDropdownMenuBox(expanded = instExpanded, onExpandedChange = { instExpanded = it }) {
-                        // --- FIX: MenuAnchor explicitly set to PrimaryNotEditable ---
                         OutlinedTextField(value = editInstruction, onValueChange = {}, readOnly = true, label = { Text("Instructions") }, modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable, enabled = true).fillMaxWidth(), trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = instExpanded) })
                         ExposedDropdownMenu(expanded = instExpanded, onDismissRequest = { instExpanded = false }) {
                             listOf("None", "With Food", "Empty Stomach", "With Water").forEach { opt -> DropdownMenuItem(text = { Text(opt) }, onClick = { editInstruction = opt; instExpanded = false }) }
@@ -500,7 +494,6 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
             },
             confirmButton = {
                 Button(onClick = {
-                    // --- FIX: Using ifEmpty correctly for fast UUID generation ---
                     val idToSave = editingSupplementItem!!.id.ifEmpty { java.util.UUID.randomUUID().toString() }
                     viewModel.saveSupplementItem(SupplementItem(idToSave, editName, editDosage, editCategory, editTime, editRecurrenceType, editRecurrenceVal, editInstruction))
                     editingSupplementItem = null
@@ -523,6 +516,18 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
             title = { Text("Medication & Supplements", fontWeight = FontWeight.Bold) },
             text = {
                 LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 400.dp)) {
+                    // --- FIX: Added Create button here! ---
+                    item {
+                        TextButton(
+                            onClick = {
+                                editingSupplementItem = SupplementItem(id = "", name = "", dosage = "", category = categories.firstOrNull() ?: "Supplement", timeOfUse = "Anytime", recurrenceType = "DAILY", recurrenceValue = "", instruction = "None")
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("+ Create New Supplement", fontWeight = FontWeight.Bold)
+                        }
+                    }
+
                     val groupedRoster = supplementsRoster.groupBy { it.category }
                     groupedRoster.forEach { (cat, items) ->
                         item {
@@ -715,7 +720,12 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
             text = {
                 LazyColumn {
                     item {
-                        OutlinedTextField(value = inputName, onValueChange = { inputName = it }, label = { Text("Food Name") }, modifier = Modifier.fillMaxWidth())
+                        OutlinedTextField(
+                            value = inputName,
+                            onValueChange = { inputName = it },
+                            label = { Text("Food Name") },
+                            modifier = Modifier.fillMaxWidth()
+                        )
                         Spacer(modifier = Modifier.height(8.dp))
                         OutlinedTextField(value = inputServing, onValueChange = { inputServing = it }, label = { Text("Serving Unit (e.g. Plate, Scoop, 100g)") }, modifier = Modifier.fillMaxWidth())
                         Spacer(modifier = Modifier.height(8.dp))
@@ -807,7 +817,6 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
                             Column(modifier = Modifier.fillMaxSize()) {
                                 Column(modifier = Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
                                     ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
-                                        // --- FIX: MenuAnchor explicitly set to PrimaryEditable ---
                                         OutlinedTextField(value = inputName, onValueChange = { inputName = it; expanded = true }, label = { Text("Search Exercise") }, leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search") }, modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryEditable, true).fillMaxWidth())
                                         val filtered = globalTemplates.filter { it.name.contains(inputName, true) }
                                         val exactMatch = globalTemplates.any { it.name.equals(inputName, ignoreCase = true) }
@@ -871,7 +880,6 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
                             Column(modifier = Modifier.fillMaxSize()) {
                                 Column(modifier = Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
                                     ExposedDropdownMenuBox(expanded = presetDropdownExpanded, onExpandedChange = { presetDropdownExpanded = it }, modifier = Modifier.fillMaxWidth()) {
-                                        // --- FIX: MenuAnchor explicitly set to PrimaryNotEditable ---
                                         OutlinedTextField(
                                             value = activePresetName.ifEmpty { "Select a Preset..." },
                                             onValueChange = {},
@@ -990,7 +998,6 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
                 LazyColumn {
                     item {
                         ExposedDropdownMenuBox(expanded = routineDropdownExpanded, onExpandedChange = { routineDropdownExpanded = it }) {
-                            // --- FIX: MenuAnchor explicitly set to PrimaryEditable ---
                             OutlinedTextField(value = inputRoutineName, onValueChange = { inputRoutineName = it; routineDropdownExpanded = true }, label = { Text("Routine Name (e.g., Morning Wash)") }, modifier = Modifier.fillMaxWidth().menuAnchor(MenuAnchorType.PrimaryEditable, true), trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = routineDropdownExpanded) }, colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(), singleLine = true)
                             val filteredRoutines = skincareRoutines.filter { it.name.contains(inputRoutineName, true) }
                             if (filteredRoutines.isNotEmpty() && routineDropdownExpanded) {
@@ -1011,7 +1018,6 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
 
                         Row(modifier = Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                             ExposedDropdownMenuBox(expanded = productDropdownExpanded, onExpandedChange = { productDropdownExpanded = it }, modifier = Modifier.weight(1f)) {
-                                // --- FIX: MenuAnchor explicitly set to PrimaryEditable ---
                                 OutlinedTextField(value = productSearchText, onValueChange = { productSearchText = it; productDropdownExpanded = true }, placeholder = { Text("Search or add...") }, modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryEditable, true).fillMaxWidth(), singleLine = true)
                                 val filteredProducts = skincareProducts.filter { it.name.contains(productSearchText, true) && !selectedProducts.any { sp -> sp.name == it.name } }
                                 val exactMatch = skincareProducts.any { it.name.equals(productSearchText.trim(), ignoreCase = true) }
@@ -1072,8 +1078,6 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
         )
     }
 
-    // --- MAIN SCREEN UI ---
-
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -1084,7 +1088,6 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
         Box(
             modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
         ) {
-            // 1. Perfectly Centered Navigation Block
             Row(
                 modifier = Modifier.align(Alignment.Center),
                 verticalAlignment = Alignment.CenterVertically
@@ -1104,7 +1107,6 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
                 }
             }
 
-            // 2. Independently Right-Aligned Toggle Button
             IconButton(
                 onClick = { isMonthView = !isMonthView },
                 modifier = Modifier.align(Alignment.CenterEnd)
@@ -1176,9 +1178,8 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
                     }
                 }
             } else {
-                // NEW: Week View Logic
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceAround) {
-                    val currentDayOfWeek = selectedDate.dayOfWeek.value % 7 // Sun=0, Mon=1...
+                    val currentDayOfWeek = selectedDate.dayOfWeek.value % 7
                     val startOfWeek = selectedDate.minusDays(currentDayOfWeek.toLong())
                     val weekDays = (0..6).map { startOfWeek.plusDays(it.toLong()) }
 
@@ -1219,10 +1220,8 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        // NEW: Handles the empty state by showing the Monthly Analytics dashboard instead of blank space!
         AnimatedContent(targetState = selectedDateId != null, label = "BottomCardSwitch") { hasSelection ->
             if (!hasSelection) {
-                // MONTHLY ANALYTICS CARD
                 ElevatedCard(
                     modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp).weight(1f, fill = false),
                     shape = RoundedCornerShape(24.dp),
@@ -1247,7 +1246,6 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
                     }
                 }
             } else {
-                // EXISTING COMPACT DAILY SNAPSHOT CARD
                 ElevatedCard(
                     modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp).weight(1f, fill = false),
                     shape = RoundedCornerShape(24.dp),
@@ -1269,7 +1267,6 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
 
                         Spacer(modifier = Modifier.height(16.dp))
 
-                        // --- 1. MACROS & WATER (Compact) ---
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 SimpleMacroRing(calories = record?.calories ?: 0, modifier = Modifier.size(46.dp))
@@ -1296,13 +1293,11 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
                             }
                         }
 
-                        // --- OPTIMIZATION: Shift JSON parsing to remember blocks so they only parse when the string actually changes! ---
                         val consumedList = remember(record?.consumedFoodsJson) { try { Json.decodeFromString<List<ConsumedFoodLog>>(record?.consumedFoodsJson ?: "[]") } catch(_: Exception){ emptyList() } }
                         val completedSupplements = remember(record?.completedSupplementsJson) { try { Json.decodeFromString<List<String>>(record?.completedSupplementsJson ?: "[]") } catch(_: Exception){ emptyList() } }
                         val completedRoutines = remember(record?.completedSkincareRoutinesJson) { try { Json.decodeFromString<List<String>>(record?.completedSkincareRoutinesJson ?: "[]") } catch(_: Exception){ emptyList() } }
                         val completedSteps = remember(record?.completedSkincareStepsJson) { try { Json.decodeFromString<List<String>>(record?.completedSkincareStepsJson ?: "[]") } catch(_: Exception){ emptyList() } }
 
-                        // --- 2. NUTRITION LOGS (Swipeable, Compact) ---
                         Spacer(modifier = Modifier.height(16.dp))
                         HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
                         Spacer(modifier = Modifier.height(8.dp))
@@ -1347,7 +1342,7 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
                             }
                         }
 
-                        // --- 3. SUPPLEMENTS (Swipeable, Compact) ---
+                        // --- 3. SUPPLEMENTS (FIXED: Swipe-to-delete removed to prevent global deletes) ---
                         Spacer(modifier = Modifier.height(12.dp))
                         HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
                         Spacer(modifier = Modifier.height(8.dp))
@@ -1364,36 +1359,22 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
                             itemsToDisplay.forEach { item ->
                                 key(item.id) {
                                     val isDone = completedSupplements.contains(item.id)
-                                    val dismissState = rememberSwipeToDismissBoxState(confirmValueChange = { if (it == SwipeToDismissBoxValue.EndToStart) { viewModel.deleteSupplementItem(item.id); true } else false })
-                                    SwipeToDismissBox(
-                                        state = dismissState, enableDismissFromStartToEnd = false,
-                                        backgroundContent = {
-                                            val isSwiping = dismissState.targetValue == SwipeToDismissBoxValue.EndToStart
-                                            val color by animateColorAsState(if (isSwiping) Color(0xFFE53935) else Color.Transparent)
-                                            Box(modifier = Modifier.fillMaxSize().background(color, RoundedCornerShape(4.dp)), contentAlignment = Alignment.CenterEnd) {
-                                                if (isSwiping) Icon(Icons.Default.Delete, null, tint = Color.White, modifier = Modifier.size(14.dp).padding(end = 4.dp))
-                                            }
-                                        }
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).combinedClickable(onClick = { viewModel.toggleSupplement(item.id) }, onLongClick = { editingSupplementItem = item }).padding(vertical = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).combinedClickable(onClick = { viewModel.toggleSupplement(item.id) }, onLongClick = { editingSupplementItem = item }).padding(vertical = 4.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Icon(if (isDone) Icons.Outlined.CheckCircle else Icons.Outlined.Circle, contentDescription = null, modifier = Modifier.size(14.dp), tint = if (isDone) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
-                                            Spacer(modifier = Modifier.width(6.dp))
-                                            Text("${item.name} · ${item.dosage}", style = MaterialTheme.typography.bodySmall, textDecoration = if (isDone) TextDecoration.LineThrough else TextDecoration.None, color = if (isDone) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface)
-                                            if (item.timeOfUse != "Anytime") {
-                                                Spacer(modifier = Modifier.weight(1f))
-                                                Text(item.timeOfUse, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                            }
+                                        Icon(if (isDone) Icons.Outlined.CheckCircle else Icons.Outlined.Circle, contentDescription = null, modifier = Modifier.size(14.dp), tint = if (isDone) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("${item.name} · ${item.dosage}", style = MaterialTheme.typography.bodySmall, textDecoration = if (isDone) TextDecoration.LineThrough else TextDecoration.None, color = if (isDone) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface)
+                                        if (item.timeOfUse != "Anytime") {
+                                            Spacer(modifier = Modifier.weight(1f))
+                                            Text(item.timeOfUse, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                         }
                                     }
                                 }
                             }
                         }
 
-                        // --- 4. WORKOUTS (Compact) ---
-                        val exercises = snapshot?.exercises ?: emptyList()
                         Spacer(modifier = Modifier.height(12.dp))
                         HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
                         Spacer(modifier = Modifier.height(8.dp))
@@ -1403,6 +1384,7 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
                             TextButton(onClick = { showDetailedExerciseDialog = true }, contentPadding = PaddingValues(0.dp), modifier = Modifier.height(20.dp)) { Text("+ Log Exercise", fontSize = 12.sp) }
                         }
 
+                        val exercises = snapshot?.exercises ?: emptyList()
                         if (exercises.isEmpty()) {
                             Text("Rest day.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         } else {
@@ -1422,9 +1404,7 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
                             }
                         }
 
-                        // --- 5. SKINCARE (Compact) ---
                         val visibleRoutines = skincareRoutines.filter { completedRoutines.contains(it.name) }
-
                         Spacer(modifier = Modifier.height(12.dp))
                         HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
                         Spacer(modifier = Modifier.height(8.dp))
@@ -1461,10 +1441,8 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
                             }
                         }
 
-                        // --- 6. HEALTH METRICS (Sleep & Weight) ---
                         val loggedHours = record?.sleepHours ?: 0f
                         val loggedWeight = record?.weightLogKg ?: 0f
-
                         Spacer(modifier = Modifier.height(12.dp))
                         HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
                         Spacer(modifier = Modifier.height(8.dp))
@@ -1490,10 +1468,8 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
                             Text(if (loggedWeight > 0f) "Weight · ${loggedWeight.formatWeight()} kg" else "Log Weight...", style = MaterialTheme.typography.bodySmall, color = if (loggedWeight > 0f) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.primary)
                         }
 
-                        // --- 7. TASKS & NOTES ---
                         val tasks = snapshot?.tasks ?: emptyList()
                         val diaryEntry = record?.diaryEntry ?: ""
-
                         Spacer(modifier = Modifier.height(12.dp))
                         HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
                         Spacer(modifier = Modifier.height(8.dp))

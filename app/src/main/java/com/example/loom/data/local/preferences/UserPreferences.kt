@@ -13,7 +13,6 @@ private val Context.dataStore by preferencesDataStore(name = "user_settings")
 class UserPreferences @Inject constructor(private val context: Context) {
 
     companion object {
-        // --- NEW: User Profile ---
         val USER_NAME = stringPreferencesKey("user_name")
 
         val WEIGHT = floatPreferencesKey("bio_weight")
@@ -42,6 +41,8 @@ class UserPreferences @Inject constructor(private val context: Context) {
         val BIOMETRIC_ENABLED = booleanPreferencesKey("biometric_enabled")
         val APP_THEME = stringPreferencesKey("app_theme")
 
+        val DAY_ROLLOVER_HOUR = intPreferencesKey("day_rollover_hour")
+
         val FASTING_START_TIME = longPreferencesKey("fasting_start_time")
         val FASTING_GOAL_HOURS = intPreferencesKey("fasting_goal_hours")
         val IS_FASTING = booleanPreferencesKey("is_fasting")
@@ -56,7 +57,6 @@ class UserPreferences @Inject constructor(private val context: Context) {
         val SUPPLEMENT_CATEGORIES = stringPreferencesKey("supplement_categories")
     }
 
-    // --- NEW: User Name Flow ---
     val userNameFlow: Flow<String> = context.dataStore.data.map { it[USER_NAME] ?: "" }
 
     val hiddenHealthCardsFlow: Flow<Set<String>> = context.dataStore.data.map { preferences ->
@@ -92,6 +92,9 @@ class UserPreferences @Inject constructor(private val context: Context) {
     val isFastingFlow: Flow<Boolean> = context.dataStore.data.map { it[IS_FASTING] ?: false }
 
     val appThemeFlow: Flow<String> = context.dataStore.data.map { it[APP_THEME] ?: "System" }
+
+    val dayRolloverHourFlow: Flow<Int> = context.dataStore.data.map { it[DAY_ROLLOVER_HOUR] ?: 2 }
+
     val weightFlow: Flow<Float> = context.dataStore.data.map { it[WEIGHT] ?: 70f }
     val heightFlow: Flow<Int> = context.dataStore.data.map { it[HEIGHT] ?: 175 }
     val ageFlow: Flow<Int> = context.dataStore.data.map { it[AGE] ?: 21 }
@@ -118,16 +121,20 @@ class UserPreferences @Inject constructor(private val context: Context) {
         it[CUSTOM_WATER_CONTAINERS] ?: """[{"id":"1","name":"Glass","iconEmoji":"LocalDrink","volumeMl":250,"hydrationFactor":1.0},{"id":"2","name":"Shaker","iconEmoji":"LocalCafe","volumeMl":600,"hydrationFactor":1.0},{"id":"3","name":"Bottle","iconEmoji":"WaterDrop","volumeMl":1500,"hydrationFactor":1.0}]"""
     }
 
-    private val defaultSupplements = """[{"id":"1","name":"Vitamin D3","dosage":"2000 IU","category":"Supplement","timeOfUse":"Morning","recurrenceType":"DAILY","recurrenceValue":"","instruction":"With Food"},{"id":"2","name":"Vitamin C","dosage":"500mg","category":"Supplement","timeOfUse":"Anytime","recurrenceType":"DAILY","recurrenceValue":"","instruction":"None"},{"id":"3","name":"Magnesium","dosage":"200mg","category":"Supplement","timeOfUse":"Before Bed","recurrenceType":"DAILY","recurrenceValue":"","instruction":"None"},{"id":"4","name":"Zinc","dosage":"15mg","category":"Supplement","timeOfUse":"Evening","recurrenceType":"DAILY","recurrenceValue":"","instruction":"With Food"},{"id":"5","name":"Omega-3 Fish Oil","dosage":"1000mg","category":"Supplement","timeOfUse":"Morning","recurrenceType":"DAILY","recurrenceValue":"","instruction":"With Food"},{"id":"6","name":"Creatine","dosage":"5g","category":"Supplement","timeOfUse":"Anytime","recurrenceType":"DAILY","recurrenceValue":"","instruction":"With Water"},{"id":"7","name":"Whey Protein","dosage":"30g","category":"Supplement","timeOfUse":"Anytime","recurrenceType":"DAILY","recurrenceValue":"","instruction":"With Water"},{"id":"8","name":"Multivitamin","dosage":"1 pill","category":"Supplement","timeOfUse":"Morning","recurrenceType":"DAILY","recurrenceValue":"","instruction":"With Food"},{"id":"9","name":"B-Complex","dosage":"1 cap","category":"Supplement","timeOfUse":"Morning","recurrenceType":"DAILY","recurrenceValue":"","instruction":"With Food"},{"id":"10","name":"Iron","dosage":"18mg","category":"Supplement","timeOfUse":"Anytime","recurrenceType":"DAILY","recurrenceValue":"","instruction":"With Food"},{"id":"11","name":"Vitamin B12","dosage":"1000mcg","category":"Supplement","timeOfUse":"Morning","recurrenceType":"DAILY","recurrenceValue":"","instruction":"None"},{"id":"12","name":"Ashwagandha","dosage":"500mg","category":"Supplement","timeOfUse":"Evening","recurrenceType":"DAILY","recurrenceValue":"","instruction":"None"},{"id":"13","name":"Probiotics","dosage":"1 cap","category":"Supplement","timeOfUse":"Morning","recurrenceType":"DAILY","recurrenceValue":"","instruction":"Empty Stomach"}]"""
+    // --- FIX: Cleared out the default pre-populated vitamins! ---
+    private val defaultSupplements = "[]"
     val supplementsRosterFlow: Flow<String> = context.dataStore.data.map { it[SUPPLEMENTS_ROSTER] ?: defaultSupplements }
 
     private val defaultCategories = """["Supplement", "Medication", "Pre-workout"]"""
     val supplementCategoriesFlow: Flow<String> = context.dataStore.data.map { it[SUPPLEMENT_CATEGORIES] ?: defaultCategories }
     val biometricEnabledFlow: Flow<Boolean> = context.dataStore.data.map { it[BIOMETRIC_ENABLED] ?: true }
 
-    // --- NEW: Save User Name ---
     suspend fun saveUserName(name: String) {
         context.dataStore.edit { it[USER_NAME] = name }
+    }
+
+    suspend fun saveDayRolloverHour(hour: Int) {
+        context.dataStore.edit { it[DAY_ROLLOVER_HOUR] = hour }
     }
 
     suspend fun saveAgendaText(text: String) {

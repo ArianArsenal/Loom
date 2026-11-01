@@ -35,7 +35,7 @@ fun extractHeadings(blocks: List<SandboxBlock>): List<SandboxBlock> {
 fun TocBlockRenderer(
     textState: TextFieldValue,
     handleTextChange: (TextFieldValue) -> Unit,
-    modifier: Modifier, // --- FIX: Renamed modifier ---
+    modifier: Modifier,
     placeholderUI: @Composable (@Composable () -> Unit) -> Unit,
     isReadOnly: Boolean,
     allBlocks: List<SandboxBlock>,
@@ -46,9 +46,21 @@ fun TocBlockRenderer(
     Column(modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), RoundedCornerShape(8.dp)).padding(16.dp)) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Text("Table of Contents", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
-            if (!isReadOnly) { IconButton(onClick = { showBlockMenu = true }, modifier = Modifier.size(24.dp)) { Icon(Icons.Default.MoreVert, "Options", tint = Color.Gray) } }
+            if (!isReadOnly) {
+                // --- FIX: Wrapped in Box for exact anchoring ---
+                Box {
+                    IconButton(onClick = { showBlockMenu = true }, modifier = Modifier.size(24.dp)) { Icon(Icons.Default.MoreVert, "Options", tint = Color.Gray) }
+                    DropdownMenu(
+                        expanded = showBlockMenu,
+                        onDismissRequest = { showBlockMenu = false },
+                        modifier = Modifier.background(MaterialTheme.colorScheme.surface)
+                    ) {
+                        DropdownMenuItem(text = { Text("Delete TOC", color = MaterialTheme.colorScheme.error) }, onClick = { onDeleteBlock("", true) })
+                    }
+                }
+            }
         }
-        DropdownMenu(expanded = showBlockMenu, onDismissRequest = { showBlockMenu = false }) { DropdownMenuItem(text = { Text("Delete TOC", color = MaterialTheme.colorScheme.error) }, onClick = { onDeleteBlock("", true) }) }
+
         HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
         val headings = extractHeadings(allBlocks)
         if (headings.isEmpty()) { Text("No headings found. Add H1, H2, H3, or H4 blocks.", color = Color.Gray, style = MaterialTheme.typography.bodySmall) } else {
@@ -58,7 +70,7 @@ fun TocBlockRenderer(
             value = textState,
             onValueChange = handleTextChange,
             textStyle = MaterialTheme.typography.bodySmall.copy(color = Color.Transparent, fontSize = 1.sp),
-            modifier = modifier.height(1.dp), // --- FIX: Applied renamed modifier ---
+            modifier = modifier.height(1.dp),
             cursorBrush = SolidColor(Color.Transparent),
             decorationBox = placeholderUI,
             readOnly = isReadOnly
