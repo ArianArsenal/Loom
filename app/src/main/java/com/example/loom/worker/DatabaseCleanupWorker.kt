@@ -34,8 +34,8 @@ class DatabaseCleanupWorker(
             )
             val repository = entryPoint.trackerRepository()
 
-            // 2. Execute the heavy database cleanup
-            repository.cleanupOldDoneTasks()
+            // Done tasks used to be deleted here after 24h; they are now kept (hidden on Home instead)
+            // because Calendar history and monthly stats rely on them.
 
             Result.success()
         } catch (_: Exception) {

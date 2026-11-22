@@ -100,7 +100,7 @@ class CalendarViewModel @Inject constructor(
             combine(
                 repository.getRecordsForMonth(prefix),
                 repository.getExercisesForMonth(prefix),
-                repository.getAllTasks()
+                repository.getTasksBetween(yearMonth.atDay(1), yearMonth.atEndOfMonth())
             ) { records, exercises, tasks ->
                 val activeSet = mutableSetOf<String>()
 
@@ -151,7 +151,7 @@ class CalendarViewModel @Inject constructor(
             combine(
                 repository.getRecordsForMonth(prefix),
                 repository.getExercisesForMonth(prefix),
-                repository.getAllTasks()
+                repository.getTasksBetween(yearMonth.atDay(1), yearMonth.atEndOfMonth())
             ) { records, exercises, allTasks ->
 
                 val sleepDays = records.filter { it.sleepHours > 0f }
@@ -185,7 +185,7 @@ class CalendarViewModel @Inject constructor(
         snapshotJob = viewModelScope.launch {
             combine(
                 repository.getDailyRecordFlow(dateId),
-                repository.getAllTasks(),
+                repository.getTasksBetween(java.time.LocalDate.parse(dateId), java.time.LocalDate.parse(dateId)),
                 repository.getExercisesForDate(dateId)
             ) { record, allTasks, exercises ->
 

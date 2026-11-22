@@ -23,6 +23,10 @@ object DateUtils {
     fun getLogicalToday(): LocalDate =
         LocalDateTime.now().minusHours(rolloverOffsetHours.toLong()).toLocalDate()
 
+    /** Epoch millis at which the current logical day began (today's date at the rollover hour). */
+    fun logicalDayStartMillis(): Long =
+        getLogicalToday().atTime(rolloverOffsetHours, 0).atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+
     // ISO yyyy-MM-dd with ASCII digits regardless of device locale: these strings are database keys
     fun getTodayDateId(): String = getLogicalToday().toString()
 

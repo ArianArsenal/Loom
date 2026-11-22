@@ -1,6 +1,7 @@
 package com.example.loom.data.local.entity
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 import kotlinx.serialization.Serializable
 
@@ -45,7 +46,10 @@ data class WaterContainer(
     val hydrationFactor: Float = 1.0f
 )
 
-@Entity(tableName = "tasks")
+@Entity(
+    tableName = "tasks",
+    indices = [Index("targetDate"), Index("isCompleted", "completionDateMillis")]
+)
 data class Task(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
     val title: String,
@@ -90,7 +94,7 @@ data class SubTask(
     var isCompleted: Boolean = false
 )
 
-@Entity(tableName = "exercises")
+@Entity(tableName = "exercises", indices = [Index("dateId")])
 data class Exercise(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
     val dateId: String,
@@ -129,7 +133,7 @@ data class ExerciseTemplate(
     val name: String
 )
 
-@Entity(tableName = "diary_notes")
+@Entity(tableName = "diary_notes", indices = [Index("timestamp")])
 data class DiaryNote(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
     val title: String,
@@ -162,7 +166,7 @@ data class SkincareProduct(
     val frequency: String = "Daily"
 )
 
-@Entity(tableName = "skincare_routines")
+@Entity(tableName = "skincare_routines", indices = [Index("isPinnedToHome")])
 data class SkincareRoutine(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
     val name: String,
@@ -170,7 +174,7 @@ data class SkincareRoutine(
     val isPinnedToHome: Boolean = true
 )
 
-@Entity(tableName = "food_items")
+@Entity(tableName = "food_items", indices = [Index("name"), Index("isUserCreated")])
 data class FoodItem(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
     val name: String,

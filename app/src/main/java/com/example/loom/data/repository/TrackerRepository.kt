@@ -165,6 +165,16 @@ class TrackerRepository @Inject constructor(private val dao: TrackerDao) {
 
     // --- Tasks Engine ---
     fun getAllTasks(): Flow<List<Task>> = dao.getAllTasks()
+
+    /** Tasks due on, or completed during, the given calendar dates (inclusive). */
+    fun getTasksBetween(from: java.time.LocalDate, to: java.time.LocalDate): Flow<List<Task>> {
+        val zone = java.time.ZoneId.systemDefault()
+        return dao.getTasksInRange(
+            from.toString(), to.toString(),
+            from.atStartOfDay(zone).toInstant().toEpochMilli(),
+            to.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli()
+        )
+    }
     suspend fun insertTask(task: Task) = dao.insertTask(task)
     suspend fun updateTask(task: Task) = dao.updateTask(task)
     suspend fun deleteTask(task: Task) = dao.deleteTask(task)
@@ -185,10 +195,6 @@ class TrackerRepository @Inject constructor(private val dao: TrackerDao) {
         }
     }
 
-    suspend fun cleanupOldDoneTasks() {
-        val twentyFourHoursAgo = System.currentTimeMillis() - (24 * 60 * 60 * 1000L)
-        dao.deleteOldDoneTasks(twentyFourHoursAgo)
-    }
 
     // --- Exercises ---
     fun getExercisesForDate(date: String): Flow<List<Exercise>> = dao.getExercisesForDate(date)

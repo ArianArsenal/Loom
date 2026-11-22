@@ -31,7 +31,7 @@ import com.example.loom.data.local.entity.SandboxBlockEntity
         NotionSpaceEntity::class,
         SandboxBlockEntity::class
     ],
-    version = 32,
+    version = 33,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -249,6 +249,32 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        // v33: indexes for the hot queries, and block ids scoped per space (PRIMARY KEY(spaceId, id))
+        // so a block id reused in another space can never overwrite that space's row.
+        private val MIGRATION_32_33 = object : Migration(32, 33) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                val blockColumns = "`id`, `spaceId`, `parentId`, `orderIndex`, `type`, `content`, `textFormatsJson`, " +
+                    "`secondaryContent`, `icon`, `url`, `isChecked`, `isExpanded`, `progress`, `tableDataJson`, " +
+                    "`colWidthsJson`, `rowHeightsJson`, `calendarEventsJson`, `kanbanColumnsJson`, `sketchStrokesJson`, " +
+                    "`galleryItemsJson`, `pinnedTab`, `isLocked`"
+                db.execSQL("CREATE TABLE IF NOT EXISTS `notion_blocks_new` (`id` TEXT NOT NULL, `spaceId` TEXT NOT NULL, `parentId` TEXT, `orderIndex` INTEGER NOT NULL, `type` TEXT NOT NULL, `content` TEXT NOT NULL, `textFormatsJson` TEXT NOT NULL, `secondaryContent` TEXT NOT NULL, `icon` TEXT NOT NULL, `url` TEXT NOT NULL, `isChecked` INTEGER NOT NULL, `isExpanded` INTEGER NOT NULL, `progress` REAL NOT NULL, `tableDataJson` TEXT NOT NULL, `colWidthsJson` TEXT NOT NULL, `rowHeightsJson` TEXT NOT NULL, `calendarEventsJson` TEXT NOT NULL, `kanbanColumnsJson` TEXT NOT NULL, `sketchStrokesJson` TEXT NOT NULL, `galleryItemsJson` TEXT NOT NULL, `pinnedTab` TEXT NOT NULL, `isLocked` INTEGER NOT NULL, PRIMARY KEY(`spaceId`, `id`), FOREIGN KEY(`spaceId`) REFERENCES `notion_spaces`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )")
+                db.execSQL("INSERT OR IGNORE INTO `notion_blocks_new` ($blockColumns) SELECT $blockColumns FROM `notion_blocks`")
+                db.execSQL("DROP TABLE `notion_blocks`")
+                db.execSQL("ALTER TABLE `notion_blocks_new` RENAME TO `notion_blocks`")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_notion_blocks_spaceId` ON `notion_blocks` (`spaceId`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_notion_blocks_parentId` ON `notion_blocks` (`parentId`)")
+
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_tasks_targetDate` ON `tasks` (`targetDate`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_tasks_isCompleted_completionDateMillis` ON `tasks` (`isCompleted`, `completionDateMillis`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_exercises_dateId` ON `exercises` (`dateId`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_diary_notes_timestamp` ON `diary_notes` (`timestamp`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_skincare_routines_isPinnedToHome` ON `skincare_routines` (`isPinnedToHome`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_food_items_name` ON `food_items` (`name`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_food_items_isUserCreated` ON `food_items` (`isUserCreated`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_notion_spaces_isDeleted` ON `notion_spaces` (`isDeleted`)")
+            }
+        }
+
         private fun executeMigration(db: SupportSQLiteDatabase) {
             db.execSQL("""
                 CREATE TABLE IF NOT EXISTS `exercises_new` (
@@ -280,7 +306,7 @@ abstract class AppDatabase : RoomDatabase() {
             MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23,
             MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27,
             MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31,
-            MIGRATION_31_32
+            MIGRATION_31_32, MIGRATION_32_33
         )
     }
 }

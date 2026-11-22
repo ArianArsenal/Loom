@@ -40,7 +40,7 @@ interface TrackerDao {
     @Query("SELECT * FROM daily_records WHERE dateId = :dateId")
     suspend fun getDailyRecordSync(dateId: String): DailyRecord?
 
-    @Query("SELECT * FROM daily_records WHERE dateId LIKE :monthPrefix || '%'")
+    @Query("SELECT * FROM daily_records WHERE dateId BETWEEN :monthPrefix || '-01' AND :monthPrefix || '-31'")
     fun getRecordsForMonth(monthPrefix: String): Flow<List<DailyRecord>>
 
     // --- Tasks Engine ---
@@ -58,6 +58,14 @@ interface TrackerDao {
 
     @Query("SELECT * FROM tasks ORDER BY priority DESC, targetDate ASC")
     fun getAllTasks(): Flow<List<Task>>
+
+    /** Tasks due in a date range, or completed inside a time range (both sides use an index). */
+    @Query("""
+        SELECT * FROM tasks
+        WHERE targetDate BETWEEN :fromDate AND :toDate
+           OR (isCompleted = 1 AND completionDateMillis >= :fromMillis AND completionDateMillis < :toMillis)
+    """)
+    fun getTasksInRange(fromDate: String, toDate: String, fromMillis: Long, toMillis: Long): Flow<List<Task>>
 
     // --- Task Sections ---
     @Query("SELECT * FROM task_sections ORDER BY orderIndex ASC")
@@ -139,8 +147,6 @@ interface TrackerDao {
     @Delete
     suspend fun deleteNoteTag(tag: NoteTag)
 
-    @Query("DELETE FROM tasks WHERE status = 'DONE' AND completionDateMillis > 0 AND completionDateMillis < :thresholdMillis")
-    suspend fun deleteOldDoneTasks(thresholdMillis: Long)
 
     // --- Skincare Engine ---
     @Query("SELECT * FROM skincare_routines")
@@ -181,7 +187,7 @@ interface TrackerDao {
     fun getUserCreatedFoodItems(): Flow<List<FoodItem>>
 
     // --- NEW: Grouped search for the hierarchical UI ---
-    @Query("SELECT * FROM food_items WHERE name LIKE '%' || :searchQuery || '%' GROUP BY name ORDER BY name ASC LIMIT 30")
+    @Query("SELECT * FROM food_items WHERE name LIKE '%' || :searchQuery || '%' GROUP BY name ORDER BY (name LIKE :searchQuery || '%') DESC, name ASC LIMIT 30")
     fun searchFoodItemsGrouped(searchQuery: String): Flow<List<FoodItem>>
 
     // --- NEW: Fetch specific variants of a food ---
@@ -194,7 +200,7 @@ interface TrackerDao {
     @Delete
     suspend fun deleteFoodItem(food: FoodItem)
 
-    @Query("SELECT * FROM exercises WHERE dateId LIKE :monthPrefix || '%'")
+    @Query("SELECT * FROM exercises WHERE dateId BETWEEN :monthPrefix || '-01' AND :monthPrefix || '-31'")
     fun getExercisesForMonth(monthPrefix: String): Flow<List<Exercise>>
 
 
