@@ -55,6 +55,8 @@ class TrackerRepository @Inject constructor(private val dao: TrackerDao) {
 
     fun getDailyRecordFlow(dateId: String): Flow<DailyRecord?> = dao.getDailyRecordFlow(dateId)
     fun getRecordsForMonth(monthPrefix: String): Flow<List<DailyRecord>> = dao.getRecordsForMonth(monthPrefix)
+    fun getRecordsBetween(from: java.time.LocalDate, to: java.time.LocalDate): Flow<List<DailyRecord>> = dao.getRecordsBetween(from.toString(), to.toString())
+    fun getExercisesBetween(from: java.time.LocalDate, to: java.time.LocalDate): Flow<List<Exercise>> = dao.getExercisesBetween(from.toString(), to.toString())
 
     /** Atomically applies [transform] to the freshest copy of a day's record, creating the day if needed. */
     suspend fun editRecord(dateId: String = DateUtils.getTodayDateId(), transform: (DailyRecord) -> DailyRecord) {

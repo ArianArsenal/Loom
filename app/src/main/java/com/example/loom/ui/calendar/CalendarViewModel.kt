@@ -82,7 +82,8 @@ class CalendarViewModel @Inject constructor(
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     @OptIn(ExperimentalCoroutinesApi::class)
-    val activeDays: StateFlow<Set<String>> = currentMonth
+    /** Activity level per day (number of things logged) for the month heat-map. */
+    val activeDays: StateFlow<Map<String, Int>> = currentMonth
         .flatMapLatest { yearMonth ->
             val prefix = yearMonth.format(DateTimeFormatter.ofPattern("yyyy-MM"))
             combine(
@@ -90,7 +91,8 @@ class CalendarViewModel @Inject constructor(
                 repository.getExercisesForMonth(prefix),
                 repository.getTasksBetween(yearMonth.atDay(1), yearMonth.atEndOfMonth())
             ) { records, exercises, tasks ->
-                val activeSet = mutableSetOf<String>()
+                val activity = mutableMapOf<String, Int>()
+                fun bump(dateId: String, by: Int = 1) { if (by > 0) activity[dateId] = (activity[dateId] ?: 0) + by }
 
                 records.forEach { record ->
                     val cleanFoods = record.consumedFoodsJson.replace(TextPatterns.WHITESPACE, "")
@@ -107,12 +109,10 @@ class CalendarViewModel @Inject constructor(
 
                     val hasMacros = record.calories > 0 || record.protein > 0 || record.carbs > 0 || record.fats > 0
 
-                    if (hasMacros || record.waterIntakeMl > 0 || record.diaryEntry.isNotBlank() || hasFood || hasRoutine || hasSteps || hasSupplements) {
-                        activeSet.add(record.dateId)
-                    }
+                    bump(record.dateId, listOf(hasMacros || hasFood, record.waterIntakeMl > 0, record.diaryEntry.isNotBlank(), hasRoutine || hasSteps, hasSupplements).count { it })
                 }
 
-                exercises.forEach { ex -> activeSet.add(ex.dateId) }
+                exercises.map { it.dateId }.distinct().forEach { bump(it) }
 
                 tasks.forEach { task ->
                     if (task.isCompleted) {
@@ -121,16 +121,16 @@ class CalendarViewModel @Inject constructor(
                         } else {
                             task.targetDate
                         }
-                        if (dateStr.startsWith(prefix)) activeSet.add(dateStr)
+                        if (dateStr.startsWith(prefix)) bump(dateStr)
                     } else {
-                        if (task.targetDate.startsWith(prefix)) activeSet.add(task.targetDate)
+                        if (task.targetDate.startsWith(prefix)) bump(task.targetDate)
                     }
                 }
 
-                activeSet
+                activity
             }
         }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptySet())
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
 
     @OptIn(ExperimentalCoroutinesApi::class)
     val monthlyAnalytics: StateFlow<MonthlyAnalytics> = currentMonth

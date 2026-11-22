@@ -32,6 +32,7 @@ fun HealthScreen(viewModel: HealthViewModel) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     val availableCards: List<Pair<String, @Composable () -> Unit>> = listOf(
+        "Trends & Streaks" to { TrendsCard(viewModel) },
         "Workout Tracker" to { HealthWorkout(viewModel) },
         "Nutrition Engine" to { HealthNutrition(viewModel) },
         "Supplements & Vitamins" to { SupplementsCard(viewModel) },

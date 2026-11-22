@@ -11,6 +11,7 @@ import com.example.loom.data.repository.removeJsonIds
 import com.example.loom.data.repository.toggleJsonId
 import com.example.loom.util.DateUtils
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.GlobalScope
@@ -149,6 +150,70 @@ class HealthViewModel @Inject constructor(
         roster.filter { it.isScheduledOn(today) }.sortedBy { it.timeOfUse }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+
+    // --- TRENDS & STREAKS ---
+    private val _trendDays = MutableStateFlow(30)
+    val trendDays: StateFlow<Int> = _trendDays.asStateFlow()
+    fun setTrendDays(days: Int) { _trendDays.value = days }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val trends: StateFlow<TrendData> = combine(_trendDays, DateUtils.todayDateIdFlow) { days, todayId -> days to LocalDate.parse(todayId) }
+        .flatMapLatest { (days, today) ->
+            val from = today.minusDays(days - 1L)
+            combine(
+                repository.getRecordsBetween(from, today),
+                userPreferences.targetCaloriesFlow,
+                userPreferences.targetProteinFlow,
+                userPreferences.waterDailyGoalFlow
+            ) { records, calTarget, proteinTarget, waterGoal ->
+                val byDate = records.associateBy { it.dateId }
+                fun series(target: Float? = null, value: (DailyRecord) -> Float?) = TrendSeries(
+                    (0 until days).map { i -> from.plusDays(i.toLong()).let { d -> TrendPoint(d, byDate[d.toString()]?.let(value)) } },
+                    target
+                )
+                TrendData(
+                    days = days,
+                    weight = series { r -> r.weightLogKg.takeIf { it > 0f } },
+                    sleep = series { r -> r.sleepHours.takeIf { it > 0f } },
+                    calories = series(calTarget.toFloat()) { r -> r.calories.takeIf { it > 0 }?.toFloat() },
+                    protein = series(proteinTarget.toFloat()) { r -> r.protein.takeIf { it > 0 }?.toFloat() },
+                    water = series(waterGoal.toFloat()) { r -> r.waterIntakeMl.takeIf { it > 0 }?.toFloat() }
+                )
+            }
+        }
+        .flowOn(Dispatchers.Default)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), TrendData())
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val streaks: StateFlow<Streaks> = DateUtils.todayDateIdFlow
+        .flatMapLatest { todayId ->
+            val today = LocalDate.parse(todayId)
+            val from = today.minusDays(365)
+            combine(
+                repository.getRecordsBetween(from, today),
+                repository.getExercisesBetween(from, today),
+                userPreferences.waterDailyGoalFlow,
+                supplementsRoster
+            ) { records, exercises, waterGoal, roster ->
+                val byDate = records.associateBy { it.dateId }
+                val workoutDays = exercises.mapTo(HashSet()) { it.dateId }
+                Streaks(
+                    workout = StreakCalculator.compute({ d -> d.toString() in workoutDays }, from, today),
+                    water = StreakCalculator.compute({ d -> (byDate[d.toString()]?.waterIntakeMl ?: 0) >= waterGoal && waterGoal > 0 }, from, today),
+                    supplements = StreakCalculator.compute({ d ->
+                        val scheduled = roster.filter { it.isScheduledOn(d) }.map { it.id }
+                        if (scheduled.isEmpty()) null
+                        else com.example.loom.data.repository.decodeList<String>(byDate[d.toString()]?.completedSupplementsJson).containsAll(scheduled)
+                    }, from, today),
+                    skincare = StreakCalculator.compute({ d ->
+                        com.example.loom.data.repository.decodeList<String>(byDate[d.toString()]?.completedSkincareRoutinesJson).isNotEmpty()
+                    }, from, today),
+                    workoutsLast7Days = (0..6).count { today.minusDays(it.toLong()).toString() in workoutDays }
+                )
+            }
+        }
+        .flowOn(Dispatchers.Default)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), Streaks())
 
     fun saveCategory(categoryName: String) = viewModelScope.launch {
         val current = supplementCategories.value.toMutableList()

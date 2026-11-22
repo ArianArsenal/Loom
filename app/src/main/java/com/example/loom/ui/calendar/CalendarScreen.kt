@@ -1149,7 +1149,8 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
                         val dayNumber = dayIndex + 1
                         val date = currentMonth.atDay(dayNumber)
                         val dateIdStr = date.format(dayMonthYearFormatter)
-                        val hasData = activeDays.contains(dateIdStr)
+                        val activityLevel = activeDays[dateIdStr] ?: 0
+                        val hasData = activityLevel > 0
                         val isSelected = date == selectedDate
 
                         Box(
@@ -1160,7 +1161,7 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
                                 .background(
                                     when {
                                         isSelected -> MaterialTheme.colorScheme.primary
-                                        hasData -> MaterialTheme.colorScheme.secondary.copy(alpha = 0.4f)
+                                        hasData -> MaterialTheme.colorScheme.secondary.copy(alpha = (0.15f + 0.17f * activityLevel).coerceAtMost(0.85f))
                                         else -> MaterialTheme.colorScheme.surface
                                     }
                                 )
@@ -1186,7 +1187,8 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
 
                     weekDays.forEach { date ->
                         val dateIdStr = date.format(dayMonthYearFormatter)
-                        val hasData = activeDays.contains(dateIdStr)
+                        val activityLevel = activeDays[dateIdStr] ?: 0
+                        val hasData = activityLevel > 0
                         val isSelected = date == selectedDate
 
                         Box(
@@ -1198,7 +1200,7 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
                                 .background(
                                     when {
                                         isSelected -> MaterialTheme.colorScheme.primary
-                                        hasData -> MaterialTheme.colorScheme.secondary.copy(alpha = 0.4f)
+                                        hasData -> MaterialTheme.colorScheme.secondary.copy(alpha = (0.15f + 0.17f * activityLevel).coerceAtMost(0.85f))
                                         else -> MaterialTheme.colorScheme.surface
                                     }
                                 )
