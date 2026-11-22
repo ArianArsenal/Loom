@@ -36,6 +36,15 @@ android {
                 "proguard-rules.pro"
             )
         }
+        // Release-speed build for testing on the phone next to the real app (R8 + baseline profile,
+        // not debuggable). Debug builds run Compose unoptimized and scroll noticeably worse.
+        create("bench") {
+            initWith(getByName("release"))
+            applicationIdSuffix = ".bench"
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += listOf("release")
+            isDebuggable = false
+        }
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
