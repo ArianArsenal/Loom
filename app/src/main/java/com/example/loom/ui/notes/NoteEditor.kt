@@ -120,15 +120,34 @@ fun NoteEditor(initialNote: DiaryNote?, allTags: List<NoteTag>, viewModel: HomeV
     }
 
     val photoPickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia()) { uris ->
-        uris.forEach { uri ->
-            // Not every provider grants persistable access; the image still works for this session
-            try { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_: SecurityException) {}
-            val insertIndex = blocks.indexOfFirst { it.id == focusedBlockId }.takeIf { it >= 0 }?.plus(1) ?: blocks.size
-            blocks.add(insertIndex, NoteBlock(id = UUID.randomUUID().toString(), type = "image", content = uri.toString()))
+        scope.launch {
+            uris.forEach { uri ->
+                // Copy into the app (like Space images) so the photo survives gallery deletions and is
+                // included in backups; fall back to the gallery link if copying fails
+                val stored = com.example.loom.ui.sandbox.copyMediaToLocal(context, uri) ?: run {
+                    try { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_: SecurityException) {}
+                    uri.toString()
+                }
+                val insertIndex = blocks.indexOfFirst { it.id == focusedBlockId }.takeIf { it >= 0 }?.plus(1) ?: blocks.size
+                blocks.add(insertIndex, NoteBlock(id = UUID.randomUUID().toString(), type = "image", content = stored))
 
-            val newTextId = UUID.randomUUID().toString()
-            blocks.add(insertIndex + 1, NoteBlock(id = newTextId, type = "text", content = ZWSP))
-            focusedBlockId = newTextId
+                val newTextId = UUID.randomUUID().toString()
+                blocks.add(insertIndex + 1, NoteBlock(id = newTextId, type = "text", content = ZWSP))
+                focusedBlockId = newTextId
+            }
+        }
+    }
+
+    // Older notes link to gallery photos (content://): copy any that are still readable into the app
+    LaunchedEffect(Unit) {
+        blocks.toList().forEach { block ->
+            if (block.type == "image" && block.content.startsWith("content://")) {
+                val local = com.example.loom.ui.sandbox.copyMediaToLocal(context, android.net.Uri.parse(block.content))
+                if (local != null) {
+                    val index = blocks.indexOfFirst { it.id == block.id }
+                    if (index != -1) blocks[index] = blocks[index].copy(content = local)
+                }
+            }
         }
     }
 
