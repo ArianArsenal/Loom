@@ -10,4 +10,10 @@
 
     <string name="shortcut_log_water_short">Log Water</string>
     <string name="shortcut_log_water_long">Log Default Water</string>
+
+    <!-- Home-screen widgets -->
+    <string name="widget_water_name">Loom Water</string>
+    <string name="widget_water_description">Today\'s water with one-tap logging</string>
+    <string name="widget_today_name">Loom Today</string>
+    <string name="widget_today_description">Calories, protein, fasting and your next task</string>
 </resources>

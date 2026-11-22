@@ -120,4 +120,9 @@ dependencies {
     // DataStore & WorkManager
     implementation("androidx.datastore:datastore-preferences:1.1.1")
     implementation("androidx.work:work-runtime-ktx:2.9.0")
+
+    // Home-screen widgets and Health Connect sync
+    implementation("androidx.glance:glance-appwidget:1.1.1")
+    implementation("androidx.glance:glance-material3:1.1.1")
+    implementation("androidx.health.connect:connect-client:1.1.0-alpha10")
 }

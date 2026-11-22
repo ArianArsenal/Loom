@@ -27,9 +27,11 @@ class LoomApplication : Application(), ImageLoaderFactory {
         super.onCreate()
 
         ReminderScheduler.createChannels(this)
-        CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+        val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        appScope.launch {
             ReminderScheduler.rescheduleAll(this@LoomApplication, userPreferences)
         }
+        com.example.loom.widget.LoomWidgets.keepUpdated(this, appScope)
 
         // Grab the OS default crash handler
         val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
