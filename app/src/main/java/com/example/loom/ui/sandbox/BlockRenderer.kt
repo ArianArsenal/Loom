@@ -35,6 +35,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -100,7 +101,13 @@ fun BlockRenderer(
 ) {
     val currentBlock by rememberUpdatedState(block)
     val context = LocalContext.current
-    val focusRequester = focusRequesters.getOrPut(block.id) { FocusRequester() }
+    // Registered while this block is composed (lazy items come and go): writing the shared map during
+    // composition and never removing entries left requesters for blocks no longer on screen.
+    val focusRequester = remember(block.id) { FocusRequester() }
+    DisposableEffect(block.id) {
+        focusRequesters[block.id] = focusRequester
+        onDispose { if (focusRequesters[block.id] === focusRequester) focusRequesters.remove(block.id) }
+    }
     val keyboardController = LocalSoftwareKeyboardController.current
     val scope = rememberCoroutineScope()
 

@@ -15,6 +15,10 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items as lazyRowItems
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -99,13 +103,30 @@ fun NotionCanvasScreen(
     var focusedBlockId by remember { mutableStateOf<String?>(null) }
     val focusRequesters = remember { mutableStateMapOf<String, FocusRequester>() }
     val focusManager = LocalFocusManager.current
-    val blockPositions = remember { mutableStateMapOf<String, Float>() }
 
-    val canvasScrollState = rememberScrollState()
+    val listState = remember(currentSpaceId) { LazyListState() }
     val scope = rememberCoroutineScope()
+    val numberIndices by remember {
+        derivedStateOf {
+            var run = 0
+            blocks.map { b -> if (b.type == BlockType.NUMBER) ++run else { run = 0; 1 } }
+        }
+    }
+
+    // A block that should take focus (new line, merge, delete) may be scrolled out of composition:
+    // bring it on screen first so BlockRenderer can request focus once it is composed.
+    LaunchedEffect(focusedBlockId) {
+        val targetId = focusedBlockId ?: return@LaunchedEffect
+        val topIndex = topLevelIndexOf(blocks, targetId)
+        if (topIndex == -1) return@LaunchedEffect
+        val itemIndex = HEADER_ITEMS + topIndex
+        val visible = listState.layoutInfo.visibleItemsInfo
+        if (visible.none { it.index == itemIndex } || visible.lastOrNull()?.index == itemIndex) {
+            listState.animateScrollToItem(itemIndex, scrollOffset = -200)
+        }
+    }
     var showBannerPicker by remember { mutableStateOf(false) }
     var showIconPicker by remember { mutableStateOf(false) }
-    val imeBottomPadding = WindowInsets.ime.asPaddingValues().calculateBottomPadding()
     val context = LocalContext.current
 
     var showSaveTemplateDialog by remember { mutableStateOf(false) }
@@ -149,19 +170,21 @@ fun NotionCanvasScreen(
 
     Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
 
-        Column(modifier = Modifier.fillMaxSize().verticalScroll(canvasScrollState)) {
+        // Lazy so long pages only compose the blocks on screen (the old Column composed every block)
+        LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
 
+            item(key = "header", contentType = "header") {
+              Column(modifier = Modifier.fillMaxWidth()) {
             Box(modifier = Modifier.fillMaxWidth()) {
 
                 if (bannerUrl.isNotEmpty()) {
                     val bannerColor = try { Color(bannerUrl.toColorInt()) } catch(_:Exception){ Color.LightGray } // --- FIX: KTX & Unused e ---
-                    val scrollOffset = canvasScrollState.value.toFloat()
-
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(220.dp)
                             .graphicsLayer {
+                                val scrollOffset = if (listState.firstVisibleItemIndex == 0) listState.firstVisibleItemScrollOffset.toFloat() else 1000f
                                 translationY = scrollOffset * 0.5f
                                 alpha = (1f - (scrollOffset / 500f)).coerceIn(0f, 1f)
                             }
@@ -325,22 +348,15 @@ fun NotionCanvasScreen(
                     color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
                 )
 
-                blocks.forEachIndexed { index, block ->
-                    val currentNumberedIndex = if (block.type == BlockType.NUMBER) {
-                        var count = 1
-                        for (i in index - 1 downTo 0) {
-                            if (blocks[i].type == BlockType.NUMBER) count++ else break
-                        }
-                        count
-                    } else 1
+            }
+              }
+            }
 
-                    key(block.id) {
-                        Box(modifier = Modifier.onGloballyPositioned { coords ->
-                            blockPositions[block.id] = coords.positionInParent().y
-                        }) {
+            itemsIndexed(blocks, key = { _, b -> b.id }, contentType = { _, b -> b.type }) { index, block ->
+                Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp).animateItem()) {
                             BlockRenderer(
                                 block = block,
-                                numberIndex = currentNumberedIndex,
+                                numberIndex = numberIndices.getOrElse(index) { 1 },
                                 allSpaces = allSpaces,
                                 currentSpaceId = currentSpaceId,
                                 recentTableColors = recentTableColors,
@@ -348,11 +364,9 @@ fun NotionCanvasScreen(
                                 focusTargetId = focusedBlockId,
                                 allBlocks = blocks,
                                 onScrollToBlock = { targetId ->
-                                    scope.launch {
-                                        blockPositions[targetId]?.let { yPos ->
-                                            canvasScrollState.animateScrollTo(yPos.toInt())
-                                        }
-                                    }
+                                    // Nested targets (e.g. a heading inside a toggle) scroll to their top-level block
+                                    val topIndex = topLevelIndexOf(blocks, targetId)
+                                    if (topIndex != -1) scope.launch { listState.animateScrollToItem(HEADER_ITEMS + topIndex) }
                                 },
                                 onMove = { offset ->
                                     val currentIndex = blocks.indexOfFirst { it.id == block.id }
@@ -362,11 +376,14 @@ fun NotionCanvasScreen(
                                             val temp = blocks[currentIndex]
                                             blocks[currentIndex] = blocks[newIndex]
                                             blocks[newIndex] = temp
+                                            // Keep the dragged block on screen: scroll when it nears an edge,
+                                            // otherwise it would leave composition and the drag would end
+                                            scope.launch { keepDraggedItemVisible(listState, block.id, offset) }
                                         }
                                     }
                                 },
                                 onFocusRequest = { focusedBlockId = it },
-                                onScrollToTop = { scope.launch { canvasScrollState.animateScrollTo(0) } },
+                                onScrollToTop = { scope.launch { listState.animateScrollToItem(0) } },
                                 onNavigateToSpace = onNavigateToSpace,
                                 onCreateLinkedSpace = onCreateLinkedSpace,
                                 onUpdate = { updatedBlock ->
@@ -416,27 +433,29 @@ fun NotionCanvasScreen(
                                     }
                                 }
                             )
-                        }
-                    }
                     Spacer(modifier = Modifier.height(4.dp))
                 }
             }
 
-            Spacer(
-                modifier = Modifier.fillMaxWidth().height(300.dp + imeBottomPadding).pointerInput(Unit) {
-                    detectTapGestures(onTap = {
-                        focusManager.clearFocus()
-                        val lastBlock = blocks.lastOrNull()
-                        if (lastBlock != null && lastBlock.type == BlockType.TEXT && lastBlock.content == "\u200B") {
-                            focusedBlockId = lastBlock.id
-                        } else {
-                            val newBlockId = UUID.randomUUID().toString()
-                            blocks.add(SandboxBlock(id = newBlockId, type = BlockType.TEXT, content = "\u200B"))
-                            focusedBlockId = newBlockId
-                        }
-                    })
-                }
-            )
+            item(key = "footer", contentType = "footer") {
+                // Read IME insets only here so the keyboard animation doesn't recompose the whole canvas
+                val imeBottomPadding = WindowInsets.ime.asPaddingValues().calculateBottomPadding()
+                Spacer(
+                    modifier = Modifier.fillMaxWidth().height(300.dp + imeBottomPadding).pointerInput(Unit) {
+                        detectTapGestures(onTap = {
+                            focusManager.clearFocus()
+                            val lastBlock = blocks.lastOrNull()
+                            if (lastBlock != null && lastBlock.type == BlockType.TEXT && lastBlock.content == "\u200B") {
+                                focusedBlockId = lastBlock.id
+                            } else {
+                                val newBlockId = UUID.randomUUID().toString()
+                                blocks.add(SandboxBlock(id = newBlockId, type = BlockType.TEXT, content = "\u200B"))
+                                focusedBlockId = newBlockId
+                            }
+                        })
+                    }
+                )
+            }
         }
     }
 
@@ -771,5 +790,25 @@ fun SpaceIconPicker(
                 }
             }
         }
+    }
+}
+
+private const val HEADER_ITEMS = 1
+
+/** Index of the top-level block that is [id] or contains it somewhere in its children; -1 if absent. */
+private fun topLevelIndexOf(blocks: List<SandboxBlock>, id: String): Int {
+    fun contains(block: SandboxBlock): Boolean = block.id == id || block.children.any { contains(it) }
+    return blocks.indexOfFirst { contains(it) }
+}
+
+/** After a drag step, scroll so the dragged block doesn't leave the viewport (which would cancel the drag). */
+private suspend fun keepDraggedItemVisible(listState: LazyListState, blockId: String, direction: Int) {
+    val info = listState.layoutInfo
+    val item = info.visibleItemsInfo.firstOrNull { it.key == blockId } ?: return
+    val edge = 160
+    if (direction > 0 && item.offset + item.size > info.viewportEndOffset - edge) {
+        listState.scrollBy(item.size.toFloat())
+    } else if (direction < 0 && item.offset < info.viewportStartOffset + edge) {
+        listState.scrollBy(-item.size.toFloat())
     }
 }

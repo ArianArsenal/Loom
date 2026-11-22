@@ -13,6 +13,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.flowOn
@@ -36,6 +37,17 @@ class SandboxViewModel @Inject constructor(
         .map { entities -> entities.map { it.toDomainModel() } }
         .flowOn(Dispatchers.Default)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    /** Spaces without their blocks: for navigation, link pickers and anything that only needs titles. */
+    val spaceSummaries: StateFlow<List<SandboxSpace>> = sandboxDao.getActiveSpaceRows()
+        .map { rows -> rows.map { it.toDomainModelWithoutBlocks() } }
+        .flowOn(Dispatchers.Default)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    /** Only this space's blocks are loaded and decoded while its page is open. */
+    fun observeSpace(spaceId: String): Flow<SandboxSpace?> = sandboxDao.observeSpace(spaceId)
+        .map { it?.toDomainModel() }
+        .flowOn(Dispatchers.Default)
 
     val trashedSpaces: StateFlow<List<SandboxSpace>> = sandboxDao.getTrashedSpaces()
         .map { entities -> entities.map { it.toDomainModel() } }
@@ -107,7 +119,7 @@ class SandboxViewModel @Inject constructor(
         writes.trySend {
             val spaceEntity = NotionSpaceEntity.fromDomainModel(space)
             val blockEntities = flattenTree(space.blocks, space.id)
-            sandboxDao.saveSpaceWithBlocks(spaceEntity, blockEntities)
+            sandboxDao.syncSpaceWithBlocks(spaceEntity, blockEntities)
         }
     }
 

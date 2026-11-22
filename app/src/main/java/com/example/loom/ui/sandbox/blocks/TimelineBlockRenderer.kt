@@ -106,7 +106,7 @@ fun TimelineBlockRenderer(
 
     var showSettings by remember { mutableStateOf(false) }
 
-    val settings = try { Json.decodeFromString<TimelineSettings>(currentBlock.secondaryContent) } catch (_: Exception) { TimelineSettings() } // --- FIX: Unused 'e' ---
+    val settings = remember(currentBlock.secondaryContent) { try { Json.decodeFromString<TimelineSettings>(currentBlock.secondaryContent) } catch (_: Exception) { TimelineSettings() } }
 
     val rowHeight = 60.dp
     val hourWidth = 120.dp

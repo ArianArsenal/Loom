@@ -276,14 +276,16 @@ fun ProgressBlockRenderer(
     var showBlockMenu by remember { mutableStateOf(false) }
     var showEditDialog by remember { mutableStateOf(false) }
 
-    val meta = try {
-        if (block.secondaryContent.isNotBlank()) {
-            Json.decodeFromString<ProgressMeta>(block.secondaryContent)
-        } else {
+    val meta = remember(block.secondaryContent, block.progress) {
+        try {
+            if (block.secondaryContent.isNotBlank()) {
+                Json.decodeFromString<ProgressMeta>(block.secondaryContent)
+            } else {
+                ProgressMeta(current = block.progress * 100f, max = 100f, unit = "%")
+            }
+        } catch (_: Exception) {
             ProgressMeta(current = block.progress * 100f, max = 100f, unit = "%")
         }
-    } catch (_: Exception) {
-        ProgressMeta(current = block.progress * 100f, max = 100f, unit = "%")
     }
 
     val formatNum = { value: Float -> if (value % 1f == 0f) value.toInt().toString() else value.toString() }

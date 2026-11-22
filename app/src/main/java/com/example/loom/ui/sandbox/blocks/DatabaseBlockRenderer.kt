@@ -80,7 +80,7 @@ fun DatabaseBlockRenderer(
     onUpdate: (SandboxBlock) -> Unit,
     onDeleteBlock: (String, Boolean) -> Unit
 ) {
-    val schema = getSchema(block)
+    val schema = remember(block.secondaryContent) { getSchema(block) }
     var showTableOptions by remember { mutableStateOf(false) }
 
     val rows = block.tableData.ifEmpty { listOf(List(schema.properties.size) { "" }) }

@@ -55,10 +55,14 @@ fun SandboxMainScreen(
         onCanvasVisibilityChanged(currentRoute == SandboxRoute.CANVAS)
     }
 
-    val allSpaces by viewModel.allSpaces.collectAsState()
+    // Titles/flags only; the full block content is loaded per space (canvas) or by the hub when shown
+    val spaceSummaries by viewModel.spaceSummaries.collectAsState()
     val isBiometricEnabled by viewModel.isBiometricEnabled.collectAsState()
 
-    val activeSpace = allSpaces.find { it.id == spaceBackstack.lastOrNull() }
+    val activeSpaceId = spaceBackstack.lastOrNull()
+    val activeSpace by remember(activeSpaceId) {
+        activeSpaceId?.let { viewModel.observeSpace(it) } ?: kotlinx.coroutines.flow.flowOf(null)
+    }.collectAsState(initial = null)
 
     var spaceToUnlock by remember { mutableStateOf<SandboxSpace?>(null) }
     var showPinFallback by remember { mutableStateOf(false) }
@@ -78,7 +82,7 @@ fun SandboxMainScreen(
             isNavigating = true
             focusManager.clearFocus()
 
-            val targetSpace = allSpaces.find { it.id == spaceId }
+            val targetSpace = spaceSummaries.find { it.id == spaceId }
 
             val executeNavigation = {
                 if (isNested) spaceBackstack = spaceBackstack + spaceId
@@ -125,10 +129,10 @@ fun SandboxMainScreen(
     }
 
     // Open a space requested from another tab once the spaces have loaded (goes through the private-space lock)
-    LaunchedEffect(openSpaceId, allSpaces) {
+    LaunchedEffect(openSpaceId, spaceSummaries) {
         val requested = openSpaceId ?: return@LaunchedEffect
-        if (allSpaces.isEmpty()) return@LaunchedEffect
-        if (allSpaces.any { it.id == requested }) attemptNavigateToSpace(requested, false)
+        if (spaceSummaries.isEmpty()) return@LaunchedEffect
+        if (spaceSummaries.any { it.id == requested }) attemptNavigateToSpace(requested, false)
         onOpenSpaceHandled()
     }
 
@@ -197,6 +201,8 @@ fun SandboxMainScreen(
     }
 
     if (currentRoute == SandboxRoute.HUB) {
+        // Full spaces (with blocks) are only needed for hub search/cloning, so only collected here
+        val allSpaces by viewModel.allSpaces.collectAsState()
         SandboxHubScreen(
             viewModel = viewModel,
             allSpaces = allSpaces,
@@ -217,7 +223,7 @@ fun SandboxMainScreen(
 
             NotionCanvasScreen(
                 space = space,
-                allSpaces = allSpaces,
+                allSpaces = spaceSummaries,
                 onBack = {
                     if (spaceBackstack.size > 1) {
                         spaceBackstack = spaceBackstack.dropLast(1)

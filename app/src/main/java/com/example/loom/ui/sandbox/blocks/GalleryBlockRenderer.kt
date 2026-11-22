@@ -75,10 +75,12 @@ fun GalleryBlockRenderer(
     var showSettingsDialog by remember { mutableStateOf(false) }
     var showColorPicker by remember { mutableStateOf(false) }
 
-    val settings = try {
-        if (block.secondaryContent.isNotBlank()) Json.decodeFromString<GallerySettings>(block.secondaryContent)
-        else GallerySettings(showNumbers = block.isChecked)
-    } catch (_: Exception) { GallerySettings(showNumbers = block.isChecked) }
+    val settings = remember(block.secondaryContent, block.isChecked) {
+        try {
+            if (block.secondaryContent.isNotBlank()) Json.decodeFromString<GallerySettings>(block.secondaryContent)
+            else GallerySettings(showNumbers = block.isChecked)
+        } catch (_: Exception) { GallerySettings(showNumbers = block.isChecked) }
+    }
 
     val mediaScope = rememberCoroutineScope()
     val latestBlock by rememberUpdatedState(block)

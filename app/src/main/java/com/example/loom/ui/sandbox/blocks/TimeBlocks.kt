@@ -262,14 +262,16 @@ fun CountdownBlockRenderer(
 ) {
     var showBlockMenu by remember { mutableStateOf(false) }
 
-    val meta = try {
-        if (block.secondaryContent.isNotBlank()) {
-            Json.decodeFromString<CountdownMeta>(block.secondaryContent)
-        } else {
-            val legacyTime = block.content.toLongOrNull() ?: 0L
-            CountdownMeta(targetTimeMillis = legacyTime)
-        }
-    } catch (_: Exception) { CountdownMeta() }
+    val meta = remember(block.secondaryContent, block.content) {
+        try {
+            if (block.secondaryContent.isNotBlank()) {
+                Json.decodeFromString<CountdownMeta>(block.secondaryContent)
+            } else {
+                val legacyTime = block.content.toLongOrNull() ?: 0L
+                CountdownMeta(targetTimeMillis = legacyTime)
+            }
+        } catch (_: Exception) { CountdownMeta() }
+    }
 
     var timeLeft by remember { mutableLongStateOf(0L) }
     var isTimeSinceMode by remember { mutableStateOf(false) }
