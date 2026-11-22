@@ -139,6 +139,8 @@ fun SketchBlockRenderer(
             }
 
             var currentStroke by remember { mutableStateOf<SketchStroke?>(null) }
+            // The drag handler lives across recompositions: always copy the newest block
+            val latestBlock by rememberUpdatedState(block)
 
             Surface(modifier = Modifier.fillMaxWidth().height(300.dp), shape = RoundedCornerShape(12.dp), border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant), color = Color(0xFFFAFAFA)) {
                 Canvas(modifier = Modifier.fillMaxSize().pointerInput(Unit) {
@@ -153,7 +155,7 @@ fun SketchBlockRenderer(
                             currentStroke?.let { stroke ->
                                 val newStrokes = localStrokes + stroke
                                 localStrokes = newStrokes
-                                onUpdate(block.copy(sketchStrokes = newStrokes))
+                                onUpdate(latestBlock.copy(sketchStrokes = newStrokes))
                                 currentStroke = null
                             }
                         }

@@ -7,16 +7,18 @@ import com.example.loom.data.local.entity.NotionSpaceEntity
 import com.example.loom.data.models.SandboxSpace
 import com.example.loom.data.local.preferences.UserPreferences
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -29,74 +31,103 @@ class SandboxViewModel @Inject constructor(
     val isBiometricEnabled: StateFlow<Boolean> = userPreferences.biometricEnabledFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
 
+    // Decoding every block's JSON is heavy: keep it off the main thread
     val allSpaces: StateFlow<List<SandboxSpace>> = sandboxDao.getActiveSpaces()
         .map { entities -> entities.map { it.toDomainModel() } }
+        .flowOn(Dispatchers.Default)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val trashedSpaces: StateFlow<List<SandboxSpace>> = sandboxDao.getTrashedSpaces()
         .map { entities -> entities.map { it.toDomainModel() } }
+        .flowOn(Dispatchers.Default)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    private var saveJob: Job? = null
-    private var pendingSpaceToSave: SandboxSpace? = null
+    // One debounce slot per space: saving space B must never discard a pending edit to space A
+    private val pendingSaves = mutableMapOf<String, SandboxSpace>()
+    private val saveJobs = mutableMapOf<String, Job>()
 
     fun saveSpace(space: SandboxSpace) {
-        pendingSpaceToSave = space.copy(updatedAt = System.currentTimeMillis())
-        saveJob?.cancel()
-        saveJob = viewModelScope.launch {
+        pendingSaves[space.id] = space.copy(updatedAt = System.currentTimeMillis())
+        saveJobs[space.id]?.cancel()
+        saveJobs[space.id] = viewModelScope.launch {
             delay(500.milliseconds)
-            executePendingSave()
+            flushPending(space.id)
         }
     }
 
-    private fun executePendingSave() {
-        val spaceToSave = pendingSpaceToSave ?: return
-        pendingSpaceToSave = null
-        executeInstantSave(spaceToSave)
+    /** Writes a brand-new space without the debounce so it exists by the time we navigate into it. */
+    fun createSpace(space: SandboxSpace) {
+        enqueueWrite(space.copy(updatedAt = System.currentTimeMillis()))
     }
 
-    private fun executeInstantSave(space: SandboxSpace) {
-        @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
-        GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            withContext(NonCancellable) {
-                try {
-                    val spaceEntity = NotionSpaceEntity.fromDomainModel(space.copy(updatedAt = System.currentTimeMillis()))
-                    val blockEntities = flattenTree(space.blocks, space.id)
-                    sandboxDao.saveSpaceWithBlocks(spaceEntity, blockEntities)
-                } catch (e: Exception) {
-                    android.util.Log.e("LoomDatabase", "Fatal error saving space", e)
-                }
-            }
-        }
+    /** Bumps "last opened" without rewriting every block of the space. */
+    fun touchSpace(spaceId: String) {
+        val now = System.currentTimeMillis()
+        writes.trySend { sandboxDao.touchSpace(spaceId, now) }
+    }
+
+    private fun flushPending(spaceId: String) {
+        saveJobs.remove(spaceId)?.cancel()
+        pendingSaves.remove(spaceId)?.let { enqueueWrite(it) }
     }
 
     override fun onCleared() {
         super.onCleared()
-        executePendingSave()
+        pendingSaves.keys.toList().forEach { flushPending(it) }
     }
 
     fun moveToTrash(space: SandboxSpace) {
-        saveJob?.cancel()
-        pendingSpaceToSave = null
-        executeInstantSave(space.copy(isDeleted = true))
+        // Keep any not-yet-saved edits to this space instead of overwriting them with a stale copy
+        val latest = takePending(space)
+        enqueueWrite(latest.copy(isDeleted = true))
     }
 
     fun restoreSpace(space: SandboxSpace) {
-        saveJob?.cancel()
-        pendingSpaceToSave = null
-        executeInstantSave(space.copy(isDeleted = false))
+        val latest = takePending(space)
+        enqueueWrite(latest.copy(isDeleted = false))
+    }
+
+    private fun takePending(space: SandboxSpace): SandboxSpace {
+        saveJobs.remove(space.id)?.cancel()
+        return pendingSaves.remove(space.id) ?: space
     }
 
     fun permanentlyDeleteSpace(space: SandboxSpace) {
-        @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
-        GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            withContext(NonCancellable) {
-                sandboxDao.permanentlyDeleteSpace(NotionSpaceEntity.fromDomainModel(space))
-            }
+        takePending(space)
+        writes.trySend {
+            sandboxDao.permanentlyDeleteSpace(NotionSpaceEntity.fromDomainModel(space))
         }
     }
 
     fun emptyTrash() {
-        viewModelScope.launch { sandboxDao.emptyTrash() }
+        writes.trySend { sandboxDao.emptyTrash() }
+    }
+
+    private fun enqueueWrite(space: SandboxSpace) {
+        writes.trySend {
+            val spaceEntity = NotionSpaceEntity.fromDomainModel(space)
+            val blockEntities = flattenTree(space.blocks, space.id)
+            sandboxDao.saveSpaceWithBlocks(spaceEntity, blockEntities)
+        }
+    }
+
+    companion object {
+        /**
+         * All space writes go through one FIFO queue on a process-wide scope, so they
+         * survive leaving the screen and an older save can never land after a newer one.
+         */
+        private val writes = Channel<suspend () -> Unit>(Channel.UNLIMITED)
+
+        init {
+            CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+                for (write in writes) {
+                    try {
+                        write()
+                    } catch (e: Exception) {
+                        android.util.Log.e("LoomDatabase", "Fatal error saving space", e)
+                    }
+                }
+            }
+        }
     }
 }

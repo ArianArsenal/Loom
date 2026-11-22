@@ -215,9 +215,8 @@ fun SandboxHubScreen(
                             ) {
                                 ElevatedCard(
                                     modifier = Modifier.fillMaxWidth().clickable {
-                                        val bumpedSpace = space.copy(updatedAt = System.currentTimeMillis())
-                                        viewModel.saveSpace(bumpedSpace)
-                                        onNavigateToSpace(bumpedSpace.id)
+                                        viewModel.touchSpace(space.id)
+                                        onNavigateToSpace(space.id)
                                     },
                                     shape = RoundedCornerShape(20.dp),
                                     elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp),
@@ -740,9 +739,9 @@ fun SandboxHubScreen(
                                     val newSpace = SandboxSpace(
                                         title = if (template.id == "empty") "" else template.name,
                                         icon = if (template.id == "empty") "📄" else template.icon,
-                                        blocks = initialBlocks
+                                        blocks = reIdBlocks(initialBlocks)
                                     )
-                                    viewModel.saveSpace(newSpace)
+                                    viewModel.createSpace(newSpace)
                                     onNavigateToSpace(newSpace.id)
                                     showCreateDialog = false
                                 }
@@ -791,9 +790,9 @@ fun SandboxHubScreen(
                                     val newSpace = SandboxSpace(
                                         title = template.name,
                                         icon = template.icon,
-                                        blocks = initialBlocks
+                                        blocks = reIdBlocks(initialBlocks)
                                     )
-                                    viewModel.saveSpace(newSpace)
+                                    viewModel.createSpace(newSpace)
                                     onNavigateToSpace(newSpace.id)
                                     showCreateDialog = false
                                 }

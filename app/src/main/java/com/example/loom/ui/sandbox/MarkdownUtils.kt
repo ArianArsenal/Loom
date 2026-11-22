@@ -142,5 +142,5 @@ fun parseMarkdownToBlocks(md: String): List<SandboxBlock> {
         i++
     }
 
-    return if (blocks.isEmpty()) listOf(SandboxBlock(content = "\u200B")) else blocks
+    return if (blocks.isEmpty()) listOf(SandboxBlock(content = "\u200B")) else reIdBlocks(blocks)
 }

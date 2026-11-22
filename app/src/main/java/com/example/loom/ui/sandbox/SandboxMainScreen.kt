@@ -1,7 +1,11 @@
 package com.example.loom.ui.sandbox
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.ui.Alignment
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -215,14 +219,21 @@ fun SandboxMainScreen(
                 onNavigateToSpace = { spaceId -> attemptNavigateToSpace(spaceId, true) },
                 onCreateLinkedSpace = {
                     val newSpace = SandboxSpace(title = "", blocks = listOf(SandboxBlock(content = ZWSP)))
-                    viewModel.saveSpace(newSpace)
+                    viewModel.createSpace(newSpace)
                     newSpace.id
                 },
                 onSave = { updatedSpace -> viewModel.saveSpace(updatedSpace) }
             )
         } ?: run {
-            currentRoute = SandboxRoute.HUB
-            spaceBackstack = emptyList()
+            // A just-created space takes a moment to arrive from the database: wait briefly
+            // instead of bouncing straight back to the hub, and only give up if it never shows.
+            val missingId = spaceBackstack.lastOrNull()
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+            LaunchedEffect(missingId) {
+                delay(1500.milliseconds)
+                currentRoute = SandboxRoute.HUB
+                spaceBackstack = emptyList()
+            }
         }
     }
 }

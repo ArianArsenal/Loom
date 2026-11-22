@@ -139,9 +139,25 @@ fun prepareBlocksForUI(blocks: List<SandboxBlock>): List<SandboxBlock> {
 
 fun cleanBlocksForDB(blocks: List<SandboxBlock>): List<SandboxBlock> {
     return blocks.map {
-        it.copy(content = it.content.replace(ZWSP, ""), children = cleanBlocksForDB(it.children))
+        val cleanChildren = cleanBlocksForDB(it.children)
+        // prepareBlocksForUI gives every block an empty placeholder child. Persisting it made each
+        // reopen nest one more level (placeholder of a placeholder...), so never store a child list
+        // that is only a single empty placeholder. This also heals chains saved by older versions.
+        val children = if (cleanChildren.size == 1 && cleanChildren[0].isEmptyPlaceholder()) emptyList() else cleanChildren
+        it.copy(content = it.content.replace(ZWSP, ""), children = children)
     }
 }
+
+/**
+ * Gives every block (and nested child) a fresh id. Block ids are a global primary key, so a
+ * template or import applied twice would otherwise move blocks out of the first space.
+ */
+fun reIdBlocks(blocks: List<SandboxBlock>): List<SandboxBlock> = blocks.map {
+    it.copy(id = java.util.UUID.randomUUID().toString(), children = reIdBlocks(it.children))
+}
+
+private fun SandboxBlock.isEmptyPlaceholder(): Boolean =
+    type == BlockType.TEXT && content.replace(ZWSP, "").isEmpty() && children.isEmpty()
 
 data class LinkMetadata(val title: String, val description: String, val imageUrl: String)
 

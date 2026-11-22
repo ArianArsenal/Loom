@@ -48,6 +48,9 @@ interface SandboxDao {
     @Query("DELETE FROM notion_spaces")
     suspend fun wipeAllSpaces()
 
+    @Query("UPDATE notion_spaces SET updatedAt = :updatedAt WHERE id = :spaceId")
+    suspend fun touchSpace(spaceId: String, updatedAt: Long)
+
     @Update
     suspend fun updateSingleBlock(block: SandboxBlockEntity)
 }

@@ -1342,6 +1342,8 @@ fun PinnedCardWidget(
     }
 
     var debounceJob by remember { mutableStateOf<Job?>(null) }
+    // Saves must apply to the newest copy of the space, not the one captured on first composition
+    val latestSpace by rememberUpdatedState(space)
 
     BlockRenderer(
         block = localCard,
@@ -1365,21 +1367,22 @@ fun PinnedCardWidget(
 
             debounceJob?.cancel()
             @OptIn(DelicateCoroutinesApi::class)
-            debounceJob = GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                withContext(NonCancellable) {
-                    delay(500.milliseconds)
-                    val cleanCard = cleanBlocksForDB(listOf(updatedCard)).first()
-                    val newBlocks = replaceBlockRecursively(space.blocks, cleanCard)
-                    onUpdateSpace(space.copy(blocks = newBlocks, updatedAt = System.currentTimeMillis()))
-                }
+            // GlobalScope so leaving Home doesn't drop the edit; the delay stays cancellable so
+            // only the last keystroke in a burst is written
+            debounceJob = GlobalScope.launch(kotlinx.coroutines.Dispatchers.Default) {
+                delay(500.milliseconds)
+                val cleanCard = cleanBlocksForDB(listOf(updatedCard)).first()
+                val current = latestSpace
+                val newBlocks = replaceBlockRecursively(current.blocks, cleanCard)
+                onUpdateSpace(current.copy(blocks = newBlocks, updatedAt = System.currentTimeMillis()))
             }
         },
         onSplitBlock = { _, _, _ -> },
         onDeleteBlock = { _, deleteEntirely ->
             if (deleteEntirely) {
                 debounceJob?.cancel()
-                val newBlocks = removeBlockRecursively(space.blocks, localCard.id)
-                onUpdateSpace(space.copy(blocks = newBlocks, updatedAt = System.currentTimeMillis()))
+                val newBlocks = removeBlockRecursively(latestSpace.blocks, localCard.id)
+                onUpdateSpace(latestSpace.copy(blocks = newBlocks, updatedAt = System.currentTimeMillis()))
             }
         }
     )
