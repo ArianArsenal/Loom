@@ -1,5 +1,8 @@
 package com.example.loom.ui.settings
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.ui.draw.clip
 import com.example.loom.data.backup.AutoBackup
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -562,6 +565,10 @@ fun SettingsScreen(
 
                     HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.padding(horizontal = 16.dp))
 
+                    AppearanceSettings(viewModel)
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.padding(horizontal = 16.dp))
+
                     // --- NEW: Night Owl Rollover Selection ---
                     Box {
                         Row(
@@ -771,6 +778,66 @@ fun SettingsScreen(
             }
 
             Spacer(modifier = Modifier.height(40.dp))
+        }
+    }
+}
+
+/** Colours (Material You, AMOLED black, accent) and calendar display (Jalali, first day of week). */
+@Composable
+private fun AppearanceSettings(viewModel: HomeViewModel) {
+    val dynamicColor by viewModel.dynamicColor.collectAsState()
+    val amoled by viewModel.amoled.collectAsState()
+    val accent by viewModel.accentColor.collectAsState()
+    val calendarSystem by viewModel.calendarSystem.collectAsState()
+    val weekStart by viewModel.weekStart.collectAsState()
+
+    @Composable
+    fun SwitchRow(title: String, subtitle: String, checked: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
+        Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(modifier = Modifier.weight(1f).padding(start = 40.dp)) {
+                Text(title, fontWeight = FontWeight.Bold)
+                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Switch(checked = checked, enabled = enabled, onCheckedChange = onChange)
+        }
+    }
+
+    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+        SwitchRow("Material You colours", "Use colours from your wallpaper", dynamicColor) { viewModel.setDynamicColor(it) }
+    }
+    SwitchRow("Pure black", "True black backgrounds in dark mode (saves battery on OLED)", amoled) { viewModel.setAmoled(it) }
+
+    if (!dynamicColor) {
+        Column(modifier = Modifier.fillMaxWidth().padding(start = 56.dp, end = 16.dp, top = 4.dp, bottom = 12.dp)) {
+            Text("Accent colour", fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(8.dp))
+            val accents = listOf(0, 0xFF6B8E76.toInt(), 0xFF5B7FA6.toInt(), 0xFF8E6BA8.toInt(), 0xFFC0705A.toInt(), 0xFFC49A3A.toInt(), 0xFF4E9A9A.toInt())
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                accents.forEach { argb ->
+                    val color = if (argb == 0) com.example.loom.ui.theme.SagePrimary else androidx.compose.ui.graphics.Color(argb)
+                    val selected = accent == argb || (accent == 0 && argb == 0)
+                    Box(
+                        modifier = Modifier.size(32.dp).clip(androidx.compose.foundation.shape.CircleShape).background(color)
+                            .then(if (selected) Modifier.border(3.dp, MaterialTheme.colorScheme.onSurface, androidx.compose.foundation.shape.CircleShape) else Modifier)
+                            .clickable { viewModel.setAccentColor(if (argb == 0xFF6B8E76.toInt()) 0 else argb) }
+                    )
+                }
+            }
+        }
+    }
+
+    HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.padding(horizontal = 16.dp))
+
+    SwitchRow("Jalali calendar", "Show the Calendar tab in the Solar Hijri calendar", calendarSystem == "Jalali") { on ->
+        viewModel.setCalendarSystem(if (on) "Jalali" else "Gregorian")
+    }
+    Column(modifier = Modifier.fillMaxWidth().padding(start = 56.dp, end = 16.dp, bottom = 12.dp)) {
+        Text("Week starts on", fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(6.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf("SATURDAY" to "Saturday", "SUNDAY" to "Sunday", "MONDAY" to "Monday").forEach { (key, label) ->
+                FilterChip(selected = weekStart == key, onClick = { viewModel.setWeekStart(key) }, label = { Text(label) })
+            }
         }
     }
 }

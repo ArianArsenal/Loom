@@ -138,6 +138,17 @@ class HomeViewModel @Inject constructor(
     val appTheme: StateFlow<String> = userPreferences.appThemeFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "System")
 
+    val dynamicColor: StateFlow<Boolean> = userPreferences.dynamicColorFlow.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+    val amoled: StateFlow<Boolean> = userPreferences.amoledFlow.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+    val accentColor: StateFlow<Int> = userPreferences.accentColorFlow.stateIn(viewModelScope, SharingStarted.Eagerly, 0)
+    val calendarSystem: StateFlow<String> = userPreferences.calendarSystemFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "Gregorian")
+    val weekStart: StateFlow<String> = userPreferences.weekStartFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "SUNDAY")
+    fun setDynamicColor(on: Boolean) = viewModelScope.launch { userPreferences.setDynamicColor(on) }
+    fun setAmoled(on: Boolean) = viewModelScope.launch { userPreferences.setAmoled(on) }
+    fun setAccentColor(argb: Int) = viewModelScope.launch { userPreferences.setAccentColor(argb) }
+    fun setCalendarSystem(system: String) = viewModelScope.launch { userPreferences.setCalendarSystem(system) }
+    fun setWeekStart(day: String) = viewModelScope.launch { userPreferences.setWeekStart(day) }
+
     fun setAppTheme(theme: String) = viewModelScope.launch {
         userPreferences.saveAppTheme(theme)
     }

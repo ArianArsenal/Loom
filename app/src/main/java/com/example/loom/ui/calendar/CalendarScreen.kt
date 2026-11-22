@@ -135,7 +135,8 @@ private val timelineDateFormatter = object : ThreadLocal<SimpleDateFormat>() {
     }
 }
 private val dayMonthYearFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd")
-private val monthYearFormatter = DateTimeFormatter.ofPattern("MMMM yyyy")
+// Persian weekday initials indexed by DayOfWeek.value % 7 (Sunday = 0)
+private val persianWeekdays = listOf("ی", "د", "س", "چ", "پ", "ج", "ش")
 private val fullDateFormatter = DateTimeFormatter.ofPattern("EEEE, MMMM d")
 
 private fun Float.formatWeight(): String {
@@ -187,7 +188,8 @@ fun AnalyticsBox(title: String, value: String, icon: ImageVector, modifier: Modi
 fun CalendarScreen(viewModel: CalendarViewModel) {
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
-    val currentMonth by viewModel.currentMonth.collectAsState()
+    val visibleMonth by viewModel.visibleMonth.collectAsState()
+    val weekStart by viewModel.weekStart.collectAsState()
     val activeDays by viewModel.activeDays.collectAsState()
 
     val selectedDateId by viewModel.selectedDateId.collectAsState()
@@ -1097,7 +1099,7 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
                     Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "Previous Month")
                 }
                 Text(
-                    text = currentMonth.format(monthYearFormatter),
+                    text = visibleMonth.title,
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onBackground,
@@ -1123,7 +1125,11 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
         Spacer(modifier = Modifier.height(16.dp))
 
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceAround) {
-            listOf("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat").forEach { day ->
+            // Weekday header follows the chosen first day of the week
+            (0..6).map { weekStart.plus(it.toLong()) }.map { dow ->
+                if (visibleMonth.isJalali) persianWeekdays[dow.value % 7]
+                else dow.getDisplayName(java.time.format.TextStyle.SHORT, java.util.Locale.getDefault())
+            }.forEach { day ->
                 Text(
                     text = day, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f), textAlign = TextAlign.Center
@@ -1135,9 +1141,9 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
 
         AnimatedContent(targetState = isMonthView, label = "CalendarGridSwitch") { showMonth ->
             if (showMonth) {
-                val firstDayOfMonth = currentMonth.atDay(1)
-                val dayOfWeekOffset = firstDayOfMonth.dayOfWeek.value % 7
-                val daysInMonth = currentMonth.lengthOfMonth()
+                val firstDayOfMonth = visibleMonth.from
+                val dayOfWeekOffset = (firstDayOfMonth.dayOfWeek.value - weekStart.value + 7) % 7
+                val daysInMonth = (visibleMonth.to.toEpochDay() - visibleMonth.from.toEpochDay()).toInt() + 1
 
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(7),
@@ -1147,7 +1153,7 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
 
                     items(daysInMonth, key = { it }) { dayIndex ->
                         val dayNumber = dayIndex + 1
-                        val date = currentMonth.atDay(dayNumber)
+                        val date = visibleMonth.from.plusDays(dayIndex.toLong())
                         val dateIdStr = date.format(dayMonthYearFormatter)
                         val activityLevel = activeDays[dateIdStr] ?: 0
                         val hasData = activityLevel > 0
@@ -1172,7 +1178,7 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = dayNumber.toString(),
+                                text = visibleMonth.dayLabel(date),
                                 color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
                                 fontWeight = if (isSelected || hasData) FontWeight.Bold else FontWeight.Normal
                             )
@@ -1181,7 +1187,7 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
                 }
             } else {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceAround) {
-                    val currentDayOfWeek = selectedDate.dayOfWeek.value % 7
+                    val currentDayOfWeek = (selectedDate.dayOfWeek.value - weekStart.value + 7) % 7
                     val startOfWeek = selectedDate.minusDays(currentDayOfWeek.toLong())
                     val weekDays = (0..6).map { startOfWeek.plusDays(it.toLong()) }
 
@@ -1211,7 +1217,7 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = date.dayOfMonth.toString(),
+                                text = visibleMonth.dayLabel(date),
                                 color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
                                 fontWeight = if (isSelected || hasData) FontWeight.Bold else FontWeight.Normal
                             )
@@ -1231,7 +1237,7 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
                     colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)
                 ) {
                     Column(modifier = Modifier.padding(20.dp).verticalScroll(rememberScrollState())) {
-                        Text("${currentMonth.format(monthYearFormatter)} Overview", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                        Text("${visibleMonth.title} Overview", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                         Spacer(modifier = Modifier.height(16.dp))
 
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {

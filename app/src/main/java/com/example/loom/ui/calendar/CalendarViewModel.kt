@@ -51,6 +51,17 @@ class CalendarViewModel @Inject constructor(
 
     val currentMonth = MutableStateFlow(YearMonth.now())
 
+    // --- Visible month: Gregorian or Jalali (a Jalali month spans two Gregorian months) ---
+    private val monthOffset = MutableStateFlow(0)
+    val calendarSystem: StateFlow<String> = userPreferences.calendarSystemFlow.stateIn(viewModelScope, SharingStarted.Eagerly, "Gregorian")
+    val weekStart: StateFlow<java.time.DayOfWeek> = userPreferences.weekStartFlow
+        .map { runCatching { java.time.DayOfWeek.valueOf(it) }.getOrDefault(java.time.DayOfWeek.SUNDAY) }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, java.time.DayOfWeek.SUNDAY)
+
+    val visibleMonth: StateFlow<VisibleMonth> = combine(monthOffset, calendarSystem) { offset, system ->
+        VisibleMonth.of(LocalDate.now(), offset, system == "Jalali")
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, VisibleMonth.of(LocalDate.now(), 0, false))
+
     private val _selectedDateId = MutableStateFlow<String?>(null)
     val selectedDateId: StateFlow<String?> = _selectedDateId.asStateFlow()
 
@@ -84,13 +95,15 @@ class CalendarViewModel @Inject constructor(
 
     @OptIn(ExperimentalCoroutinesApi::class)
     /** Activity level per day (number of things logged) for the month heat-map. */
-    val activeDays: StateFlow<Map<String, Int>> = currentMonth
-        .flatMapLatest { yearMonth ->
-            val prefix = yearMonth.format(DateTimeFormatter.ofPattern("yyyy-MM"))
+    val activeDays: StateFlow<Map<String, Int>> = visibleMonth
+        .flatMapLatest { month ->
+            val fromId = month.from.toString()
+            val toId = month.to.toString()
+            fun inMonth(dateId: String) = dateId in fromId..toId
             combine(
-                repository.getRecordsForMonth(prefix),
-                repository.getExercisesForMonth(prefix),
-                repository.getTasksBetween(yearMonth.atDay(1), yearMonth.atEndOfMonth())
+                repository.getRecordsBetween(month.from, month.to),
+                repository.getExercisesBetween(month.from, month.to),
+                repository.getTasksBetween(month.from, month.to)
             ) { records, exercises, tasks ->
                 val activity = mutableMapOf<String, Int>()
                 fun bump(dateId: String, by: Int = 1) { if (by > 0) activity[dateId] = (activity[dateId] ?: 0) + by }
@@ -122,9 +135,9 @@ class CalendarViewModel @Inject constructor(
                         } else {
                             task.targetDate
                         }
-                        if (dateStr.startsWith(prefix)) bump(dateStr)
+                        if (inMonth(dateStr)) bump(dateStr)
                     } else {
-                        if (task.targetDate.startsWith(prefix)) bump(task.targetDate)
+                        if (inMonth(task.targetDate)) bump(task.targetDate)
                     }
                 }
 
@@ -134,13 +147,15 @@ class CalendarViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
 
     @OptIn(ExperimentalCoroutinesApi::class)
-    val monthlyAnalytics: StateFlow<MonthlyAnalytics> = currentMonth
-        .flatMapLatest { yearMonth ->
-            val prefix = yearMonth.format(DateTimeFormatter.ofPattern("yyyy-MM"))
+    val monthlyAnalytics: StateFlow<MonthlyAnalytics> = visibleMonth
+        .flatMapLatest { month ->
+            val fromId = month.from.toString()
+            val toId = month.to.toString()
+            fun inMonth(dateId: String) = dateId in fromId..toId
             combine(
-                repository.getRecordsForMonth(prefix),
-                repository.getExercisesForMonth(prefix),
-                repository.getTasksBetween(yearMonth.atDay(1), yearMonth.atEndOfMonth())
+                repository.getRecordsBetween(month.from, month.to),
+                repository.getExercisesBetween(month.from, month.to),
+                repository.getTasksBetween(month.from, month.to)
             ) { records, exercises, allTasks ->
 
                 val sleepDays = records.filter { it.sleepHours > 0f }
@@ -152,8 +167,8 @@ class CalendarViewModel @Inject constructor(
                 val workoutDays = exercises.map { it.dateId }.distinct().count()
 
                 val monthTasks = allTasks.filter {
-                    it.targetDate.startsWith(prefix) ||
-                            (it.isCompleted && it.completionDateMillis > 0 && SimpleDateFormat("yyyy-MM", Locale.US).format(Date(it.completionDateMillis)) == prefix)
+                    inMonth(it.targetDate) ||
+                            (it.isCompleted && it.completionDateMillis > 0 && inMonth(SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(it.completionDateMillis))))
                 }
                 val tasksCompleted = monthTasks.count { it.isCompleted }
 
@@ -162,8 +177,13 @@ class CalendarViewModel @Inject constructor(
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), MonthlyAnalytics())
 
-    fun nextMonth() { currentMonth.value = currentMonth.value.plusMonths(1) }
-    fun previousMonth() { currentMonth.value = currentMonth.value.minusMonths(1) }
+    fun nextMonth() { monthOffset.value += 1 }
+    fun previousMonth() { monthOffset.value -= 1 }
+
+    init {
+        // Switching calendar systems jumps back to the current month
+        viewModelScope.launch { calendarSystem.collect { monthOffset.value = 0 } }
+    }
 
     private var snapshotJob: Job? = null
 
@@ -379,6 +399,31 @@ class CalendarViewModel @Inject constructor(
                     duration = it.durationInSeconds, presetName = presetName, targetDateId = dateId
                 )
             }
+        }
+    }
+}
+
+/** The month shown in the Calendar tab as a Gregorian date range plus its display title. */
+data class VisibleMonth(val from: LocalDate, val to: LocalDate, val title: String, val isJalali: Boolean) {
+    /** Day-of-month label for a date in the active calendar system. */
+    fun dayLabel(date: LocalDate): String =
+        if (isJalali) com.example.loom.util.Jalali.persianDigits(com.example.loom.util.Jalali.fromGregorian(date).day.toString())
+        else date.dayOfMonth.toString()
+
+    companion object {
+        fun of(today: LocalDate, offset: Int, jalali: Boolean): VisibleMonth {
+            if (!jalali) {
+                val ym = YearMonth.from(today).plusMonths(offset.toLong())
+                return VisibleMonth(ym.atDay(1), ym.atEndOfMonth(), ym.format(DateTimeFormatter.ofPattern("MMMM yyyy")), false)
+            }
+            val now = com.example.loom.util.Jalali.fromGregorian(today)
+            val index = now.year * 12 + (now.month - 1) + offset
+            val year = Math.floorDiv(index, 12)
+            val month = Math.floorMod(index, 12) + 1
+            val from = com.example.loom.util.Jalali.toGregorian(year, month, 1)
+            val to = com.example.loom.util.Jalali.toGregorian(year, month, com.example.loom.util.Jalali.monthLength(year, month))
+            val title = com.example.loom.util.Jalali.monthNames[month - 1] + " " + com.example.loom.util.Jalali.persianDigits(year.toString())
+            return VisibleMonth(from, to, title, true)
         }
     }
 }

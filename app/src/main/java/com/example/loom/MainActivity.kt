@@ -80,7 +80,16 @@ class MainActivity : FragmentActivity() {
                 else -> isSystemInDarkTheme()
             }
 
-            LoomTheme(darkTheme = darkTheme) {
+            val dynamicColor by viewModel.dynamicColor.collectAsState()
+            val amoled by viewModel.amoled.collectAsState()
+            val accent by viewModel.accentColor.collectAsState()
+
+            LoomTheme(
+                darkTheme = darkTheme,
+                dynamicColor = dynamicColor,
+                amoled = amoled,
+                accentColor = accent.takeIf { it != 0 }?.let { androidx.compose.ui.graphics.Color(it) }
+            ) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background

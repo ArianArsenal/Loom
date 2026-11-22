@@ -58,6 +58,12 @@ class UserPreferences @Inject constructor(private val context: Context) {
         val SUPPLEMENT_CATEGORIES = stringPreferencesKey("supplement_categories")
 
         val FAVORITE_FOODS = stringSetPreferencesKey("favorite_foods")
+
+        val DYNAMIC_COLOR = booleanPreferencesKey("dynamic_color")
+        val AMOLED = booleanPreferencesKey("amoled_black")
+        val ACCENT_COLOR = intPreferencesKey("accent_color") // ARGB; 0 = default sage
+        val CALENDAR_SYSTEM = stringPreferencesKey("calendar_system") // "Gregorian" or "Jalali"
+        val WEEK_START = stringPreferencesKey("week_start") // "SUNDAY", "MONDAY" or "SATURDAY"
         val MEAL_TEMPLATES = stringPreferencesKey("meal_templates")
     }
 
@@ -274,6 +280,18 @@ class UserPreferences @Inject constructor(private val context: Context) {
     suspend fun saveCustomWaterContainers(json: String) { context.dataStore.edit { it[CUSTOM_WATER_CONTAINERS] = json } }
     suspend fun saveTargets(calories: Int, protein: Int, carbs: Int, fats: Int) { context.dataStore.edit { prefs -> prefs[TARGET_CALORIES] = calories; prefs[TARGET_PROTEIN] = protein; prefs[TARGET_CARBS] = carbs; prefs[TARGET_FATS] = fats } }
     suspend fun setBiometricEnabled(enabled: Boolean) { context.dataStore.edit { it[BIOMETRIC_ENABLED] = enabled } }
+
+    val dynamicColorFlow: Flow<Boolean> = context.dataStore.data.map { it[DYNAMIC_COLOR] ?: false }
+    val amoledFlow: Flow<Boolean> = context.dataStore.data.map { it[AMOLED] ?: false }
+    val accentColorFlow: Flow<Int> = context.dataStore.data.map { it[ACCENT_COLOR] ?: 0 }
+    val calendarSystemFlow: Flow<String> = context.dataStore.data.map { it[CALENDAR_SYSTEM] ?: "Gregorian" }
+    val weekStartFlow: Flow<String> = context.dataStore.data.map { it[WEEK_START] ?: "SUNDAY" }
+
+    suspend fun setDynamicColor(on: Boolean) { context.dataStore.edit { it[DYNAMIC_COLOR] = on } }
+    suspend fun setAmoled(on: Boolean) { context.dataStore.edit { it[AMOLED] = on } }
+    suspend fun setAccentColor(argb: Int) { context.dataStore.edit { it[ACCENT_COLOR] = argb } }
+    suspend fun setCalendarSystem(system: String) { context.dataStore.edit { it[CALENDAR_SYSTEM] = system } }
+    suspend fun setWeekStart(day: String) { context.dataStore.edit { it[WEEK_START] = day } }
 
     val favoriteFoodsFlow: Flow<Set<String>> = context.dataStore.data.map { it[FAVORITE_FOODS] ?: emptySet() }
     val mealTemplatesFlow: Flow<String> = context.dataStore.data.map { it[MEAL_TEMPLATES] ?: "[]" }
