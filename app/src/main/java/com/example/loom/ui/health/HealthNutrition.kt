@@ -1,5 +1,7 @@
 package com.example.loom.ui.health
 
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.foundation.clickable
 import com.example.loom.util.TextPatterns
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -233,6 +235,7 @@ fun HealthNutrition(viewModel: HealthViewModel) {
     if (showFoodPantryDialog) {
         val currentSearchQuery by viewModel.foodSearchQuery.collectAsState()
         val searchedFoods by viewModel.searchedFoodItems.collectAsState()
+        val favoriteFoods by viewModel.favoriteFoods.collectAsState()
 
         AlertDialog(
             onDismissRequest = { showFoodPantryDialog = false },
@@ -265,7 +268,13 @@ fun HealthNutrition(viewModel: HealthViewModel) {
                                 )
                             ) {
                                 Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Text("🍽️", fontSize = 24.sp)
+                                    val isFavorite = food.name in favoriteFoods
+                                    Text(
+                                        if (isFavorite) "★" else "☆",
+                                        fontSize = 24.sp,
+                                        color = if (isFavorite) Color(0xFFFFB300) else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.clickable { viewModel.toggleFavoriteFood(food.name) }
+                                    )
                                     Spacer(modifier = Modifier.width(12.dp))
                                     Column(modifier = Modifier.weight(1f)) {
                                         Text(food.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
@@ -380,8 +389,11 @@ fun HealthNutrition(viewModel: HealthViewModel) {
         Column(modifier = Modifier.padding(20.dp)) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text("Nutrition Log", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Button(onClick = { showFoodPantryDialog = true }, shape = RoundedCornerShape(12.dp), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp)) {
-                    Text("Pantry")
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Button(onClick = { showFoodPantryDialog = true }, shape = RoundedCornerShape(12.dp), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp)) {
+                        Text("Pantry")
+                    }
+                    MealShortcutsMenu(viewModel)
                 }
             }
             Spacer(modifier = Modifier.height(16.dp))
@@ -537,5 +549,67 @@ fun HealthNutrition(viewModel: HealthViewModel) {
                 }
             }
         }
+    }
+}
+
+/** Overflow menu on the nutrition card: copy yesterday's meals and meal templates. */
+@Composable
+private fun MealShortcutsMenu(viewModel: HealthViewModel) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val templates by viewModel.mealTemplates.collectAsState()
+    var menuOpen by remember { mutableStateOf(false) }
+    var showTemplates by remember { mutableStateOf(false) }
+    var newTemplateName by remember { mutableStateOf("") }
+
+    Box {
+        IconButton(onClick = { menuOpen = true }) { Icon(Icons.Default.MoreVert, "Meal shortcuts") }
+        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+            DropdownMenuItem(text = { Text("Copy yesterday's meals") }, onClick = {
+                menuOpen = false
+                viewModel.copyYesterdaysMeals { n ->
+                    android.widget.Toast.makeText(context, if (n == 0) "Nothing was logged yesterday" else "Copied $n meal${if (n == 1) "" else "s"}", android.widget.Toast.LENGTH_SHORT).show()
+                }
+            })
+            DropdownMenuItem(text = { Text("Meal templates") }, onClick = { menuOpen = false; showTemplates = true })
+        }
+    }
+
+    if (showTemplates) {
+        AlertDialog(
+            onDismissRequest = { showTemplates = false },
+            title = { Text("Meal Templates") },
+            text = {
+                Column {
+                    if (templates.isEmpty()) {
+                        Text("No templates yet. Save today's meals to reuse them later.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    templates.forEach { t ->
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(t.name, fontWeight = FontWeight.Bold)
+                                Text("${t.logs.size} items · ${t.logs.sumOf { it.calories }} kcal", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            TextButton(onClick = {
+                                viewModel.applyMealTemplate(t)
+                                android.widget.Toast.makeText(context, "Logged ${t.name}", android.widget.Toast.LENGTH_SHORT).show()
+                                showTemplates = false
+                            }) { Text("Log") }
+                            IconButton(onClick = { viewModel.deleteMealTemplate(t.name) }) { Icon(Icons.Default.Delete, "Delete template") }
+                        }
+                    }
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                    OutlinedTextField(value = newTemplateName, onValueChange = { newTemplateName = it }, label = { Text("Save today's meals as…") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                }
+            },
+            confirmButton = {
+                TextButton(enabled = newTemplateName.isNotBlank(), onClick = {
+                    viewModel.saveMealTemplate(newTemplateName) { ok ->
+                        android.widget.Toast.makeText(context, if (ok) "Template saved" else "Log some meals today first", android.widget.Toast.LENGTH_SHORT).show()
+                    }
+                    newTemplateName = ""
+                }) { Text("Save") }
+            },
+            dismissButton = { TextButton(onClick = { showTemplates = false }) { Text("Close") } }
+        )
     }
 }

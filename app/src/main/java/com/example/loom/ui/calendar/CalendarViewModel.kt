@@ -44,6 +44,7 @@ data class MonthlyAnalytics(
 
 @HiltViewModel
 class CalendarViewModel @Inject constructor(
+    private val foodShortcuts: com.example.loom.data.food.FoodShortcuts,
     private val repository: TrackerRepository,
     private val userPreferences: UserPreferences
 ) : ViewModel() {
@@ -215,7 +216,7 @@ class CalendarViewModel @Inject constructor(
     val searchedFoodItems: StateFlow<List<FoodItem>> = _foodSearchQuery
         .debounce(300.milliseconds)
         .flatMapLatest { query ->
-            if (query.isBlank()) repository.searchFoodItems("مرغ")
+            if (query.isBlank()) foodShortcuts.quickFoods()
             else repository.searchFoodItems(query)
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())

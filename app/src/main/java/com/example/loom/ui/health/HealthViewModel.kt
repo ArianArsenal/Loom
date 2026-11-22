@@ -62,6 +62,7 @@ fun SupplementItem.isScheduledOn(date: LocalDate): Boolean {
 class HealthViewModel @Inject constructor(
     @dagger.hilt.android.qualifiers.ApplicationContext private val appContext: android.content.Context,
     private val repository: TrackerRepository,
+    private val foodShortcuts: com.example.loom.data.food.FoodShortcuts,
     private val userPreferences: UserPreferences,
     private val sandboxDao: SandboxDao
 ) : ViewModel() {
@@ -278,9 +279,19 @@ class HealthViewModel @Inject constructor(
     val foodSearchQuery: StateFlow<String> = _foodSearchQuery.asStateFlow()
 
     @OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
-    val searchedFoodItems: StateFlow<List<FoodItem>> = _foodSearchQuery.debounce(300.milliseconds).flatMapLatest { query -> if (query.isBlank()) repository.searchFoodItems("مرغ") else repository.searchFoodItems(query) }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val searchedFoodItems: StateFlow<List<FoodItem>> = _foodSearchQuery.debounce(300.milliseconds).flatMapLatest { query -> if (query.isBlank()) foodShortcuts.quickFoods() else repository.searchFoodItems(query) }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     fun updateFoodSearchQuery(query: String) { _foodSearchQuery.value = query }
+
+    val favoriteFoods: StateFlow<Set<String>> = foodShortcuts.favorites.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptySet())
+    val mealTemplates: StateFlow<List<com.example.loom.data.food.MealTemplate>> = foodShortcuts.templates.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    fun toggleFavoriteFood(name: String) = viewModelScope.launch { foodShortcuts.toggleFavorite(name) }
+    fun copyYesterdaysMeals(onDone: (Int) -> Unit) = viewModelScope.launch {
+        onDone(foodShortcuts.copyMeals(DateUtils.getLogicalToday().minusDays(1).toString()))
+    }
+    fun saveMealTemplate(name: String, onDone: (Boolean) -> Unit) = viewModelScope.launch { onDone(foodShortcuts.saveTemplate(name)) }
+    fun applyMealTemplate(template: com.example.loom.data.food.MealTemplate) = viewModelScope.launch { foodShortcuts.applyTemplate(template) }
+    fun deleteMealTemplate(name: String) = viewModelScope.launch { foodShortcuts.deleteTemplate(name) }
 
     init { viewModelScope.launch { repository.prepopulateSkincareProductsIfEmpty() } }
 

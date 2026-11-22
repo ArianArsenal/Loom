@@ -65,6 +65,9 @@ interface TrackerDao {
     @Query("SELECT * FROM exercises WHERE dateId BETWEEN :fromId AND :toId")
     fun getExercisesBetween(fromId: String, toId: String): Flow<List<Exercise>>
 
+    @Query("SELECT * FROM food_items WHERE name IN (:names) GROUP BY name")
+    suspend fun getFoodsByNames(names: List<String>): List<FoodItem>
+
     /** The most pressing open task: dated tasks first (earliest), then by priority. */
     @Query("SELECT * FROM tasks WHERE isCompleted = 0 ORDER BY CASE WHEN targetDate = '' THEN 1 ELSE 0 END, targetDate ASC, priority DESC LIMIT 1")
     suspend fun getNextOpenTask(): Task?

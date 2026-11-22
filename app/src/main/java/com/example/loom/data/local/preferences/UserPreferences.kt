@@ -56,6 +56,9 @@ class UserPreferences @Inject constructor(private val context: Context) {
 
         val SUPPLEMENTS_ROSTER = stringPreferencesKey("supplements_roster")
         val SUPPLEMENT_CATEGORIES = stringPreferencesKey("supplement_categories")
+
+        val FAVORITE_FOODS = stringSetPreferencesKey("favorite_foods")
+        val MEAL_TEMPLATES = stringPreferencesKey("meal_templates")
     }
 
     val userNameFlow: Flow<String> = context.dataStore.data.map { it[USER_NAME] ?: "" }
@@ -271,6 +274,20 @@ class UserPreferences @Inject constructor(private val context: Context) {
     suspend fun saveCustomWaterContainers(json: String) { context.dataStore.edit { it[CUSTOM_WATER_CONTAINERS] = json } }
     suspend fun saveTargets(calories: Int, protein: Int, carbs: Int, fats: Int) { context.dataStore.edit { prefs -> prefs[TARGET_CALORIES] = calories; prefs[TARGET_PROTEIN] = protein; prefs[TARGET_CARBS] = carbs; prefs[TARGET_FATS] = fats } }
     suspend fun setBiometricEnabled(enabled: Boolean) { context.dataStore.edit { it[BIOMETRIC_ENABLED] = enabled } }
+
+    val favoriteFoodsFlow: Flow<Set<String>> = context.dataStore.data.map { it[FAVORITE_FOODS] ?: emptySet() }
+    val mealTemplatesFlow: Flow<String> = context.dataStore.data.map { it[MEAL_TEMPLATES] ?: "[]" }
+
+    suspend fun toggleFavoriteFood(name: String) {
+        context.dataStore.edit { prefs ->
+            val current = prefs[FAVORITE_FOODS] ?: emptySet()
+            prefs[FAVORITE_FOODS] = if (name in current) current - name else current + name
+        }
+    }
+
+    suspend fun saveMealTemplates(json: String) {
+        context.dataStore.edit { it[MEAL_TEMPLATES] = json }
+    }
 
     // --- Backup support: every stored setting as (key, type, value) so restores are lossless ---
     suspend fun snapshot(): List<com.example.loom.data.backup.PrefBackup> =

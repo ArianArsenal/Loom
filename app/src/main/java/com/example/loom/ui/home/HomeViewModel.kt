@@ -101,7 +101,8 @@ class HomeViewModel @Inject constructor(
     private val userPreferences: UserPreferences,
     private val trackerDao: TrackerDao,
     private val sandboxDao: SandboxDao,
-    private val backupManager: com.example.loom.data.backup.BackupManager
+    private val backupManager: com.example.loom.data.backup.BackupManager,
+    private val foodShortcuts: com.example.loom.data.food.FoodShortcuts
 ) : ViewModel() {
 
     // --- User Name State ---
@@ -241,7 +242,7 @@ class HomeViewModel @Inject constructor(
         .debounce(300.milliseconds)
         .flatMapLatest { query ->
             if (query.isBlank()) {
-                trackerDao.searchFoodItemsGrouped("مرغ")
+                foodShortcuts.quickFoods()
             } else {
                 trackerDao.searchFoodItemsGrouped(query)
             }
