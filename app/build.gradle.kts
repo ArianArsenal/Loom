@@ -91,29 +91,19 @@ dependencies {
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)
     ksp(libs.room.compiler)
-    implementation("androidx.room:room-paging:2.6.1")
 
-    // Compose Navigation & Paging
+    // Compose Navigation
     implementation("androidx.navigation:navigation-compose:2.8.0")
-    implementation("androidx.paging:paging-runtime:3.2.1")
-    implementation("androidx.paging:paging-compose:3.2.1")
 
     // Hilt for Dependency Injection
     implementation("com.google.dagger:hilt-android:2.51.1")
     ksp("com.google.dagger:hilt-compiler:2.51.1")
     implementation("androidx.hilt:hilt-navigation-compose:1.2.0")
 
-    // Supabase & Networking
-    implementation("io.github.jan-tennert.supabase:storage-kt:2.5.0")
-    implementation(libs.supabase.postgrest)
-    implementation(libs.ktor.client.okhttp)
+    // Serialization
     implementation(libs.kotlinx.serialization.json)
 
     // Media & UI Utils
-    implementation("androidx.media3:media3-exoplayer:1.4.0")
-    implementation("androidx.media3:media3-session:1.4.0")
-    implementation("androidx.media3:media3-ui:1.4.0")
-    implementation("androidx.palette:palette-ktx:1.0.0")
     implementation(libs.androidx.compose.material.icons.extended)
     implementation(libs.coil.compose)
     implementation("androidx.appcompat:appcompat:1.6.1")
