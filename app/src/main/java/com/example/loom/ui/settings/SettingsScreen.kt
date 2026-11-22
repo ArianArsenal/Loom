@@ -15,6 +15,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Favorite
+import com.example.loom.data.health.HealthConnectSync
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.CloudUpload
@@ -108,6 +110,27 @@ fun SettingsScreen(
     )
 
     var autoBackup by remember { mutableStateOf(AutoBackup.state(context)) }
+
+    val healthConnectAvailable = remember { HealthConnectSync.isAvailable(context) }
+    var healthConnectEnabled by remember { mutableStateOf(HealthConnectSync.isEnabled(context)) }
+    var healthConnectLastSync by remember { mutableLongStateOf(HealthConnectSync.lastSyncMillis(context)) }
+    val runHealthSync = {
+        viewModel.syncHealthConnect(context) { msg ->
+            healthConnectLastSync = HealthConnectSync.lastSyncMillis(context)
+            Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+        }
+    }
+    val healthPermissionLauncher = rememberLauncherForActivityResult(
+        androidx.health.connect.client.PermissionController.createRequestPermissionResultContract()
+    ) { granted ->
+        if (granted.containsAll(HealthConnectSync.permissions)) {
+            HealthConnectSync.setEnabled(context, true)
+            healthConnectEnabled = true
+            runHealthSync()
+        } else {
+            Toast.makeText(context, "Health Connect access wasn't granted", Toast.LENGTH_LONG).show()
+        }
+    }
     val backupFolderLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         if (uri != null) {
             AutoBackup.enable(context, uri)
@@ -658,6 +681,41 @@ fun SettingsScreen(
                 while (true) {
                     kotlinx.coroutines.delay(3000)
                     autoBackup = AutoBackup.state(context)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // --- HEALTH CONNECT ---
+            Text("Health Connect", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+            Spacer(modifier = Modifier.height(8.dp))
+            ElevatedCard(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                Column(modifier = Modifier.padding(16.dp).fillMaxWidth()) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Favorite, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Sync with Health Connect", fontWeight = FontWeight.Bold)
+                            val sub = when {
+                                !healthConnectAvailable -> "Health Connect isn't available on this device"
+                                !healthConnectEnabled -> "Share weight, sleep and water; import weight and sleep from other apps"
+                                healthConnectLastSync == 0L -> "Not synced yet"
+                                else -> "Last synced " + android.text.format.DateUtils.getRelativeTimeSpanString(healthConnectLastSync)
+                            }
+                            Text(sub, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Switch(
+                            checked = healthConnectEnabled,
+                            enabled = healthConnectAvailable,
+                            onCheckedChange = { on ->
+                                if (on) healthPermissionLauncher.launch(HealthConnectSync.permissions)
+                                else { HealthConnectSync.setEnabled(context, false); healthConnectEnabled = false }
+                            }
+                        )
+                    }
+                    if (healthConnectEnabled) {
+                        TextButton(onClick = { runHealthSync() }, modifier = Modifier.padding(start = 40.dp)) { Text("Sync now") }
+                    }
                 }
             }
 

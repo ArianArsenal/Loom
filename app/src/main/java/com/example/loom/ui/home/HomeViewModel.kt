@@ -343,6 +343,16 @@ class HomeViewModel @Inject constructor(
         }
     }
 
+    fun syncHealthConnect(context: Context, onResult: (String) -> Unit) = viewModelScope.launch(Dispatchers.IO) {
+        val msg = try {
+            com.example.loom.data.health.HealthConnectSync.sync(context.applicationContext, repository)
+        } catch (e: Exception) {
+            android.util.Log.e("HealthConnect", "Sync failed", e)
+            "Health Connect sync failed: ${e.message ?: e.javaClass.simpleName}"
+        }
+        launch(Dispatchers.Main) { onResult(msg) }
+    }
+
     fun rescheduleReminders(context: Context) = viewModelScope.launch(Dispatchers.IO) {
         com.example.loom.reminders.ReminderScheduler.rescheduleAll(context.applicationContext, userPreferences)
     }

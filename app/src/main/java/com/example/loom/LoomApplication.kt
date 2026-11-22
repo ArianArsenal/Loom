@@ -22,6 +22,7 @@ class LoomApplication : Application(), ImageLoaderFactory {
     // Inject the databases globally so the Crash Handler can reach them
     @Inject lateinit var backupManager: BackupManager
     @Inject lateinit var userPreferences: UserPreferences
+    @Inject lateinit var trackerRepository: com.example.loom.data.repository.TrackerRepository
 
     override fun onCreate() {
         super.onCreate()
@@ -32,6 +33,10 @@ class LoomApplication : Application(), ImageLoaderFactory {
             ReminderScheduler.rescheduleAll(this@LoomApplication, userPreferences)
         }
         com.example.loom.widget.LoomWidgets.keepUpdated(this, appScope)
+        // Health Connect: sync on each start while the app is in use (if the user turned it on)
+        appScope.launch {
+            runCatching { com.example.loom.data.health.HealthConnectSync.syncIfEnabled(this@LoomApplication, trackerRepository) }
+        }
 
         // Grab the OS default crash handler
         val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
