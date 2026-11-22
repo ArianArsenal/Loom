@@ -70,8 +70,31 @@ fun NoteListScreen(
     val context = LocalContext.current
     val isBiometricEnabled by viewModel.isBiometricEnabled.collectAsState()
 
+    // Note bodies now live in blocksJson (content is empty), so search the decoded block text.
+    // Private note bodies are left out so search can't reveal what they contain.
+    val searchableText = remember(notes) {
+        notes.associate { note ->
+            note.id to if (note.isPrivate) "" else {
+                val blockText = try {
+                    Json.decodeFromString<List<NoteBlock>>(note.blocksJson).filter { it.type != "image" }.joinToString(" ") { it.content }
+                } catch (_: Exception) { "" }
+                note.content + " " + blockText
+            }
+        }
+    }
     val filteredNotes = notes.filter {
-        it.title.contains(searchQuery, true) || it.content.contains(searchQuery, true) || it.tag.contains(searchQuery, true)
+        it.title.contains(searchQuery, true) || searchableText[it.id].orEmpty().contains(searchQuery, true) || it.tag.contains(searchQuery, true)
+    }
+
+    // Swipe-delete is instant, so offer an undo
+    val snackbarHostState = remember { SnackbarHostState() }
+    val undoScope = rememberCoroutineScope()
+    val deleteWithUndo: (DiaryNote) -> Unit = { note ->
+        onDeleteNote(note)
+        undoScope.launch {
+            val result = snackbarHostState.showSnackbar("Note deleted", actionLabel = "Undo", duration = SnackbarDuration.Short)
+            if (result == SnackbarResult.ActionPerformed) viewModel.restoreDiaryNote(note)
+        }
     }
 
     val pinnedNotes = filteredNotes.filter { it.isPinned }
@@ -148,6 +171,7 @@ fun NoteListScreen(
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         floatingActionButton = {
             FloatingActionButton(onClick = onAddClick, containerColor = MaterialTheme.colorScheme.primary) { Icon(Icons.Default.Add, "Add Note", tint = MaterialTheme.colorScheme.onPrimary) }
         }
@@ -250,7 +274,7 @@ fun NoteListScreen(
                             Text("Pinned", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 8.dp, bottom = 4.dp))
                         }
                         items(pinnedNotes, key = { it.id }) { note ->
-                            NoteCard(note, allTags, cardHeight, onNoteClick, onDeleteNote, handleUnlockRequest)
+                            NoteCard(note, allTags, cardHeight, onNoteClick, deleteWithUndo, handleUnlockRequest)
                         }
                     }
 
@@ -259,7 +283,7 @@ fun NoteListScreen(
                             Text("Notes", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 16.dp, bottom = 4.dp))
                         }
                         items(unpinnedNotes, key = { it.id }) { note ->
-                            NoteCard(note, allTags, cardHeight, onNoteClick, onDeleteNote, handleUnlockRequest)
+                            NoteCard(note, allTags, cardHeight, onNoteClick, deleteWithUndo, handleUnlockRequest)
                         }
                     }
                 }
@@ -280,7 +304,7 @@ fun NoteCard(note: DiaryNote, allTags: List<NoteTag>, height: androidx.compose.u
     )
 
     SwipeToDismissBox(
-        state = dismissState, enableDismissFromStartToEnd = false,
+        state = dismissState, enableDismissFromStartToEnd = false, enableDismissFromEndToStart = !note.isPrivate,
         backgroundContent = {
             val color = if (dismissState.targetValue == SwipeToDismissBoxValue.EndToStart) MaterialTheme.colorScheme.error else Color.Transparent
             Box(modifier = Modifier.fillMaxSize().background(color, RoundedCornerShape(16.dp)).padding(end = 20.dp), contentAlignment = Alignment.CenterEnd) {

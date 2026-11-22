@@ -62,8 +62,11 @@ class MainActivity : FragmentActivity() {
         enableEdgeToEdge()
         CleanupScheduler.scheduleBackgroundCleanup(this)
 
-        // Catch cold-boot App Shortcuts
-        intent?.action?.let { handleShortcutIntent(it) }
+        // Catch cold-boot App Shortcuts. Only on a fresh start: after rotation or a theme change the
+        // same intent is redelivered and would log another glass of water.
+        if (savedInstanceState == null) {
+            intent?.action?.let { handleShortcutIntent(it) }
+        }
 
         val emergencyFile = File(cacheDir, "emergency_backup.json")
         val hasEmergencyBackup = emergencyFile.exists()

@@ -128,7 +128,7 @@ class CalendarViewModel @Inject constructor(
                 tasks.forEach { task ->
                     if (task.isCompleted) {
                         val dateStr = if (task.completionDateMillis > 0) {
-                            SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date(task.completionDateMillis))
+                            SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(task.completionDateMillis))
                         } else {
                             task.targetDate
                         }
@@ -163,7 +163,7 @@ class CalendarViewModel @Inject constructor(
 
                 val monthTasks = allTasks.filter {
                     it.targetDate.startsWith(prefix) ||
-                            (it.isCompleted && it.completionDateMillis > 0 && SimpleDateFormat("yyyy-MM", Locale.getDefault()).format(Date(it.completionDateMillis)) == prefix)
+                            (it.isCompleted && it.completionDateMillis > 0 && SimpleDateFormat("yyyy-MM", Locale.US).format(Date(it.completionDateMillis)) == prefix)
                 }
                 val tasksCompleted = monthTasks.count { it.isCompleted }
 
@@ -188,7 +188,7 @@ class CalendarViewModel @Inject constructor(
                 repository.getExercisesForDate(dateId)
             ) { record, allTasks, exercises ->
 
-                val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+                val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
                 val dateMillis = sdf.parse(dateId)?.time ?: 0L
                 val endOfDay = dateMillis + 86400000L
 

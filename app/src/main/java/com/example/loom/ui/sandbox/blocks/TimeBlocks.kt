@@ -326,8 +326,11 @@ fun CountdownBlockRenderer(
             text = { TimePicker(state = timeState) },
             confirmButton = {
                 TextButton(onClick = {
+                    // DatePicker returns UTC midnight: take the calendar date in UTC, then apply local time
+                    val pickedDate = java.time.Instant.ofEpochMilli(tempDateMillis).atZone(java.time.ZoneOffset.UTC).toLocalDate()
                     val calendar = Calendar.getInstance()
-                    calendar.timeInMillis = tempDateMillis
+                    calendar.clear()
+                    calendar.set(pickedDate.year, pickedDate.monthValue - 1, pickedDate.dayOfMonth)
                     calendar.set(Calendar.HOUR_OF_DAY, timeState.hour)
                     calendar.set(Calendar.MINUTE, timeState.minute)
                     calendar.set(Calendar.SECOND, 0)

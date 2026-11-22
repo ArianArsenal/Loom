@@ -84,6 +84,12 @@ object SecurityManager {
             .setConfirmationRequired(false)
             .build()
 
-        prompt.authenticate(promptInfo)
+        try {
+            prompt.authenticate(promptInfo)
+        } catch (e: Exception) {
+            // Never leave the lock set (it would block every later prompt) or the caller waiting
+            isAuthenticating = false
+            onFallback()
+        }
     }
 }

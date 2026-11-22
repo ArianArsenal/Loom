@@ -111,7 +111,8 @@ fun parseMarkdownToBlocks(md: String): List<SandboxBlock> {
         var isChecked = false
         var url = ""
 
-        if (line.startsWith("## ")) { type = BlockType.HEADING_2; content = line.drop(3) }
+        if (line.startsWith("# ")) { type = BlockType.HEADING; content = line.drop(2) }
+        else if (line.startsWith("## ")) { type = BlockType.HEADING_2; content = line.drop(3) }
         else if (line.startsWith("### ")) { type = BlockType.HEADING_3; content = line.drop(4) }
         else if (line.startsWith("#### ")) { type = BlockType.HEADING_4; content = line.drop(5) }
         else if (line.startsWith("- [x]", ignoreCase = true)) { type = BlockType.TODO; content = line.drop(5).trim(); isChecked = true }

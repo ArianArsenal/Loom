@@ -27,18 +27,17 @@ fun GaplessProgressBar(
 
 // --- FIX: Formatter is now dynamically generated to ensure it always uses the current Locale ---
 fun getGlobalDateFormatter(): SimpleDateFormat {
-    return SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+    return SimpleDateFormat("yyyy-MM-dd", Locale.US)
 }
 
 fun getRemainingDaysText(targetDate: String): String? {
     if (targetDate.isBlank()) return null
     return try {
-        val target = getGlobalDateFormatter().parse(targetDate) ?: return null
-        val today = Calendar.getInstance().apply {
-            set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
-        }.time
-        val diff = target.time - today.time
-        val days = java.util.concurrent.TimeUnit.MILLISECONDS.toDays(diff)
+        // Calendar-day difference: millisecond math was off by one across DST changes
+        val days = java.time.temporal.ChronoUnit.DAYS.between(
+            com.example.loom.util.DateUtils.getLogicalToday(),
+            java.time.LocalDate.parse(targetDate)
+        )
         when {
             days < 0 -> "${-days}d overdue"
             days == 0L -> "Today"

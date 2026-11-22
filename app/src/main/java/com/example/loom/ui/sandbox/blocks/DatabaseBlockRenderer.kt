@@ -475,9 +475,9 @@ fun DatabaseCell(
                     confirmButton = {
                         TextButton(onClick = {
                             dateState.selectedDateMillis?.let {
-                                val cal = Calendar.getInstance().apply { timeInMillis = it }
-                                val sdf = SimpleDateFormat("MMM d, yyyy", Locale.getDefault())
-                                onValueChange(sdf.format(cal.time))
+                                // Format in UTC: the picker returns UTC midnight, local time could show the previous day
+                                val sdf = SimpleDateFormat("MMM d, yyyy", Locale.getDefault()).apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }
+                                onValueChange(sdf.format(java.util.Date(it)))
                             }
                             showDatePicker = false
                         }) { Text("OK") }
@@ -591,10 +591,12 @@ fun DatabaseCell(
                 modifier = Modifier.fillMaxWidth(), cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                 decorationBox = { inner -> Box { if (value.isEmpty()) Text("http://", color = Color.LightGray) else inner() } }
             )
-            if (value.isNotEmpty() && !value.contains("http://")) {
-                Spacer(Modifier.fillMaxWidth().height(24.dp).clickable {
-                    try { context.startActivity(Intent(Intent.ACTION_VIEW, "https://$value".toUri())) } catch (_: Exception) {}
-                })
+            if (value.isNotEmpty()) {
+                // Only add a scheme when there isn't one ("https://x" used to become "https://https://x")
+                val target = if (value.contains("://")) value else "https://$value"
+                TextButton(onClick = {
+                    try { context.startActivity(Intent(Intent.ACTION_VIEW, target.toUri())) } catch (_: Exception) {}
+                }, contentPadding = PaddingValues(0.dp)) { Text("Open link", style = MaterialTheme.typography.labelSmall) }
             }
         }
         PropertyType.MEDIA -> {

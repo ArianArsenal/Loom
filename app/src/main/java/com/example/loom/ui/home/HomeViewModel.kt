@@ -387,6 +387,16 @@ class HomeViewModel @Inject constructor(
     fun addTask(task: Task) = viewModelScope.launch(Dispatchers.IO) { repository.insertTask(task) }
     fun updateTask(task: Task) = viewModelScope.launch(Dispatchers.IO) { repository.updateTask(task) }
 
+    /** Saves the task editor; marking a recurring task done there must still spawn the next one. */
+    fun saveEditedTask(previous: Task, edited: Task) = viewModelScope.launch(Dispatchers.IO) {
+        if (edited.isCompleted && !previous.isCompleted && edited.isRecurring && edited.recurringInterval != "NONE") {
+            spawnNextRecurringTask(edited)
+            repository.updateTask(edited.copy(isRecurring = false))
+        } else {
+            repository.updateTask(edited)
+        }
+    }
+
     fun updateTaskStatus(task: Task, newStatus: String) = viewModelScope.launch(Dispatchers.IO) {
         val isNowDone = newStatus == "DONE"
         val wasDone = task.isCompleted
@@ -425,15 +435,15 @@ class HomeViewModel @Inject constructor(
 
     private suspend fun spawnNextRecurringTask(task: Task) {
         val parts = task.recurringInterval.split(" ")
-        val amount = parts.getOrNull(0)?.toIntOrNull() ?: 1
+        val amount = parts.getOrNull(0)?.toIntOrNull()?.coerceAtLeast(1) ?: 1
         val type = parts.getOrNull(1) ?: "DAYS"
 
         val currentDate = try { LocalDate.parse(task.targetDate) } catch (_: Exception) { LocalDate.now() }
         val nextDate = when (type) {
-            "DAYS" -> currentDate.plusDays(amount.toLong())
+            "DAYS", "DAILY" -> currentDate.plusDays(amount.toLong()) // "DAILY" was an old buggy default
             "WEEKS" -> currentDate.plusWeeks(amount.toLong())
             "MONTHS" -> currentDate.plusMonths(amount.toLong())
-            else -> currentDate
+            else -> currentDate.plusDays(amount.toLong())
         }
         val nextDateStr = nextDate.toString()
 
@@ -459,6 +469,7 @@ class HomeViewModel @Inject constructor(
         return repository.insertDiaryNoteAndGetId(DiaryNote(id = id, title = title, content = content, tag = tag, imagesJson = imagesJson, blocksJson = blocksJson, isFavorite = isFav, isPrivate = isPrivate, isPinned = isPinned, isChecklistMode = isChecklist))
     }
     fun deleteDiaryNote(note: DiaryNote) = viewModelScope.launch(Dispatchers.IO) { repository.deleteDiaryNote(note) }
+    fun restoreDiaryNote(note: DiaryNote) = viewModelScope.launch(Dispatchers.IO) { repository.insertDiaryNoteAndGetId(note) }
     fun addNoteTag(name: String, colorHex: String) = viewModelScope.launch(Dispatchers.IO) { repository.insertNoteTag(name, colorHex) }
     fun deleteNoteTag(tag: NoteTag) = viewModelScope.launch(Dispatchers.IO) { repository.deleteNoteTag(tag) }
 

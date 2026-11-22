@@ -61,6 +61,8 @@ private val bottomNavItems = listOf(
 fun LoomMainScreen(viewModel: HomeViewModel) {
     val navController = rememberNavController()
     var isBottomBarVisible by remember { mutableStateOf(true) }
+    // A space link tapped outside the Spaces tab (e.g. a pinned card on Home) to open once Spaces shows
+    var pendingSpaceId by remember { mutableStateOf<String?>(null) }
 
     Scaffold(
         bottomBar = {
@@ -117,7 +119,14 @@ fun LoomMainScreen(viewModel: HomeViewModel) {
                 HomeScreen(
                     viewModel = viewModel,
                     onNavigateToSettings = { navController.navigate("settings") },
-                    onNavigateToSpace = { _ -> navController.navigate("spaces") }
+                    onNavigateToSpace = { spaceId ->
+                        pendingSpaceId = spaceId
+                        navController.navigate(BottomNavItem.Spaces.route) {
+                            popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    }
                 )
             }
 
@@ -142,7 +151,9 @@ fun LoomMainScreen(viewModel: HomeViewModel) {
                 val sandboxViewModel: SandboxViewModel = androidx.hilt.navigation.compose.hiltViewModel()
                 SandboxMainScreen(
                     viewModel = sandboxViewModel,
-                    onCanvasVisibilityChanged = { isCanvasOpen -> isBottomBarVisible = !isCanvasOpen }
+                    onCanvasVisibilityChanged = { isCanvasOpen -> isBottomBarVisible = !isCanvasOpen },
+                    openSpaceId = pendingSpaceId,
+                    onOpenSpaceHandled = { pendingSpaceId = null }
                 )
             }
 

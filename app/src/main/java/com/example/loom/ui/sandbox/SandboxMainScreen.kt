@@ -43,7 +43,9 @@ enum class SandboxRoute { HUB, CANVAS }
 @Composable
 fun SandboxMainScreen(
     viewModel: SandboxViewModel,
-    onCanvasVisibilityChanged: (Boolean) -> Unit
+    onCanvasVisibilityChanged: (Boolean) -> Unit,
+    openSpaceId: String? = null,
+    onOpenSpaceHandled: () -> Unit = {}
 ) {
     val context = LocalContext.current
     var currentRoute by remember { mutableStateOf(SandboxRoute.HUB) }
@@ -120,6 +122,14 @@ fun SandboxMainScreen(
                 executeNavigation()
             }
         }
+    }
+
+    // Open a space requested from another tab once the spaces have loaded (goes through the private-space lock)
+    LaunchedEffect(openSpaceId, allSpaces) {
+        val requested = openSpaceId ?: return@LaunchedEffect
+        if (allSpaces.isEmpty()) return@LaunchedEffect
+        if (allSpaces.any { it.id == requested }) attemptNavigateToSpace(requested, false)
+        onOpenSpaceHandled()
     }
 
     if (showNoSecurityDialog) {

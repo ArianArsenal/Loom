@@ -67,17 +67,21 @@ fun TasksAndDeadlinesCard(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            val activeSections = sections.filter { sec -> allTasks.any { it.sectionId == sec.id } }
+            // Tasks whose section was deleted used to vanish; show them under a virtual "Unsectioned" group
+            val knownSectionIds = sections.map { it.id }.toSet()
+            val hasOrphans = allTasks.any { it.sectionId !in knownSectionIds }
+            val activeSections = sections.filter { sec -> allTasks.any { it.sectionId == sec.id } } +
+                (if (hasOrphans) listOf(TaskSection(id = UNSECTIONED_ID, name = "Unsectioned", orderIndex = Int.MAX_VALUE)) else emptyList())
 
             if (activeSections.isEmpty()) {
                 Text("No tasks here yet.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
                 activeSections.forEach { section ->
-                    val sectionTasks = allTasks.filter { it.sectionId == section.id }
+                    val sectionTasks = if (section.id == UNSECTIONED_ID) allTasks.filter { it.sectionId !in knownSectionIds } else allTasks.filter { it.sectionId == section.id }
                     if (sectionTasks.isNotEmpty()) {
                         Column(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
                             Row(
-                                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp).combinedClickable(onClick = {}, onLongClick = { onDeleteSection(section) }),
+                                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp).combinedClickable(onClick = {}, onLongClick = { if (section.id != UNSECTIONED_ID) onDeleteSection(section) }),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(text = section.name, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
@@ -207,3 +211,5 @@ fun TaskCard(task: Task, allTags: List<NoteTag>, viewModel: HomeViewModel, isKan
         }
     }
 }
+
+private const val UNSECTIONED_ID = -1

@@ -67,6 +67,8 @@ import com.example.loom.data.local.entity.NoteTag
 import com.example.loom.ui.home.HomeViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.text.SimpleDateFormat // --- FIX ---
@@ -118,7 +120,8 @@ fun NoteEditor(initialNote: DiaryNote?, allTags: List<NoteTag>, viewModel: HomeV
 
     val photoPickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia()) { uris ->
         uris.forEach { uri ->
-            context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            // Not every provider grants persistable access; the image still works for this session
+            try { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_: SecurityException) {}
             val insertIndex = blocks.indexOfFirst { it.id == focusedBlockId }.takeIf { it >= 0 }?.plus(1) ?: blocks.size
             blocks.add(insertIndex, NoteBlock(id = UUID.randomUUID().toString(), type = "image", content = uri.toString()))
 
@@ -128,14 +131,26 @@ fun NoteEditor(initialNote: DiaryNote?, allTags: List<NoteTag>, viewModel: HomeV
         }
     }
 
+    fun cleanBlocksJson(): String = Json.encodeToString(blocks.map {
+        if (it.type == "text" || it.type == "check") it.copy(content = it.content.replace(ZWSP, "")) else it
+    })
+    fun editorSnapshot(): List<Any> = listOf(title, selectedTag, isFavorite, isPrivate, isPinned, cleanBlocksJson())
+
+    // Autosave and the back button can fire together: serialize them so a new note is inserted once,
+    // and skip saves when nothing changed so merely opening a note doesn't bump it to the top.
+    val saveMutex = remember { Mutex() }
+    var lastSavedSnapshot by remember { mutableStateOf(editorSnapshot()) }
+
     val performSave: suspend () -> Unit = {
-        val cleanBlocks = blocks.map {
-            if (it.type == "text" || it.type == "check") it.copy(content = it.content.replace(ZWSP, "")) else it
-        }
-        if (currentId != 0 || title.isNotBlank() || cleanBlocks.any { it.content.isNotBlank() || it.type == "image" }) {
-            val blocksJson = Json.encodeToString(cleanBlocks)
-            val returnedId = viewModel.saveDiaryNoteWithReturn(currentId, title, "", selectedTag, "[]", blocksJson, isFavorite, isPrivate, isPinned, false)
-            if (currentId == 0) currentId = returnedId.toInt()
+        saveMutex.withLock {
+            val snapshot = editorSnapshot()
+            val blocksJson = snapshot.last() as String
+            val hasContent = title.isNotBlank() || blocks.any { it.content.replace(ZWSP, "").isNotBlank() || it.type == "image" }
+            if (snapshot != lastSavedSnapshot && (currentId != 0 || hasContent)) {
+                val returnedId = viewModel.saveDiaryNoteWithReturn(currentId, title, "", selectedTag, "[]", blocksJson, isFavorite, isPrivate, isPinned, false)
+                if (currentId == 0) currentId = returnedId.toInt()
+                lastSavedSnapshot = snapshot
+            }
         }
     }
 

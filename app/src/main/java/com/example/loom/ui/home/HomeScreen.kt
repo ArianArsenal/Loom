@@ -667,7 +667,7 @@ fun HomeScreen(
             sections = sections, tags = tags, initialTask = taskToEdit,
             onDismiss = { showTaskDialog = false; taskToEdit = null },
             onSave = { newTask ->
-                if (taskToEdit != null) viewModel.updateTask(newTask) else viewModel.addTask(
+                if (taskToEdit != null) viewModel.saveEditedTask(taskToEdit!!, newTask) else viewModel.addTask(
                     newTask
                 ); showTaskDialog = false; taskToEdit = null
             },
@@ -956,7 +956,7 @@ fun CreateTaskDialog(
     var newSubtaskText by remember { mutableStateOf("") }
 
     var isRecurring by remember { mutableStateOf(initialTask?.isRecurring ?: false) }
-    val initialRecInterval = initialTask?.recurringInterval?.split(" ")?.getOrNull(1) ?: "DAILY"
+    val initialRecInterval = initialTask?.recurringInterval?.split(" ")?.getOrNull(1)?.takeIf { it != "DAILY" } ?: "DAYS"
     val initialRecCount = initialTask?.recurringInterval?.split(" ")?.getOrNull(0) ?: "1"
 
     var recurringType by remember { mutableStateOf(initialRecInterval) }
@@ -1058,6 +1058,10 @@ fun CreateTaskDialog(
             }.timeInMillis
         }
         val datePickerState = rememberDatePickerState(
+            // Open on the current deadline instead of today
+            initialSelectedDateMillis = runCatching {
+                java.time.LocalDate.parse(deadlineStr).atStartOfDay(java.time.ZoneOffset.UTC).toInstant().toEpochMilli()
+            }.getOrNull(),
             selectableDates = object : SelectableDates {
                 override fun isSelectableDate(utcTimeMillis: Long): Boolean {
                     return utcTimeMillis >= currentUtcDateMillis
@@ -1069,8 +1073,7 @@ fun CreateTaskDialog(
             confirmButton = {
                 TextButton(onClick = {
                     datePickerState.selectedDateMillis?.let {
-                        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-                        deadlineStr = sdf.format(Date(it))
+                        deadlineStr = java.time.Instant.ofEpochMilli(it).atZone(java.time.ZoneOffset.UTC).toLocalDate().toString()
                     }
                     showDatePicker = false
                 }) { Text("OK") }
@@ -1291,8 +1294,12 @@ fun CreateTaskDialog(
                 }
                 Button(onClick = {
                     if (title.isNotBlank()) {
-                        val finalIntervalString = if (isRecurring) "$recurringCount $recurringType" else "NONE"
-                        val completionTime = if (status == "DONE") System.currentTimeMillis() else 0L
+                        val safeCount = recurringCount.toIntOrNull()?.coerceAtLeast(1) ?: 1
+                        val finalIntervalString = if (isRecurring) "$safeCount $recurringType" else "NONE"
+                        // Re-saving an already-done task must keep its original completion time
+                        val completionTime = if (status == "DONE") {
+                            initialTask?.completionDateMillis?.takeIf { initialTask.isCompleted && it > 0 } ?: System.currentTimeMillis()
+                        } else 0L
 
                         val task = Task(
                             id = initialTask?.id ?: 0, title = title, description = description, priority = priority,
