@@ -1,5 +1,6 @@
 package com.example.loom.ui.home
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.saveable.rememberSaveable
 import com.example.loom.util.TextPatterns
 import androidx.compose.foundation.Canvas
@@ -107,7 +108,7 @@ fun HomeScreen(
     onNavigateToSpace: (String) -> Unit
 ) {
 
-    val userName by viewModel.userName.collectAsState()
+    val userName by viewModel.userName.collectAsStateWithLifecycle()
     var showWelcomeDialog by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(userName) {
@@ -121,28 +122,28 @@ fun HomeScreen(
         }
     }
 
-    val hiddenHomeCards by viewModel.hiddenHomeCards.collectAsState()
-    val agendaText by viewModel.agendaText.collectAsState()
+    val hiddenHomeCards by viewModel.hiddenHomeCards.collectAsStateWithLifecycle()
+    val agendaText by viewModel.agendaText.collectAsStateWithLifecycle()
 
-    val pinnedCards by viewModel.pinnedHomeCards.collectAsState()
-    val allSpaces by viewModel.allSpaces.collectAsState()
+    val pinnedCards by viewModel.pinnedHomeCards.collectAsStateWithLifecycle()
+    val allSpaces by viewModel.allSpaces.collectAsStateWithLifecycle()
 
-    val todayRecord by viewModel.todayRecord.collectAsState()
-    val allTasks by viewModel.allTasks.collectAsState()
-    val sections by viewModel.allTaskSections.collectAsState()
-    val tags by viewModel.allNoteTags.collectAsState()
+    val todayRecord by viewModel.todayRecord.collectAsStateWithLifecycle()
+    val allTasks by viewModel.allTasks.collectAsStateWithLifecycle()
+    val sections by viewModel.allTaskSections.collectAsStateWithLifecycle()
+    val tags by viewModel.allNoteTags.collectAsStateWithLifecycle()
 
-    val pinnedRoutines by viewModel.pinnedSkincareRoutines.collectAsState()
-    val completedRoutines by viewModel.completedSkincareRoutines.collectAsState()
-    val completedSteps by viewModel.completedSkincareSteps.collectAsState()
-    val consumedList by viewModel.consumedFoods.collectAsState()
+    val pinnedRoutines by viewModel.pinnedSkincareRoutines.collectAsStateWithLifecycle()
+    val completedRoutines by viewModel.completedSkincareRoutines.collectAsStateWithLifecycle()
+    val completedSteps by viewModel.completedSkincareSteps.collectAsStateWithLifecycle()
+    val consumedList by viewModel.consumedFoods.collectAsStateWithLifecycle()
 
-    val targetCaloriesInt by viewModel.targetCalories.collectAsState()
-    val targetProteinInt by viewModel.targetProtein.collectAsState()
-    val targetCarbsInt by viewModel.targetCarbs.collectAsState()
-    val targetFatsInt by viewModel.targetFats.collectAsState()
-    val defaultWaterIncrement by viewModel.defaultWaterIncrement.collectAsState()
-    val dailyGoal by viewModel.waterDailyGoal.collectAsState()
+    val targetCaloriesInt by viewModel.targetCalories.collectAsStateWithLifecycle()
+    val targetProteinInt by viewModel.targetProtein.collectAsStateWithLifecycle()
+    val targetCarbsInt by viewModel.targetCarbs.collectAsStateWithLifecycle()
+    val targetFatsInt by viewModel.targetFats.collectAsStateWithLifecycle()
+    val defaultWaterIncrement by viewModel.defaultWaterIncrement.collectAsStateWithLifecycle()
+    val dailyGoal by viewModel.waterDailyGoal.collectAsStateWithLifecycle()
 
     var showNutritionDialog by rememberSaveable { mutableStateOf(false) }
     var isManualEntry by rememberSaveable { mutableStateOf(false) }
@@ -154,7 +155,7 @@ fun HomeScreen(
     var isKanbanView by rememberSaveable { mutableStateOf(false) }
     var sectionToDelete by remember { mutableStateOf<TaskSection?>(null) }
 
-    val shortcutAction by viewModel.shortcutAction.collectAsState()
+    val shortcutAction by viewModel.shortcutAction.collectAsStateWithLifecycle()
 
     LaunchedEffect(shortcutAction) {
         if (shortcutAction == "com.example.loom.ACTION_QUICK_TASK") {
@@ -312,7 +313,7 @@ fun HomeScreen(
         var selectedVariant by remember { mutableStateOf<FoodItem?>(null) }
         var servingsStr by rememberSaveable { mutableStateOf("1") }
 
-        val variants by viewModel.selectedFoodVariants.collectAsState()
+        val variants by viewModel.selectedFoodVariants.collectAsStateWithLifecycle()
 
         AlertDialog(
             onDismissRequest = { showNutritionDialog = false },
@@ -385,7 +386,7 @@ fun HomeScreen(
                             showNutritionDialog = false
                         }, modifier = Modifier.fillMaxWidth()) { Text("Add Macros") }
                     } else {
-                        val searchedFoods by viewModel.searchedFoodItems.collectAsState()
+                        val searchedFoods by viewModel.searchedFoodItems.collectAsStateWithLifecycle()
 
                         ExposedDropdownMenuBox(
                             expanded = foodDropdownExpanded,

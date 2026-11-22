@@ -1,5 +1,6 @@
 package com.example.loom.ui.calendar
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.saveable.rememberSaveable
 import com.example.loom.util.TextPatterns
 import android.widget.Toast
@@ -189,16 +190,16 @@ fun AnalyticsBox(title: String, value: String, icon: ImageVector, modifier: Modi
 fun CalendarScreen(viewModel: CalendarViewModel) {
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
-    val visibleMonth by viewModel.visibleMonth.collectAsState()
-    val weekStart by viewModel.weekStart.collectAsState()
-    val targetCalories by viewModel.targetCalories.collectAsState()
-    val activeDays by viewModel.activeDays.collectAsState()
+    val visibleMonth by viewModel.visibleMonth.collectAsStateWithLifecycle()
+    val weekStart by viewModel.weekStart.collectAsStateWithLifecycle()
+    val targetCalories by viewModel.targetCalories.collectAsStateWithLifecycle()
+    val activeDays by viewModel.activeDays.collectAsStateWithLifecycle()
 
-    val selectedDateId by viewModel.selectedDateId.collectAsState()
-    val snapshot by viewModel.selectedDateSnapshot.collectAsState()
+    val selectedDateId by viewModel.selectedDateId.collectAsStateWithLifecycle()
+    val snapshot by viewModel.selectedDateSnapshot.collectAsStateWithLifecycle()
     val record = snapshot?.record
 
-    val analytics by viewModel.monthlyAnalytics.collectAsState()
+    val analytics by viewModel.monthlyAnalytics.collectAsStateWithLifecycle()
     var isMonthView by rememberSaveable { mutableStateOf(true) }
 
     var showFoodDialog by rememberSaveable { mutableStateOf(false) }
@@ -208,28 +209,28 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
     var foodToDelete by remember { mutableStateOf<FoodItem?>(null) }
     var logDetailsToShow by remember { mutableStateOf<ConsumedFoodLog?>(null) }
 
-    val allPresets by viewModel.allPresets.collectAsState()
-    val globalTemplates by viewModel.exerciseTemplates.collectAsState()
+    val allPresets by viewModel.allPresets.collectAsStateWithLifecycle()
+    val globalTemplates by viewModel.exerciseTemplates.collectAsStateWithLifecycle()
     var showMacroEditDialog by rememberSaveable { mutableStateOf(false) }
     var showDetailedExerciseDialog by rememberSaveable { mutableStateOf(false) }
     var exerciseToDelete by remember { mutableStateOf<Exercise?>(null) }
     var selectedTabIndex by remember { mutableIntStateOf(0) }
 
-    val skincareRoutines by viewModel.allSkincareRoutines.collectAsState()
-    val skincareProducts by viewModel.allSkincareProducts.collectAsState()
+    val skincareRoutines by viewModel.allSkincareRoutines.collectAsStateWithLifecycle()
+    val skincareProducts by viewModel.allSkincareProducts.collectAsStateWithLifecycle()
     var showSkincareDialog by rememberSaveable { mutableStateOf(false) }
     var routineToEdit by remember { mutableStateOf<SkincareRoutine?>(null) }
     var showDeleteConfirmDialog by rememberSaveable { mutableStateOf(false) }
     var editingProductContext by remember { mutableStateOf<Pair<SkincareRoutine, SkincareProduct>?>(null) }
     var skincareRoutineToRemove by remember { mutableStateOf<String?>(null) }
 
-    val baseWeight by viewModel.weightFlow.collectAsState()
+    val baseWeight by viewModel.weightFlow.collectAsStateWithLifecycle()
     var showWeightLogDialog by rememberSaveable { mutableStateOf(false) }
     var showSleepDialog by rememberSaveable { mutableStateOf(false) }
 
-    val supplementsRoster by viewModel.supplementsRoster.collectAsState()
-    val todayScheduled by viewModel.selectedDateScheduledSupplements.collectAsState()
-    val categories by viewModel.supplementCategories.collectAsState()
+    val supplementsRoster by viewModel.supplementsRoster.collectAsStateWithLifecycle()
+    val todayScheduled by viewModel.selectedDateScheduledSupplements.collectAsStateWithLifecycle()
+    val categories by viewModel.supplementCategories.collectAsStateWithLifecycle()
     var showSupplementManageDialog by rememberSaveable { mutableStateOf(false) }
     var showCategoryDialog by rememberSaveable { mutableStateOf(false) }
     var editingSupplementItem by remember { mutableStateOf<SupplementItem?>(null) }
@@ -661,8 +662,8 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
     }
 
     if (showFoodPantryDialog) {
-        val currentSearchQuery by viewModel.foodSearchQuery.collectAsState()
-        val searchedFoods by viewModel.searchedFoodItems.collectAsState()
+        val currentSearchQuery by viewModel.foodSearchQuery.collectAsStateWithLifecycle()
+        val searchedFoods by viewModel.searchedFoodItems.collectAsStateWithLifecycle()
 
         AlertDialog(
             onDismissRequest = { showFoodPantryDialog = false },

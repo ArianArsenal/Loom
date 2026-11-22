@@ -1,5 +1,6 @@
 package com.example.loom.ui.settings
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -58,25 +59,25 @@ fun SettingsScreen(
 ) {
     val context = LocalContext.current
 
-    val userName by viewModel.userName.collectAsState()
-    val appTheme by viewModel.appTheme.collectAsState()
-    val isBiometricEnabled by viewModel.isBiometricEnabled.collectAsState()
-    val isLoading by viewModel.isLoading.collectAsState()
+    val userName by viewModel.userName.collectAsStateWithLifecycle()
+    val appTheme by viewModel.appTheme.collectAsStateWithLifecycle()
+    val isBiometricEnabled by viewModel.isBiometricEnabled.collectAsStateWithLifecycle()
+    val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
 
     // --- NEW: Collect Night Owl State ---
-    val rolloverHour by viewModel.dayRolloverHour.collectAsState()
+    val rolloverHour by viewModel.dayRolloverHour.collectAsStateWithLifecycle()
 
     // --- BIO METRICS SYNC ---
-    val weight by healthViewModel.weight.collectAsState()
-    val height by healthViewModel.height.collectAsState()
-    val age by healthViewModel.age.collectAsState()
-    val gender by healthViewModel.gender.collectAsState()
-    val activity by healthViewModel.activity.collectAsState()
-    val goal by healthViewModel.goal.collectAsState()
-    val bodyFat by healthViewModel.bodyFat.collectAsState()
-    val dietType by healthViewModel.dietType.collectAsState()
-    val phaseWeeks by healthViewModel.phaseWeeks.collectAsState()
-    val isCycling by healthViewModel.calorieCycling.collectAsState()
+    val weight by healthViewModel.weight.collectAsStateWithLifecycle()
+    val height by healthViewModel.height.collectAsStateWithLifecycle()
+    val age by healthViewModel.age.collectAsStateWithLifecycle()
+    val gender by healthViewModel.gender.collectAsStateWithLifecycle()
+    val activity by healthViewModel.activity.collectAsStateWithLifecycle()
+    val goal by healthViewModel.goal.collectAsStateWithLifecycle()
+    val bodyFat by healthViewModel.bodyFat.collectAsStateWithLifecycle()
+    val dietType by healthViewModel.dietType.collectAsStateWithLifecycle()
+    val phaseWeeks by healthViewModel.phaseWeeks.collectAsStateWithLifecycle()
+    val isCycling by healthViewModel.calorieCycling.collectAsStateWithLifecycle()
 
     var currentPin by remember { mutableStateOf<String?>(null) }
     var isPinLoaded by rememberSaveable { mutableStateOf(false) }
@@ -786,11 +787,11 @@ fun SettingsScreen(
 /** Colours (Material You, AMOLED black, accent) and calendar display (Jalali, first day of week). */
 @Composable
 private fun AppearanceSettings(viewModel: HomeViewModel) {
-    val dynamicColor by viewModel.dynamicColor.collectAsState()
-    val amoled by viewModel.amoled.collectAsState()
-    val accent by viewModel.accentColor.collectAsState()
-    val calendarSystem by viewModel.calendarSystem.collectAsState()
-    val weekStart by viewModel.weekStart.collectAsState()
+    val dynamicColor by viewModel.dynamicColor.collectAsStateWithLifecycle()
+    val amoled by viewModel.amoled.collectAsStateWithLifecycle()
+    val accent by viewModel.accentColor.collectAsStateWithLifecycle()
+    val calendarSystem by viewModel.calendarSystem.collectAsStateWithLifecycle()
+    val weekStart by viewModel.weekStart.collectAsStateWithLifecycle()
 
     @Composable
     fun SwitchRow(title: String, subtitle: String, checked: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit) {

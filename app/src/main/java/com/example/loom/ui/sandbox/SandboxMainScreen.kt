@@ -1,5 +1,6 @@
 package com.example.loom.ui.sandbox
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -56,8 +57,8 @@ fun SandboxMainScreen(
     }
 
     // Titles/flags only; the full block content is loaded per space (canvas) or by the hub when shown
-    val spaceSummaries by viewModel.spaceSummaries.collectAsState()
-    val isBiometricEnabled by viewModel.isBiometricEnabled.collectAsState()
+    val spaceSummaries by viewModel.spaceSummaries.collectAsStateWithLifecycle()
+    val isBiometricEnabled by viewModel.isBiometricEnabled.collectAsStateWithLifecycle()
 
     val activeSpaceId = spaceBackstack.lastOrNull()
     val activeSpace by remember(activeSpaceId) {
@@ -202,7 +203,7 @@ fun SandboxMainScreen(
 
     if (currentRoute == SandboxRoute.HUB) {
         // Full spaces (with blocks) are only needed for hub search/cloning, so only collected here
-        val allSpaces by viewModel.allSpaces.collectAsState()
+        val allSpaces by viewModel.allSpaces.collectAsStateWithLifecycle()
         SandboxHubScreen(
             viewModel = viewModel,
             allSpaces = allSpaces,

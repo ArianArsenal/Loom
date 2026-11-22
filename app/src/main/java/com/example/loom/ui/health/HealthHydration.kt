@@ -1,5 +1,6 @@
 package com.example.loom.ui.health
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
@@ -120,13 +121,13 @@ private val hydrationTimeFormatter = object : ThreadLocal<SimpleDateFormat>() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HealthHydration(viewModel: HealthViewModel) {
-    val todayRecord by viewModel.todayRecord.collectAsState()
-    val dailyGoal by viewModel.waterDailyGoal.collectAsState()
-    val isAutoGoal by viewModel.isAutoWaterGoal.collectAsState()
-    val defaultIncrement by viewModel.defaultWaterIncrement.collectAsState()
-    val customContainers by viewModel.customWaterContainers.collectAsState()
-    val logs by viewModel.waterLogs.collectAsState()
-    val defaultContainerId by viewModel.defaultContainerId.collectAsState()
+    val todayRecord by viewModel.todayRecord.collectAsStateWithLifecycle()
+    val dailyGoal by viewModel.waterDailyGoal.collectAsStateWithLifecycle()
+    val isAutoGoal by viewModel.isAutoWaterGoal.collectAsStateWithLifecycle()
+    val defaultIncrement by viewModel.defaultWaterIncrement.collectAsStateWithLifecycle()
+    val customContainers by viewModel.customWaterContainers.collectAsStateWithLifecycle()
+    val logs by viewModel.waterLogs.collectAsStateWithLifecycle()
+    val defaultContainerId by viewModel.defaultContainerId.collectAsStateWithLifecycle()
 
     var showGoalDialog by rememberSaveable { mutableStateOf(false) }
     var showContainerDialog by rememberSaveable { mutableStateOf(false) }

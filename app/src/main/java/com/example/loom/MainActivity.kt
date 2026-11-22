@@ -1,5 +1,6 @@
 package com.example.loom
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -72,7 +73,7 @@ class MainActivity : FragmentActivity() {
 
         setContent {
             var showEmergencyDialog by remember { mutableStateOf(hasEmergencyBackup) }
-            val appTheme by viewModel.appTheme.collectAsState()
+            val appTheme by viewModel.appTheme.collectAsStateWithLifecycle()
 
             val darkTheme = when (appTheme) {
                 "Dark" -> true
@@ -80,9 +81,9 @@ class MainActivity : FragmentActivity() {
                 else -> isSystemInDarkTheme()
             }
 
-            val dynamicColor by viewModel.dynamicColor.collectAsState()
-            val amoled by viewModel.amoled.collectAsState()
-            val accent by viewModel.accentColor.collectAsState()
+            val dynamicColor by viewModel.dynamicColor.collectAsStateWithLifecycle()
+            val amoled by viewModel.amoled.collectAsStateWithLifecycle()
+            val accent by viewModel.accentColor.collectAsStateWithLifecycle()
 
             LoomTheme(
                 darkTheme = darkTheme,

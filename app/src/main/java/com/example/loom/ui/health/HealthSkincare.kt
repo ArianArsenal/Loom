@@ -1,5 +1,6 @@
 package com.example.loom.ui.health
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -33,10 +34,10 @@ import kotlinx.serialization.json.Json
 @Composable
 fun HealthSkincare(viewModel: HealthViewModel) {
     val context = LocalContext.current
-    val skincareRoutines by viewModel.allSkincareRoutines.collectAsState()
-    val skincareProducts by viewModel.allSkincareProducts.collectAsState()
-    val completedRoutines by viewModel.completedSkincareRoutines.collectAsState()
-    val completedSteps by viewModel.completedSkincareSteps.collectAsState()
+    val skincareRoutines by viewModel.allSkincareRoutines.collectAsStateWithLifecycle()
+    val skincareProducts by viewModel.allSkincareProducts.collectAsStateWithLifecycle()
+    val completedRoutines by viewModel.completedSkincareRoutines.collectAsStateWithLifecycle()
+    val completedSteps by viewModel.completedSkincareSteps.collectAsStateWithLifecycle()
 
     var showSkincareDialog by remember { mutableStateOf(false) }
     var routineToEdit by remember { mutableStateOf<SkincareRoutine?>(null) }

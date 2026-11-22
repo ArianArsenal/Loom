@@ -1,5 +1,6 @@
 package com.example.loom.ui.health
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -20,9 +21,9 @@ import androidx.compose.ui.unit.dp
 /** Health card: streaks plus 7/30/90-day charts of weight, sleep, calories and water. */
 @Composable
 fun TrendsCard(viewModel: HealthViewModel) {
-    val trends by viewModel.trends.collectAsState()
-    val streaks by viewModel.streaks.collectAsState()
-    val days by viewModel.trendDays.collectAsState()
+    val trends by viewModel.trends.collectAsStateWithLifecycle()
+    val streaks by viewModel.streaks.collectAsStateWithLifecycle()
+    val days by viewModel.trendDays.collectAsStateWithLifecycle()
 
     ElevatedCard(
         modifier = Modifier.fillMaxWidth(),

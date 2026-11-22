@@ -1,5 +1,7 @@
 package com.example.loom.ui.health
 
+import androidx.lifecycle.repeatOnLifecycle
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.Canvas
@@ -53,15 +55,20 @@ import kotlin.time.Duration.Companion.milliseconds
 
 @Composable
 fun FastingTimerCard(viewModel: HealthViewModel) {
-    val isFasting by viewModel.isFasting.collectAsState()
-    val startTime by viewModel.fastingStartTime.collectAsState()
-    val goalHours by viewModel.fastingGoalHours.collectAsState()
+    val isFasting by viewModel.isFasting.collectAsStateWithLifecycle()
+    val startTime by viewModel.fastingStartTime.collectAsStateWithLifecycle()
+    val goalHours by viewModel.fastingGoalHours.collectAsStateWithLifecycle()
 
     var currentTime by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var selectedGoal by remember { mutableIntStateOf(goalHours) }
 
     LaunchedEffect(goalHours) { selectedGoal = goalHours }
-    LaunchedEffect(isFasting) { while (isFasting) { delay(1000.milliseconds); currentTime = System.currentTimeMillis() } }
+    val tickerLifecycle = androidx.compose.ui.platform.LocalLifecycleOwner.current.lifecycle
+    LaunchedEffect(isFasting) {
+        tickerLifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.RESUMED) {
+            while (isFasting) { currentTime = System.currentTimeMillis(); delay(1000.milliseconds) }
+        }
+    }
 
     ElevatedCard(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp), colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)) {
         Column(modifier = Modifier.padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -138,7 +145,7 @@ fun FastingTimerCard(viewModel: HealthViewModel) {
 
 @Composable
 fun SleepRecoveryCard(viewModel: HealthViewModel) {
-    val todayRecord by viewModel.todayRecord.collectAsState()
+    val todayRecord by viewModel.todayRecord.collectAsStateWithLifecycle()
     val loggedHours = todayRecord?.sleepHours ?: 0f
     val loggedRating = todayRecord?.sleepRating ?: 0
     var showDialog by rememberSaveable { mutableStateOf(false) }
@@ -229,7 +236,7 @@ fun SleepRecoveryCard(viewModel: HealthViewModel) {
 
 @Composable
 fun BodyMeasurementsCard(viewModel: HealthViewModel) {
-    val todayRecord by viewModel.todayRecord.collectAsState()
+    val todayRecord by viewModel.todayRecord.collectAsStateWithLifecycle()
     val rawJson = todayRecord?.measurementsJson ?: "{}"
     val measurements = remember(rawJson) { try { Json.decodeFromString<Map<String, Float>>(rawJson.ifBlank { "{}" }) } catch (_: Exception) { emptyMap() } }
 
@@ -317,10 +324,10 @@ val supplementTemplates = listOf(
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun SupplementsCard(viewModel: HealthViewModel) {
-    val roster by viewModel.supplementsRoster.collectAsState()
-    val todayScheduled by viewModel.todayScheduledSupplements.collectAsState()
-    val categories by viewModel.supplementCategories.collectAsState()
-    val completed by viewModel.completedSupplements.collectAsState()
+    val roster by viewModel.supplementsRoster.collectAsStateWithLifecycle()
+    val todayScheduled by viewModel.todayScheduledSupplements.collectAsStateWithLifecycle()
+    val categories by viewModel.supplementCategories.collectAsStateWithLifecycle()
+    val completed by viewModel.completedSupplements.collectAsStateWithLifecycle()
     val focusManager = LocalFocusManager.current
 
     var showManageDialog by rememberSaveable { mutableStateOf(false) }

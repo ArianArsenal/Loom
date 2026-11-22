@@ -1,5 +1,6 @@
 package com.example.loom.ui.health
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.foundation.clickable
@@ -37,11 +38,11 @@ import java.util.Locale
 @OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun HealthNutrition(viewModel: HealthViewModel) {
-    val todayRecord by viewModel.todayRecord.collectAsState()
-    val consumedList by viewModel.consumedFoods.collectAsState()
-    val targetProteinInt by viewModel.targetProtein.collectAsState()
-    val targetCarbsInt by viewModel.targetCarbs.collectAsState()
-    val targetFatsInt by viewModel.targetFats.collectAsState()
+    val todayRecord by viewModel.todayRecord.collectAsStateWithLifecycle()
+    val consumedList by viewModel.consumedFoods.collectAsStateWithLifecycle()
+    val targetProteinInt by viewModel.targetProtein.collectAsStateWithLifecycle()
+    val targetCarbsInt by viewModel.targetCarbs.collectAsStateWithLifecycle()
+    val targetFatsInt by viewModel.targetFats.collectAsStateWithLifecycle()
 
     var showFoodDialog by rememberSaveable { mutableStateOf(false) }
     var showFoodPantryDialog by rememberSaveable { mutableStateOf(false) }
@@ -234,9 +235,9 @@ fun HealthNutrition(viewModel: HealthViewModel) {
     }
 
     if (showFoodPantryDialog) {
-        val currentSearchQuery by viewModel.foodSearchQuery.collectAsState()
-        val searchedFoods by viewModel.searchedFoodItems.collectAsState()
-        val favoriteFoods by viewModel.favoriteFoods.collectAsState()
+        val currentSearchQuery by viewModel.foodSearchQuery.collectAsStateWithLifecycle()
+        val searchedFoods by viewModel.searchedFoodItems.collectAsStateWithLifecycle()
+        val favoriteFoods by viewModel.favoriteFoods.collectAsStateWithLifecycle()
 
         AlertDialog(
             onDismissRequest = { showFoodPantryDialog = false },
@@ -557,7 +558,7 @@ fun HealthNutrition(viewModel: HealthViewModel) {
 @Composable
 private fun MealShortcutsMenu(viewModel: HealthViewModel) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    val templates by viewModel.mealTemplates.collectAsState()
+    val templates by viewModel.mealTemplates.collectAsStateWithLifecycle()
     var menuOpen by rememberSaveable { mutableStateOf(false) }
     var showTemplates by rememberSaveable { mutableStateOf(false) }
     var newTemplateName by rememberSaveable { mutableStateOf("") }

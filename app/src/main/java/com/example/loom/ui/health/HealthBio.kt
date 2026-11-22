@@ -1,5 +1,6 @@
 package com.example.loom.ui.health
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
@@ -57,24 +58,24 @@ fun MacroBadge(emoji: String, amount: String, label: String) {
 @Suppress("SpellCheckingInspection") // --- FIX: Tell compiler to ignore standard fitness names ---
 @Composable
 fun HealthBio(viewModel: HealthViewModel) {
-    val weight by viewModel.weight.collectAsState()
-    val height by viewModel.height.collectAsState()
-    val age by viewModel.age.collectAsState()
-    val gender by viewModel.gender.collectAsState()
-    val activity by viewModel.activity.collectAsState()
-    val goal by viewModel.goal.collectAsState()
-    val bodyFat by viewModel.bodyFat.collectAsState()
-    val dietType by viewModel.dietType.collectAsState()
-    val phaseWeeks by viewModel.phaseWeeks.collectAsState()
-    val phaseStart by viewModel.phaseStartTime.collectAsState()
-    val isCycling by viewModel.calorieCycling.collectAsState()
+    val weight by viewModel.weight.collectAsStateWithLifecycle()
+    val height by viewModel.height.collectAsStateWithLifecycle()
+    val age by viewModel.age.collectAsStateWithLifecycle()
+    val gender by viewModel.gender.collectAsStateWithLifecycle()
+    val activity by viewModel.activity.collectAsStateWithLifecycle()
+    val goal by viewModel.goal.collectAsStateWithLifecycle()
+    val bodyFat by viewModel.bodyFat.collectAsStateWithLifecycle()
+    val dietType by viewModel.dietType.collectAsStateWithLifecycle()
+    val phaseWeeks by viewModel.phaseWeeks.collectAsStateWithLifecycle()
+    val phaseStart by viewModel.phaseStartTime.collectAsStateWithLifecycle()
+    val isCycling by viewModel.calorieCycling.collectAsStateWithLifecycle()
 
-    val targetCalories by viewModel.targetCalories.collectAsState()
-    val targetProtein by viewModel.targetProtein.collectAsState()
-    val targetCarbs by viewModel.targetCarbs.collectAsState()
-    val targetFats by viewModel.targetFats.collectAsState()
+    val targetCalories by viewModel.targetCalories.collectAsStateWithLifecycle()
+    val targetProtein by viewModel.targetProtein.collectAsStateWithLifecycle()
+    val targetCarbs by viewModel.targetCarbs.collectAsStateWithLifecycle()
+    val targetFats by viewModel.targetFats.collectAsStateWithLifecycle()
 
-    val todayRecord by viewModel.todayRecord.collectAsState()
+    val todayRecord by viewModel.todayRecord.collectAsStateWithLifecycle()
 
     var isEditingBio by rememberSaveable { mutableStateOf(false) }
     var showEnergyInfoDialog by rememberSaveable { mutableStateOf(false) }

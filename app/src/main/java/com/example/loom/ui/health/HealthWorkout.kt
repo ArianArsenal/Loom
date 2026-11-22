@@ -1,5 +1,6 @@
 package com.example.loom.ui.health
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.saveable.rememberSaveable
 import android.widget.Toast
 import androidx.compose.animation.animateContentSize
@@ -45,9 +46,9 @@ import java.util.Collections
 @Composable
 fun HealthWorkout(viewModel: HealthViewModel) {
     val context = LocalContext.current
-    val todayExercises by viewModel.todayExercises.collectAsState()
-    val allPresets by viewModel.allPresets.collectAsState()
-    val globalTemplates by viewModel.exerciseTemplates.collectAsState()
+    val todayExercises by viewModel.todayExercises.collectAsStateWithLifecycle()
+    val allPresets by viewModel.allPresets.collectAsStateWithLifecycle()
+    val globalTemplates by viewModel.exerciseTemplates.collectAsStateWithLifecycle()
 
     var showExerciseDialog by rememberSaveable { mutableStateOf(false) }
     var selectedTabIndex by remember { mutableIntStateOf(0) }

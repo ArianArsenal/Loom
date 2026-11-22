@@ -1,5 +1,6 @@
 package com.example.loom.ui.notes
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -68,7 +69,7 @@ fun NoteListScreen(
     var tagToDelete by remember { mutableStateOf<NoteTag?>(null) }
 
     val context = LocalContext.current
-    val isBiometricEnabled by viewModel.isBiometricEnabled.collectAsState()
+    val isBiometricEnabled by viewModel.isBiometricEnabled.collectAsStateWithLifecycle()
 
     // Note bodies now live in blocksJson (content is empty), so search the decoded block text.
     // Private note bodies are left out so search can't reveal what they contain.
