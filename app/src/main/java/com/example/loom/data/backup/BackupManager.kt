@@ -13,6 +13,7 @@ import com.example.loom.ui.home.SpaceBackupDto
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import com.google.gson.JsonParseException
+import com.google.gson.JsonParser
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.encodeToString
@@ -102,13 +103,20 @@ class BackupManager @Inject constructor(
      * Parses and validates [json] first, then replaces all data in one transaction.
      * Any failure leaves the existing data untouched. A safety copy of the current data is
      * written to filesDir/backups before anything is replaced.
+     *
+     * @return how many invalid items were skipped
      */
-    suspend fun restore(json: String) {
-        val backup = try {
-            Gson().fromJson(json, LoomBackup::class.java)
+    suspend fun restore(json: String): Int {
+        val tree = try {
+            JsonParser.parseString(json)
         } catch (_: JsonParseException) {
             throw IllegalArgumentException("Not a valid Loom backup file")
-        } ?: throw IllegalArgumentException("Backup file is empty")
+        }
+        if (tree == null || !tree.isJsonObject) throw IllegalArgumentException("Not a valid Loom backup file")
+        // Repair older formats (obfuscated keys, missing fields) before binding to classes
+        val normalized = BackupJsonNormalizer.normalize(tree.asJsonObject)
+        val backup = Gson().fromJson(normalized.backup, LoomBackup::class.java)
+            ?: throw IllegalArgumentException("Backup file is empty")
 
         // Gson bypasses Kotlin null-safety, so treat every list as possibly null / containing nulls
         val dailyRecords = backup.dailyRecords.orEmpty().filterNotNull()
@@ -122,7 +130,9 @@ class BackupManager @Inject constructor(
         val skincareProducts = backup.skincareProducts.orEmpty().filterNotNull()
         val skincareRoutines = backup.skincareRoutines.orEmpty().filterNotNull()
         val foodItems = backup.foodItems.orEmpty().filterNotNull().map { it.copy(isUserCreated = true) }
+        // Older versions saved a chain of empty placeholder blocks inside every block; drop it on import
         val spaces = backup.notionSpaces.orEmpty().filterNotNull().map { it.toDomainModel() }
+            .map { it.copy(blocks = com.example.loom.ui.sandbox.cleanBlocksForDB(it.blocks)) }
 
         val totalItems = dailyRecords.size + tasks.size + exercises.size + diaryNotes.size + spaces.size +
             presets.size + skincareRoutines.size + foodItems.size
@@ -177,6 +187,7 @@ class BackupManager @Inject constructor(
             userPreferences.saveDayRolloverHour(backup.dayRolloverHour)
         }
         backup.templatePrefs?.let { restoreSharedPrefs(TEMPLATE_PREFS, it.filterNotNull()) }
+        return normalized.skippedItems
     }
 
     /** Writes the current data to filesDir/backups, keeping only the newest few copies per label. */

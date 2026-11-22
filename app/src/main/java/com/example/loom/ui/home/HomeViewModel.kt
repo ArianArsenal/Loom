@@ -272,6 +272,7 @@ class HomeViewModel @Inject constructor(
                 out.use { backupManager.writeBackup(it) }
                 launch(Dispatchers.Main) { onSuccess() }
             } catch (e: Exception) {
+                android.util.Log.e("BackupManager", "Export failed", e)
                 launch(Dispatchers.Main) { onError(e.message ?: "Unknown Error") }
             } finally {
                 _isLoading.value = false
@@ -279,13 +280,13 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    fun importDatabase(context: Context, uri: Uri, onSuccess: () -> Unit, onError: (String) -> Unit) {
+    fun importDatabase(context: Context, uri: Uri, onSuccess: (skippedItems: Int) -> Unit, onError: (String) -> Unit) {
         viewModelScope.launch(Dispatchers.IO) {
             _isLoading.value = true
             try {
                 val input = context.contentResolver.openInputStream(uri) ?: error("Could not open file")
                 val jsonStr = input.bufferedReader().use { it.readText() }
-                backupManager.restore(jsonStr)
+                val skipped = backupManager.restore(jsonStr)
 
                 repository.initializeTodayRecord()
                 repository.prepopulateTemplatesIfEmpty()
@@ -293,9 +294,10 @@ class HomeViewModel @Inject constructor(
                 repository.prepopulateTaskSectionsIfEmpty()
                 repository.prepopulateSkincareProductsIfEmpty()
 
-                launch(Dispatchers.Main) { onSuccess() }
+                launch(Dispatchers.Main) { onSuccess(skipped) }
             } catch (e: Exception) {
-                launch(Dispatchers.Main) { onError(e.message ?: "Invalid Backup File") }
+                android.util.Log.e("BackupManager", "Import failed", e)
+                launch(Dispatchers.Main) { onError("${e.javaClass.simpleName}: ${e.message ?: "Invalid Backup File"}") }
             } finally {
                 _isLoading.value = false
             }

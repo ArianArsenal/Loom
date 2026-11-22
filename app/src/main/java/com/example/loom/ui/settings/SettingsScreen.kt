@@ -110,7 +110,10 @@ fun SettingsScreen(
         onResult = { uri ->
             uri?.let {
                 viewModel.importDatabase(context, it,
-                    onSuccess = { Toast.makeText(context, "Import Successful!", Toast.LENGTH_SHORT).show() },
+                    onSuccess = { skipped ->
+                        val msg = if (skipped > 0) "Import successful ($skipped invalid items skipped)" else "Import Successful!"
+                        Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                    },
                     onError = { err -> Toast.makeText(context, "Import Failed: $err", Toast.LENGTH_LONG).show() }
                 )
             }
