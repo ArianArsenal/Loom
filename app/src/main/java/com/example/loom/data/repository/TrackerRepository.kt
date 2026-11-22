@@ -55,6 +55,7 @@ class TrackerRepository @Inject constructor(private val dao: TrackerDao) {
 
     fun getDailyRecordFlow(dateId: String): Flow<DailyRecord?> = dao.getDailyRecordFlow(dateId)
     fun getRecordsForMonth(monthPrefix: String): Flow<List<DailyRecord>> = dao.getRecordsForMonth(monthPrefix)
+    suspend fun getExerciseHistory(name: String): List<Exercise> = dao.getExerciseHistory(name)
     fun getRecordsBetween(from: java.time.LocalDate, to: java.time.LocalDate): Flow<List<DailyRecord>> = dao.getRecordsBetween(from.toString(), to.toString())
     fun getExercisesBetween(from: java.time.LocalDate, to: java.time.LocalDate): Flow<List<Exercise>> = dao.getExercisesBetween(from.toString(), to.toString())
 

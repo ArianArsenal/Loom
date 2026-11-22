@@ -138,3 +138,21 @@ private fun fmt(v: Float?): String = when {
     v >= 100f -> v.toInt().toString()
     else -> "%.1f".format(v)
 }
+
+/** Compact line chart for a short series (e.g. an exercise's top weight per session). */
+@Composable
+fun MiniLineChart(values: List<Float>, color: Color, modifier: Modifier = Modifier.fillMaxWidth().height(90.dp)) {
+    Canvas(modifier = modifier) {
+        if (values.size < 2) return@Canvas
+        val min = values.min()
+        val span = (values.max() - min).takeIf { it > 0f } ?: 1f
+        fun x(i: Int) = size.width * i / (values.size - 1)
+        fun y(v: Float) = size.height - (v - min) / span * size.height * 0.9f - size.height * 0.05f
+        val path = Path().apply {
+            moveTo(x(0), y(values[0]))
+            for (i in 1 until values.size) lineTo(x(i), y(values[i]))
+        }
+        drawPath(path, color, style = Stroke(width = 5f))
+        values.forEachIndexed { i, v -> drawCircle(color, radius = 6f, center = Offset(x(i), y(v))) }
+    }
+}

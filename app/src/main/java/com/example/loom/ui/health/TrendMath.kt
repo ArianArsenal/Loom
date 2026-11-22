@@ -52,3 +52,29 @@ object StreakCalculator {
         return Streak(current = run, best = best)
     }
 }
+
+/** One exercise's history: newest session, personal records and best weight per session (oldest first). */
+data class ExerciseStats(
+    val last: com.example.loom.data.local.entity.Exercise?,
+    val prWeight: Float,
+    val prVolume: Float,
+    val sessions: List<Pair<String, Float>>
+) {
+    companion object {
+        /** Heaviest weight of a logged exercise, using per-set weights when present. */
+        fun topWeight(e: com.example.loom.data.local.entity.Exercise): Float =
+            (com.example.loom.data.repository.decodeList<Float>(e.weightListJson).maxOrNull() ?: 0f).coerceAtLeast(e.weight)
+
+        fun volume(e: com.example.loom.data.local.entity.Exercise): Float {
+            val perSet = com.example.loom.data.repository.decodeList<Float>(e.weightListJson)
+            return if (perSet.isNotEmpty()) perSet.sum() * e.reps else e.sets * e.reps * e.weight
+        }
+
+        fun from(history: List<com.example.loom.data.local.entity.Exercise>): ExerciseStats = ExerciseStats(
+            last = history.firstOrNull(),
+            prWeight = history.maxOfOrNull { topWeight(it) } ?: 0f,
+            prVolume = history.maxOfOrNull { volume(it) } ?: 0f,
+            sessions = history.groupBy { it.dateId }.map { (date, list) -> date to list.maxOf { topWeight(it) } }.sortedBy { it.first }
+        )
+    }
+}

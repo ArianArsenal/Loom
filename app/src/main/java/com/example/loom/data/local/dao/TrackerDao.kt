@@ -65,6 +65,9 @@ interface TrackerDao {
     @Query("SELECT * FROM exercises WHERE dateId BETWEEN :fromId AND :toId")
     fun getExercisesBetween(fromId: String, toId: String): Flow<List<Exercise>>
 
+    @Query("SELECT * FROM exercises WHERE exerciseName = :name COLLATE NOCASE ORDER BY dateId DESC, id DESC")
+    suspend fun getExerciseHistory(name: String): List<Exercise>
+
     @Query("SELECT * FROM food_items WHERE name IN (:names) GROUP BY name")
     suspend fun getFoodsByNames(names: List<String>): List<FoodItem>
 

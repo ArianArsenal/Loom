@@ -374,6 +374,31 @@ fun HealthWorkout(viewModel: HealthViewModel) {
                             var inputWeight by remember { mutableStateOf("60") }
                             var advancedWeights by remember { mutableStateOf(mapOf<Int, String>()) }
 
+                            // History for the chosen exercise; picking one from the list pre-fills the last session
+                            var stats by remember { mutableStateOf<ExerciseStats?>(null) }
+                            var prefillFromHistory by remember { mutableStateOf(false) }
+                            var showHistory by remember { mutableStateOf(false) }
+                            LaunchedEffect(inputName) {
+                                val exact = globalTemplates.firstOrNull { it.name.equals(inputName, ignoreCase = true) }
+                                stats = exact?.let { viewModel.exerciseStats(it.name) }
+                                val last = stats?.last
+                                if (prefillFromHistory && last != null) {
+                                    isTimeBased = last.isTimeBased
+                                    inputSets = last.sets.toString()
+                                    inputReps = last.reps.toString()
+                                    inputDuration = last.durationInSeconds.toString()
+                                    inputWeight = last.weight.formatWeight()
+                                    val perSet = com.example.loom.data.repository.decodeList<Float>(last.weightListJson)
+                                    varyWeight = perSet.isNotEmpty()
+                                    advancedWeights = perSet.mapIndexed { i, w -> i to w.formatWeight() }.toMap()
+                                }
+                                prefillFromHistory = false
+                            }
+
+                            if (showHistory && stats != null) {
+                                ExerciseHistoryDialog(inputName, stats!!) { showHistory = false }
+                            }
+
                             Column(modifier = Modifier.fillMaxWidth().wrapContentHeight()) {
                                 Column(modifier = Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
                                     ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
@@ -389,7 +414,7 @@ fun HealthWorkout(viewModel: HealthViewModel) {
                                             ExposedDropdownMenu(expanded = true, onDismissRequest = { expanded = false }, modifier = Modifier.heightIn(max = 200.dp)) {
                                                 filtered.forEach { option ->
                                                     Box(modifier = Modifier.fillMaxWidth().combinedClickable(
-                                                        onClick = { inputName = option.name; expanded = false },
+                                                        onClick = { prefillFromHistory = true; inputName = option.name; expanded = false },
                                                         onLongClick = { templateToEdit = option; showTemplateEditDialog = true }
                                                     ).padding(16.dp)) { Text(option.name) }
                                                 }
@@ -402,6 +427,19 @@ fun HealthWorkout(viewModel: HealthViewModel) {
                                                     }
                                                 }
                                             }
+                                        }
+                                    }
+
+                                    stats?.last?.let { last ->
+                                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(top = 6.dp)) {
+                                            val lastText = if (last.isTimeBased) "${last.sets}×${last.durationInSeconds}s" else "${last.sets}×${last.reps} @ ${ExerciseStats.topWeight(last).formatWeight()} kg"
+                                            Text(
+                                                "Last: $lastText (${last.dateId})" + (if (stats!!.prWeight > 0f) " · PR ${stats!!.prWeight.formatWeight()} kg" else ""),
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                            TextButton(onClick = { showHistory = true }, contentPadding = PaddingValues(horizontal = 8.dp)) { Text("History") }
                                         }
                                     }
 
@@ -799,3 +837,29 @@ fun HealthWorkout(viewModel: HealthViewModel) {
 
 // Each set renders its own input field; cap it so a typo like "1000" cannot freeze the UI
 private const val MAX_SETS = 50
+
+@Composable
+private fun ExerciseHistoryDialog(name: String, stats: ExerciseStats, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(name) },
+        text = {
+            Column {
+                Text("Best weight ${stats.prWeight.formatWeight()} kg · best volume ${stats.prVolume.toInt()} kg", style = MaterialTheme.typography.bodySmall)
+                Spacer(Modifier.height(12.dp))
+                if (stats.sessions.size >= 2) {
+                    MiniLineChart(stats.sessions.map { it.second }, MaterialTheme.colorScheme.primary)
+                    Text("Top weight per session", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.height(12.dp))
+                }
+                stats.sessions.takeLast(8).reversed().forEach { (date, weight) ->
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text(date, style = MaterialTheme.typography.bodySmall)
+                        Text("${weight.formatWeight()} kg", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } }
+    )
+}
