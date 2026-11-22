@@ -1,5 +1,6 @@
 package com.example.loom.ui.sandbox.blocks
 
+import kotlinx.coroutines.launch
 import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -600,8 +601,9 @@ fun DatabaseCell(
             }
         }
         PropertyType.MEDIA -> {
+            val mediaScope = rememberCoroutineScope()
             val mediaLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-                uri?.let { val localUrl = copyMediaToLocal(context, it); if (localUrl != null) onValueChange(localUrl) }
+                uri?.let { mediaScope.launch { val localUrl = copyMediaToLocal(context, it); if (localUrl != null) onValueChange(localUrl) } }
             }
             if (value.isEmpty()) {
                 TextButton(onClick = { mediaLauncher.launch("image/*") }, contentPadding = PaddingValues(0.dp)) { Text("+ Image") }

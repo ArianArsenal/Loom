@@ -1,5 +1,6 @@
 package com.example.loom.ui.calendar
 
+import com.example.loom.util.TextPatterns
 import android.widget.Toast
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
@@ -574,7 +575,7 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
 
                     val unitDisplay = log.servingUnit.ifBlank { "serving" }
                     val uText = unitDisplay.trim()
-                    val mResult = "\\d+(\\.\\d+)?".toRegex().find(uText)
+                    val mResult = TextPatterns.NUMBER.find(uText)
                     val calculatedNumStr: String
                     val finalUnitText: String
                     val showMultiplier: Boolean
@@ -622,7 +623,7 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
                     val currentMultiplier = servingsStr.toFloatOrNull() ?: 1f
                     val dynamicCals = foodToLog!!.calories * currentMultiplier
                     val unitText = foodToLog!!.servingUnit.trim()
-                    val matchResult = "\\d+(\\.\\d+)?".toRegex().find(unitText)
+                    val matchResult = TextPatterns.NUMBER.find(unitText)
 
                     val textPart: String
                     val formattedNum: String
@@ -681,7 +682,7 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
                                         Spacer(modifier = Modifier.height(4.dp))
 
                                         val uText = food.servingUnit.trim()
-                                        val mResult = "\\d+(\\.\\d+)?".toRegex().find(uText)
+                                        val mResult = TextPatterns.NUMBER.find(uText)
                                         val numStr = mResult?.value ?: ""
                                         val textStr = if (mResult != null) uText.replaceFirst(numStr, "").trim() else uText
 

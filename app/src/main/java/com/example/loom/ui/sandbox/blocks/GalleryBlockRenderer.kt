@@ -1,5 +1,6 @@
 package com.example.loom.ui.sandbox.blocks
 
+import kotlinx.coroutines.launch
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -79,13 +80,15 @@ fun GalleryBlockRenderer(
         else GallerySettings(showNumbers = block.isChecked)
     } catch (_: Exception) { GallerySettings(showNumbers = block.isChecked) }
 
+    val mediaScope = rememberCoroutineScope()
+    val latestBlock by rememberUpdatedState(block)
     val galleryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia()) { uris: List<Uri> ->
-        if (uris.isNotEmpty()) {
+        if (uris.isNotEmpty()) mediaScope.launch {
             val newItems = uris.mapNotNull { uri ->
                 val localUrl = copyMediaToLocal(context, uri)
                 if (localUrl != null) GalleryItem(url = localUrl) else null
             }
-            onUpdate(block.copy(galleryItems = block.galleryItems + newItems))
+            onUpdate(latestBlock.copy(galleryItems = latestBlock.galleryItems + newItems))
         }
     }
 

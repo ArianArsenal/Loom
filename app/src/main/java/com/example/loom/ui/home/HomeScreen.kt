@@ -1,5 +1,6 @@
 package com.example.loom.ui.home
 
+import com.example.loom.util.TextPatterns
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -76,10 +77,10 @@ private fun Float.formatWeight(): String {
 
 @Composable
 fun ServingUnitDisplay(servingUnit: String, textStyle: androidx.compose.ui.text.TextStyle, modifier: Modifier = Modifier) {
-    val mResult = "\\d+(\\.\\d+)?".toRegex().find(servingUnit)
+    val mResult = TextPatterns.NUMBER.find(servingUnit)
     val numStr = mResult?.value ?: ""
     val textStr = if (mResult != null) servingUnit.replaceFirst(numStr, "").trim() else servingUnit.trim()
-    val isPersian = Regex("[\\u0600-\\u06FF]").containsMatchIn(textStr)
+    val isPersian = TextPatterns.PERSIAN.containsMatchIn(textStr)
 
     Row(
         modifier = modifier,
@@ -415,7 +416,7 @@ fun HomeScreen(
                                         DropdownMenuItem(
                                             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
                                             text = {
-                                                val isNamePersian = Regex("[\\u0600-\\u06FF]").containsMatchIn(food.name)
+                                                val isNamePersian = TextPatterns.PERSIAN.containsMatchIn(food.name)
                                                 Text(
                                                     text = food.name,
                                                     style = MaterialTheme.typography.titleMedium.copy(

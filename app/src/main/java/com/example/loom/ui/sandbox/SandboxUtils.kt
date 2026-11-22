@@ -213,17 +213,22 @@ suspend fun fetchUrlMetadata(urlString: String): LinkMetadata? = withContext(Dis
     } catch (_: Exception) { null } // --- FIX: Unused e ---
 }
 
-fun copyMediaToLocal(context: Context, uri: Uri): String? {
-    return try {
-        val inputStream = context.contentResolver.openInputStream(uri) ?: return null
-        val fileName = "media_${UUID.randomUUID()}"
+/**
+ * Copies picked media into app storage. Runs on the IO dispatcher: copying a video on the main
+ * thread froze the UI. Keeps the original extension so "Open externally" gets the right type.
+ */
+suspend fun copyMediaToLocal(context: Context, uri: Uri): String? = withContext(Dispatchers.IO) {
+    try {
+        val displayName = context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)
+            ?.use { c -> if (c.moveToFirst()) c.getString(0) else null }
+        val extension = displayName?.substringAfterLast('.', "")?.takeIf { it.isNotEmpty() && it.length <= 5 }
+            ?: android.webkit.MimeTypeMap.getSingleton().getExtensionFromMimeType(context.contentResolver.getType(uri))
+        val fileName = "media_${UUID.randomUUID()}" + (extension?.let { ".$it" } ?: "")
         val file = File(context.filesDir, fileName)
-        val outputStream = FileOutputStream(file)
-        inputStream.copyTo(outputStream)
-        inputStream.close()
-        outputStream.close()
+        val input = context.contentResolver.openInputStream(uri) ?: return@withContext null
+        input.use { inp -> FileOutputStream(file).use { out -> inp.copyTo(out) } }
         Uri.fromFile(file).toString()
-    } catch (_: Exception) { null } // --- FIX: Unused e ---
+    } catch (_: Exception) { null }
 }
 
 // --- WIDGET HELPER FIXES ---
@@ -286,11 +291,16 @@ fun flattenTree(blocks: List<SandboxBlock>, spaceId: String, parentId: String? =
 }
 
 fun buildTree(domainBlocks: List<SandboxBlock>, rawEntities: List<SandboxBlockEntity>, parentId: String? = null): List<SandboxBlock> {
-    // Find all entities that belong to this parent, sort them by their physical layout order
-    val childrenEntities = rawEntities.filter { it.parentId == parentId }.sortedBy { it.orderIndex }
+    // Index once (this used to filter + search the whole list for every node: O(n^2) per space)
+    val blocksById = domainBlocks.associateBy { it.id }
+    val childrenByParent = rawEntities.groupBy { it.parentId }
+    val visited = HashSet<String>()
 
-    return childrenEntities.map { entity ->
-        val domainBlock = domainBlocks.find { it.id == entity.id }!!
-        domainBlock.copy(children = buildTree(domainBlocks, rawEntities, entity.id))
-    }
+    fun build(parent: String?): List<SandboxBlock> =
+        childrenByParent[parent].orEmpty().sortedBy { it.orderIndex }.mapNotNull { entity ->
+            if (!visited.add(entity.id)) return@mapNotNull null // guards against corrupt parent cycles
+            blocksById[entity.id]?.copy(children = build(entity.id))
+        }
+
+    return build(parentId)
 }

@@ -118,8 +118,7 @@ fun NotionCanvasScreen(
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         uri?.let {
             try {
-                val stream = context.contentResolver.openInputStream(it)
-                val text = InputStreamReader(stream!!).readText()
+                val text = context.contentResolver.openInputStream(it)?.use { stream -> InputStreamReader(stream).readText() } ?: return@let
                 val importedBlocks = parseMarkdownToBlocks(text)
                 blocks.clear()
                 blocks.addAll(importedBlocks)
@@ -127,11 +126,19 @@ fun NotionCanvasScreen(
         }
     }
 
-    val currentBlocks = blocks.toList()
-    LaunchedEffect(title, spaceIcon, bannerUrl, isPrivate, currentBlocks) {
-        if (title != space.title || spaceIcon != space.icon || bannerUrl != space.bannerUrl || isPrivate != space.isPrivate || cleanBlocksForDB(currentBlocks) != space.blocks) {
-            onSave(space.copy(title = title, icon = spaceIcon, bannerUrl = bannerUrl, isPrivate = isPrivate, updatedAt = System.currentTimeMillis(), blocks = cleanBlocksForDB(currentBlocks)))
-        }
+    // Save only when the page's state actually changes. Keying a LaunchedEffect on blocks.toList()
+    // copied and deep-compared the whole block tree on every recomposition (every keystroke/scroll).
+    val latestSpace by rememberUpdatedState(space)
+    LaunchedEffect(currentSpaceId) {
+        snapshotFlow { listOf(title, spaceIcon, bannerUrl, isPrivate) to blocks.toList() }
+            .collect { (_, currentBlocks) ->
+                val saved = latestSpace
+                if (saved.id != currentSpaceId) return@collect
+                val cleaned = cleanBlocksForDB(currentBlocks)
+                if (title != saved.title || spaceIcon != saved.icon || bannerUrl != saved.bannerUrl || isPrivate != saved.isPrivate || cleaned != saved.blocks) {
+                    onSave(saved.copy(title = title, icon = spaceIcon, bannerUrl = bannerUrl, isPrivate = isPrivate, updatedAt = System.currentTimeMillis(), blocks = cleaned))
+                }
+            }
     }
 
     val iconParts = spaceIcon.split("|")

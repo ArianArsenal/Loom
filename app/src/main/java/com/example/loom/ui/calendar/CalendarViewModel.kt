@@ -1,5 +1,6 @@
 package com.example.loom.ui.calendar
 
+import com.example.loom.util.TextPatterns
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.loom.data.local.entity.*
@@ -104,16 +105,16 @@ class CalendarViewModel @Inject constructor(
                 val activeSet = mutableSetOf<String>()
 
                 records.forEach { record ->
-                    val cleanFoods = record.consumedFoodsJson.replace("\\s".toRegex(), "")
+                    val cleanFoods = record.consumedFoodsJson.replace(TextPatterns.WHITESPACE, "")
                     val hasFood = cleanFoods != "" && cleanFoods != "[]" && cleanFoods != "null"
 
-                    val cleanRoutines = record.completedSkincareRoutinesJson.replace("\\s".toRegex(), "")
+                    val cleanRoutines = record.completedSkincareRoutinesJson.replace(TextPatterns.WHITESPACE, "")
                     val hasRoutine = cleanRoutines != "" && cleanRoutines != "[]" && cleanRoutines != "null"
 
-                    val cleanSteps = record.completedSkincareStepsJson.replace("\\s".toRegex(), "")
+                    val cleanSteps = record.completedSkincareStepsJson.replace(TextPatterns.WHITESPACE, "")
                     val hasSteps = cleanSteps != "" && cleanSteps != "[]" && cleanSteps != "null"
 
-                    val cleanSupplements = record.completedSupplementsJson.replace("\\s".toRegex(), "")
+                    val cleanSupplements = record.completedSupplementsJson.replace(TextPatterns.WHITESPACE, "")
                     val hasSupplements = cleanSupplements != "" && cleanSupplements != "[]" && cleanSupplements != "null"
 
                     val hasMacros = record.calories > 0 || record.protein > 0 || record.carbs > 0 || record.fats > 0

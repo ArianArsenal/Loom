@@ -1,5 +1,6 @@
 package com.example.loom.ui.health
 
+import com.example.loom.util.TextPatterns
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -82,7 +83,7 @@ fun HealthNutrition(viewModel: HealthViewModel) {
 
                     val unitDisplay = log.servingUnit.ifBlank { "serving" }
                     val uText = unitDisplay.trim()
-                    val mResult = "\\d+(\\.\\d+)?".toRegex().find(uText)
+                    val mResult = TextPatterns.NUMBER.find(uText)
 
                     val calculatedNumStr: String
                     val finalUnitText: String
@@ -162,7 +163,7 @@ fun HealthNutrition(viewModel: HealthViewModel) {
                     val dynamicCals = foodToLog!!.calories * currentMultiplier
 
                     val unitText = foodToLog!!.servingUnit.trim()
-                    val numberRegex = "\\d+(\\.\\d+)?".toRegex()
+                    val numberRegex = TextPatterns.NUMBER
                     val matchResult = numberRegex.find(unitText)
 
                     val textPart: String
@@ -254,7 +255,7 @@ fun HealthNutrition(viewModel: HealthViewModel) {
                             }
                         }
 
-                        items(searchedFoods) { food ->
+                        items(searchedFoods, key = { it.id }) { food ->
                             Surface(
                                 shape = RoundedCornerShape(12.dp),
                                 color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
@@ -277,7 +278,7 @@ fun HealthNutrition(viewModel: HealthViewModel) {
                                         Spacer(modifier = Modifier.height(4.dp))
 
                                         val uText = food.servingUnit.trim()
-                                        val mResult = "\\d+(\\.\\d+)?".toRegex().find(uText)
+                                        val mResult = TextPatterns.NUMBER.find(uText)
                                         val numStr = mResult?.value ?: ""
                                         val textStr = if (mResult != null) uText.replaceFirst(numStr, "").trim() else uText
 
@@ -476,7 +477,7 @@ fun HealthNutrition(viewModel: HealthViewModel) {
                                     val unitDisplay = log.servingUnit.ifBlank { "serving" }
 
                                     val uText = unitDisplay.trim()
-                                    val mResult = "\\d+(\\.\\d+)?".toRegex().find(uText)
+                                    val mResult = TextPatterns.NUMBER.find(uText)
 
                                     val calculatedNumStr: String
                                     val finalUnitText: String

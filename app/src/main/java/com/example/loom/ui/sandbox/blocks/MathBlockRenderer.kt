@@ -55,7 +55,7 @@ fun MathBlockRenderer(
                 textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onBackground, fontFamily = FontFamily.Serif, fontStyle = FontStyle.Italic, fontSize = 20.sp),
                 modifier = modifier.weight(1f), // --- FIX: Applied renamed modifier ---
                 cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                visualTransformation = MathVisualTransformation(),
+                visualTransformation = remember { MathVisualTransformation() },
                 decorationBox = placeholderUI,
                 readOnly = isReadOnly
             )

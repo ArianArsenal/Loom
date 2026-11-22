@@ -29,7 +29,7 @@ fun CodeBlockRenderer(
             BasicTextField(
                 value = textState,
                 onValueChange = handleTextChange,
-                visualTransformation = CodeSyntaxTransformation(),
+                visualTransformation = remember { CodeSyntaxTransformation() },
                 textStyle = MaterialTheme.typography.bodyMedium.copy(color = Color(0xFFD4D4D4), fontFamily = FontFamily.Monospace),
                 modifier = modifier.padding(16.dp).padding(end = 24.dp), // --- FIX: Applied renamed modifier ---
                 cursorBrush = SolidColor(Color.White),

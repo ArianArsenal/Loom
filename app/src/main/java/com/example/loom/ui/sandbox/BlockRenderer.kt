@@ -120,17 +120,23 @@ fun BlockRenderer(
         }
     }
 
+    val mediaScope = rememberCoroutineScope()
+    val latestBlock by rememberUpdatedState(currentBlock)
     val mediaLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         uri?.let {
-            val localUrl = copyMediaToLocal(context, it)
-            if (localUrl != null) onUpdate(currentBlock.copy(url = localUrl))
+            mediaScope.launch {
+                val localUrl = copyMediaToLocal(context, it)
+                if (localUrl != null) onUpdate(latestBlock.copy(url = localUrl))
+            }
         }
     }
 
     val videoLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         uri?.let {
-            val localUrl = copyMediaToLocal(context, it)
-            if (localUrl != null) onUpdate(currentBlock.copy(url = localUrl))
+            mediaScope.launch {
+                val localUrl = copyMediaToLocal(context, it)
+                if (localUrl != null) onUpdate(latestBlock.copy(url = localUrl))
+            }
         }
     }
 
