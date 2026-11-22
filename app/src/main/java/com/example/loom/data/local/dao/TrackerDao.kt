@@ -59,6 +59,10 @@ interface TrackerDao {
     @Query("SELECT * FROM tasks ORDER BY priority DESC, targetDate ASC")
     fun getAllTasks(): Flow<List<Task>>
 
+    /** Open tasks due today or earlier (for the morning deadline reminder). */
+    @Query("SELECT * FROM tasks WHERE isCompleted = 0 AND targetDate != '' AND targetDate <= :todayId ORDER BY targetDate ASC, priority DESC")
+    suspend fun getDueTasks(todayId: String): List<Task>
+
     /** Tasks due in a date range, or completed inside a time range (both sides use an index). */
     @Query("""
         SELECT * FROM tasks

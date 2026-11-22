@@ -1,5 +1,6 @@
 package com.example.loom.ui.calendar
 
+import com.example.loom.ui.health.isScheduledOn
 import com.example.loom.util.TextPatterns
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -77,20 +78,7 @@ class CalendarViewModel @Inject constructor(
     ) { roster, dateId ->
         if (dateId == null) return@combine emptyList()
         val date = LocalDate.parse(dateId)
-        roster.filter { item ->
-            when (item.recurrenceType) {
-                "DAILY" -> true
-                "SPECIFIC_DAYS" -> {
-                    val dayStr = date.dayOfWeek.name.take(3)
-                    item.recurrenceValue.contains(dayStr, ignoreCase = true)
-                }
-                "INTERVAL" -> {
-                    val interval = item.recurrenceValue.toIntOrNull()?.takeIf { it > 0 } ?: 1 // "0" would divide by zero
-                    (date.toEpochDay() % interval) == 0L
-                }
-                else -> true
-            }
-        }.sortedBy { it.timeOfUse }
+        roster.filter { it.isScheduledOn(date) }.sortedBy { it.timeOfUse }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     @OptIn(ExperimentalCoroutinesApi::class)

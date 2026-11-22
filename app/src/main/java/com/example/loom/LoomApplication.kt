@@ -6,6 +6,12 @@ import coil.ImageLoaderFactory
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
 import com.example.loom.data.backup.BackupManager
+import com.example.loom.data.local.preferences.UserPreferences
+import com.example.loom.reminders.ReminderScheduler
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import com.example.loom.util.EmergencyCrashHandler
 import dagger.hilt.android.HiltAndroidApp
 import javax.inject.Inject
@@ -15,9 +21,15 @@ class LoomApplication : Application(), ImageLoaderFactory {
 
     // Inject the databases globally so the Crash Handler can reach them
     @Inject lateinit var backupManager: BackupManager
+    @Inject lateinit var userPreferences: UserPreferences
 
     override fun onCreate() {
         super.onCreate()
+
+        ReminderScheduler.createChannels(this)
+        CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+            ReminderScheduler.rescheduleAll(this@LoomApplication, userPreferences)
+        }
 
         // Grab the OS default crash handler
         val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()

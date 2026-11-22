@@ -24,7 +24,6 @@ import com.example.loom.ui.LoomMainScreen
 import com.example.loom.ui.home.HomeViewModel
 import com.example.loom.ui.theme.LoomTheme
 import com.example.loom.worker.CleanupScheduler
-import com.example.loom.worker.NotificationScheduler
 import dagger.hilt.android.AndroidEntryPoint
 import java.io.File
 import java.text.SimpleDateFormat
@@ -91,21 +90,19 @@ class MainActivity : FragmentActivity() {
                     val permissionLauncher = rememberLauncherForActivityResult(
                         contract = ActivityResultContracts.RequestPermission(),
                         onResult = { isGranted ->
-                            if (isGranted) NotificationScheduler.scheduleDailyReminder(context, 21, 0)
+                            // Reminders are armed by LoomApplication; they post once permission exists
                         }
                     )
 
                     LaunchedEffect(Unit) {
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                             val permissionCheckResult = ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS)
-                            if (permissionCheckResult == PackageManager.PERMISSION_GRANTED) {
-                                NotificationScheduler.scheduleDailyReminder(context, 21, 0)
-                            } else {
+                            if (permissionCheckResult != PackageManager.PERMISSION_GRANTED) {
                                 permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                             }
-                        } else {
-                            NotificationScheduler.scheduleDailyReminder(context, 21, 0)
                         }
+                        // The old fixed 21:00 reminder is now the configurable "daily recap"
+                        androidx.work.WorkManager.getInstance(context).cancelUniqueWork("daily_reminder")
                     }
 
                     // Pass ViewModel to main screen

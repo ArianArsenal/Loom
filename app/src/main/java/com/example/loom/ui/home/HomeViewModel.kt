@@ -91,7 +91,8 @@ data class LoomBackup(
     val dayRolloverHour: Int = 2, // --- NEW: Added to Backup ---
     // v2+: every DataStore setting and the template store, restored verbatim
     val preferences: List<com.example.loom.data.backup.PrefBackup>? = null,
-    val templatePrefs: List<com.example.loom.data.backup.PrefBackup>? = null
+    val templatePrefs: List<com.example.loom.data.backup.PrefBackup>? = null,
+    val reminderPrefs: List<com.example.loom.data.backup.PrefBackup>? = null
 )
 
 @HiltViewModel
@@ -269,7 +270,7 @@ class HomeViewModel @Inject constructor(
             _isLoading.value = true
             try {
                 val out = context.contentResolver.openOutputStream(uri) ?: error("Could not open file")
-                out.use { backupManager.writeBackup(it) }
+                out.use { backupManager.writeZip(it) }
                 launch(Dispatchers.Main) { onSuccess() }
             } catch (e: Exception) {
                 android.util.Log.e("BackupManager", "Export failed", e)
@@ -285,8 +286,7 @@ class HomeViewModel @Inject constructor(
             _isLoading.value = true
             try {
                 val input = context.contentResolver.openInputStream(uri) ?: error("Could not open file")
-                val jsonStr = input.bufferedReader().use { it.readText() }
-                val skipped = backupManager.restore(jsonStr)
+                val skipped = input.use { backupManager.restoreFrom(it) }
 
                 repository.initializeTodayRecord()
                 repository.prepopulateTemplatesIfEmpty()
@@ -341,6 +341,10 @@ class HomeViewModel @Inject constructor(
                 _isLoading.value = false
             }
         }
+    }
+
+    fun rescheduleReminders(context: Context) = viewModelScope.launch(Dispatchers.IO) {
+        com.example.loom.reminders.ReminderScheduler.rescheduleAll(context.applicationContext, userPreferences)
     }
 
     fun addWater() = viewModelScope.launch(Dispatchers.IO) { repository.addWater(userPreferences.defaultWaterIncrementFlow.first()) }

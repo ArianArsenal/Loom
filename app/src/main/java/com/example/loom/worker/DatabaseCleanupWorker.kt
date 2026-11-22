@@ -3,7 +3,9 @@ package com.example.loom.worker
 import android.content.Context
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
-import com.example.loom.data.repository.TrackerRepository
+import com.example.loom.data.backup.MediaCleaner
+import com.example.loom.data.local.dao.SandboxDao
+import com.example.loom.data.local.dao.TrackerDao
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
@@ -22,7 +24,8 @@ class DatabaseCleanupWorker(
     @EntryPoint
     @InstallIn(SingletonComponent::class)
     interface WorkerEntryPoint {
-        fun trackerRepository(): TrackerRepository
+        fun sandboxDao(): SandboxDao
+        fun trackerDao(): TrackerDao
     }
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
@@ -32,10 +35,11 @@ class DatabaseCleanupWorker(
                 applicationContext,
                 WorkerEntryPoint::class.java
             )
-            val repository = entryPoint.trackerRepository()
-
             // Done tasks used to be deleted here after 24h; they are now kept (hidden on Home instead)
             // because Calendar history and monthly stats rely on them.
+
+            // Remove copied media that no block or note references any more
+            MediaCleaner.collectGarbage(applicationContext, entryPoint.sandboxDao(), entryPoint.trackerDao())
 
             Result.success()
         } catch (_: Exception) {

@@ -1,5 +1,6 @@
 package com.example.loom.ui.settings
 
+import com.example.loom.data.backup.AutoBackup
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -13,6 +14,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.BugReport
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.CloudUpload
@@ -94,7 +96,7 @@ fun SettingsScreen(
     var pendingDisableBiometric by remember { mutableStateOf(false) }
 
     val exportLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.CreateDocument("application/json"),
+        contract = ActivityResultContracts.CreateDocument("application/zip"),
         onResult = { uri ->
             uri?.let {
                 viewModel.exportDatabase(context, it,
@@ -104,6 +106,15 @@ fun SettingsScreen(
             }
         }
     )
+
+    var autoBackup by remember { mutableStateOf(AutoBackup.state(context)) }
+    val backupFolderLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri != null) {
+            AutoBackup.enable(context, uri)
+            autoBackup = AutoBackup.state(context)
+            Toast.makeText(context, "Weekly backups on. First backup started.", Toast.LENGTH_SHORT).show()
+        }
+    }
 
     val importLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument(),
@@ -575,14 +586,14 @@ fun SettingsScreen(
             ElevatedCard(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                 Column {
                     Row(
-                        modifier = Modifier.padding(16.dp).fillMaxWidth().clickable { exportLauncher.launch("Loom_Backup.json") },
+                        modifier = Modifier.padding(16.dp).fillMaxWidth().clickable { exportLauncher.launch("Loom_Backup_${java.time.LocalDate.now()}.zip") },
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(Icons.Default.CloudUpload, contentDescription = "Export", tint = MaterialTheme.colorScheme.primary)
                         Spacer(modifier = Modifier.width(16.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text("Export Data", fontWeight = FontWeight.Bold)
-                            Text("Save all your logs, spaces, and routines to a file", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("Save everything, including images, to a ZIP file", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
 
@@ -596,11 +607,66 @@ fun SettingsScreen(
                         Spacer(modifier = Modifier.width(16.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text("Import Data", fontWeight = FontWeight.Bold)
-                            Text("Restore everything from a previous Loom backup", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("Restore from a Loom backup (.zip or older .json)", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.padding(horizontal = 16.dp))
+
+                    // --- AUTOMATIC BACKUPS ---
+                    Column(modifier = Modifier.padding(16.dp).fillMaxWidth()) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Schedule, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                            Spacer(modifier = Modifier.width(16.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Weekly Automatic Backup", fontWeight = FontWeight.Bold)
+                                val last = autoBackup.lastBackupMillis
+                                val status = when {
+                                    !autoBackup.enabled -> "Keeps the latest ${AutoBackup.KEEP_COPIES} backups in a folder you choose"
+                                    autoBackup.lastError != null -> "Last attempt failed: ${autoBackup.lastError}"
+                                    last == 0L -> "Waiting for the first backup"
+                                    else -> {
+                                        val days = java.util.concurrent.TimeUnit.MILLISECONDS.toDays(System.currentTimeMillis() - last)
+                                        "Last backup: " + when (days) { 0L -> "today"; 1L -> "yesterday"; else -> "$days days ago" }
+                                    }
+                                }
+                                Text(status, style = MaterialTheme.typography.bodySmall, color = if (autoBackup.lastError != null && autoBackup.enabled) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Switch(
+                                checked = autoBackup.enabled,
+                                onCheckedChange = { on ->
+                                    if (on) backupFolderLauncher.launch(autoBackup.folder)
+                                    else { AutoBackup.disable(context); autoBackup = AutoBackup.state(context) }
+                                }
+                            )
+                        }
+                        if (autoBackup.enabled) {
+                            Row(modifier = Modifier.padding(start = 40.dp, top = 4.dp)) {
+                                TextButton(onClick = {
+                                    AutoBackup.backUpNow(context)
+                                    Toast.makeText(context, "Backing up…", Toast.LENGTH_SHORT).show()
+                                }) { Text("Back up now") }
+                                TextButton(onClick = { backupFolderLauncher.launch(autoBackup.folder) }) { Text("Change folder") }
+                            }
                         }
                     }
                 }
             }
+
+            // Refresh the "last backup" line when returning to this screen
+            LaunchedEffect(Unit) {
+                while (true) {
+                    kotlinx.coroutines.delay(3000)
+                    autoBackup = AutoBackup.state(context)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // --- REMINDERS ---
+            Text("Reminders", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+            Spacer(modifier = Modifier.height(8.dp))
+            ReminderSettingsSection(onChanged = { viewModel.rescheduleReminders(context) })
 
             Spacer(modifier = Modifier.height(24.dp))
 

@@ -40,8 +40,26 @@ data class SupplementItem(
     val isActive: Boolean = false // --- NEW: To hide inactive templates ---
 )
 
+/**
+ * Whether this supplement should be taken on [date]. Shared by Health, Calendar and reminders
+ * so the three always agree (Calendar used to show inactive supplements).
+ */
+fun SupplementItem.isScheduledOn(date: LocalDate): Boolean {
+    if (!isActive) return false
+    return when (recurrenceType) {
+        "DAILY" -> true
+        "SPECIFIC_DAYS" -> recurrenceValue.contains(date.dayOfWeek.name.take(3), ignoreCase = true)
+        "INTERVAL" -> {
+            val interval = recurrenceValue.toIntOrNull()?.takeIf { it > 0 } ?: 1 // "0" would divide by zero
+            (date.toEpochDay() % interval) == 0L
+        }
+        else -> true
+    }
+}
+
 @HiltViewModel
 class HealthViewModel @Inject constructor(
+    @dagger.hilt.android.qualifiers.ApplicationContext private val appContext: android.content.Context,
     private val repository: TrackerRepository,
     private val userPreferences: UserPreferences,
     private val sandboxDao: SandboxDao
@@ -128,22 +146,7 @@ class HealthViewModel @Inject constructor(
     val todayScheduledSupplements: StateFlow<List<SupplementItem>> = combine(supplementsRoster, DateUtils.todayDateIdFlow) { roster, todayId ->
         // Logical today (respects the rollover hour) and re-evaluated when the day changes
         val today = LocalDate.parse(todayId)
-        roster.filter { item ->
-            if (!item.isActive) return@filter false
-
-            when (item.recurrenceType) {
-                "DAILY" -> true
-                "SPECIFIC_DAYS" -> {
-                    val dayStr = today.dayOfWeek.name.take(3)
-                    item.recurrenceValue.contains(dayStr, ignoreCase = true)
-                }
-                "INTERVAL" -> {
-                    val interval = item.recurrenceValue.toIntOrNull()?.takeIf { it > 0 } ?: 1 // "0" would divide by zero
-                    (today.toEpochDay() % interval) == 0L
-                }
-                else -> true
-            }
-        }.sortedBy { it.timeOfUse }
+        roster.filter { it.isScheduledOn(today) }.sortedBy { it.timeOfUse }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
 
@@ -241,7 +244,10 @@ class HealthViewModel @Inject constructor(
     fun removeLoggedSkincareRoutine(routineName: String, products: List<String>) = viewModelScope.launch { repository.editRecord { it.copy(completedSkincareRoutinesJson = removeJsonIds(it.completedSkincareRoutinesJson, listOf(routineName)), completedSkincareStepsJson = removeJsonIds(it.completedSkincareStepsJson, products.map { p -> "${routineName}_$p" })) } }
     fun toggleAllSkincareSteps(routineName: String, products: List<String>, isCompleted: Boolean) = viewModelScope.launch { val stepIds = products.map { p -> "${routineName}_$p" }; repository.editRecord { it.copy(completedSkincareStepsJson = if (isCompleted) addJsonIds(it.completedSkincareStepsJson, stepIds) else removeJsonIds(it.completedSkincareStepsJson, stepIds)) } }
     private fun getMealEmojiForTime(timestamp: Long): String { val hour = Calendar.getInstance().apply { timeInMillis = timestamp }.get(Calendar.HOUR_OF_DAY); return when (hour) { in 5..9 -> "🍳"; in 10..12 -> "🍎"; in 13..15 -> "🍛"; in 16..19 -> "☕"; in 20..23 -> "🍲"; else -> "🌙" } }
-    fun toggleFasting(start: Boolean, goalHours: Int) = viewModelScope.launch { if (start) { userPreferences.setFastingState(true, System.currentTimeMillis(), goalHours) } else { userPreferences.setFastingState(false, 0L, goalHours) } }
+    fun toggleFasting(start: Boolean, goalHours: Int) = viewModelScope.launch {
+        if (start) userPreferences.setFastingState(true, System.currentTimeMillis(), goalHours) else userPreferences.setFastingState(false, 0L, goalHours)
+        com.example.loom.reminders.ReminderScheduler.rescheduleAll(appContext, userPreferences)
+    }
     fun logSleep(hours: Float, rating: Int) = viewModelScope.launch { repository.editRecord { it.copy(sleepHours = hours, sleepRating = rating) } }
     fun logMeasurements(measurements: Map<String, Float>) = viewModelScope.launch { repository.editRecord { it.copy(measurementsJson = Json.encodeToString(measurements)) } }
 }

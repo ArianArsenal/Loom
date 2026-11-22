@@ -18,8 +18,13 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import java.io.BufferedInputStream
 import java.io.File
+import java.io.InputStream
 import java.io.OutputStream
+import java.util.zip.ZipEntry
+import java.util.zip.ZipInputStream
+import java.util.zip.ZipOutputStream
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -89,8 +94,66 @@ class BackupManager @Inject constructor(
             isBiometricEnabled = userPreferences.biometricEnabledFlow.first(),
             dayRolloverHour = userPreferences.dayRolloverHourFlow.first(),
             preferences = userPreferences.snapshot(),
-            templatePrefs = sharedPrefsSnapshot(TEMPLATE_PREFS)
+            templatePrefs = sharedPrefsSnapshot(TEMPLATE_PREFS),
+            reminderPrefs = sharedPrefsSnapshot(com.example.loom.reminders.ReminderSettings.PREFS_NAME)
         )
+    }
+
+    /**
+     * Full backup as a ZIP: `backup.json` plus every media file (images, audio, video, files copied
+     * into the app), so a restore on another install or phone keeps pictures working.
+     */
+    suspend fun writeZip(out: OutputStream) {
+        val data = createBackup()
+        ZipOutputStream(out.buffered()).use { zip ->
+            zip.putNextEntry(ZipEntry(ZIP_JSON_ENTRY))
+            val writer = zip.writer()
+            prettyGson.toJson(data, writer)
+            writer.flush()
+            zip.closeEntry()
+            mediaFiles().forEach { file ->
+                zip.putNextEntry(ZipEntry(ZIP_MEDIA_DIR + file.name))
+                file.inputStream().use { it.copyTo(zip) }
+                zip.closeEntry()
+            }
+        }
+    }
+
+    /** Restores from a Loom ZIP backup or a plain JSON backup (older exports). */
+    suspend fun restoreFrom(input: InputStream): Int {
+        val stream = BufferedInputStream(input)
+        stream.mark(4)
+        val isZip = stream.read() == 'P'.code && stream.read() == 'K'.code
+        stream.reset()
+        if (!isZip) return restore(stream.bufferedReader().readText())
+
+        var json: String? = null
+        ZipInputStream(stream).use { zip ->
+            generateSequence { zip.nextEntry }.forEach { entry ->
+                when {
+                    entry.name == ZIP_JSON_ENTRY -> json = zip.bufferedReader().readText()
+                    entry.name.startsWith(ZIP_MEDIA_DIR) && !entry.isDirectory -> {
+                        // Only plain file names: never let an entry escape filesDir ("zip slip")
+                        val name = entry.name.removePrefix(ZIP_MEDIA_DIR)
+                        if (name.startsWith("media_") && '/' !in name && ".." !in name) {
+                            File(context.filesDir, name).outputStream().use { zip.copyTo(it) }
+                        }
+                    }
+                }
+            }
+        }
+        return restore(json ?: throw IllegalArgumentException("ZIP does not contain a Loom backup"))
+    }
+
+    fun mediaFiles(): List<File> = context.filesDir.listFiles { f -> f.isFile && f.name.startsWith("media_") }?.toList().orEmpty()
+
+    /**
+     * Media urls are absolute paths into the exporting app's private folder
+     * (file:///data/user/0/<package>/files/media_x). Point them at this install's folder.
+     */
+    private fun relinkMedia(json: String): String {
+        val local = "file://" + context.filesDir.absolutePath + "/"
+        return MEDIA_URL_PATTERN.replace(json) { local + it.groupValues[1] }
     }
 
     /** Streams the backup as JSON instead of building one giant string in memory. */
@@ -108,7 +171,7 @@ class BackupManager @Inject constructor(
      */
     suspend fun restore(json: String): Int {
         val tree = try {
-            JsonParser.parseString(json)
+            JsonParser.parseString(relinkMedia(json))
         } catch (_: JsonParseException) {
             throw IllegalArgumentException("Not a valid Loom backup file")
         }
@@ -187,6 +250,8 @@ class BackupManager @Inject constructor(
             userPreferences.saveDayRolloverHour(backup.dayRolloverHour)
         }
         backup.templatePrefs?.let { restoreSharedPrefs(TEMPLATE_PREFS, it.filterNotNull()) }
+        backup.reminderPrefs?.let { restoreSharedPrefs(com.example.loom.reminders.ReminderSettings.PREFS_NAME, it.filterNotNull()) }
+        com.example.loom.reminders.ReminderScheduler.rescheduleAll(context, userPreferences)
         return normalized.skippedItems
     }
 
@@ -225,6 +290,9 @@ class BackupManager @Inject constructor(
 
     companion object {
         const val CURRENT_BACKUP_VERSION = 2
+        const val ZIP_JSON_ENTRY = "backup.json"
+        const val ZIP_MEDIA_DIR = "media/"
+        private val MEDIA_URL_PATTERN = Regex("""file://[^"\s]*?/files/(media_[^"\s/\\]+)""")
         const val TEMPLATE_PREFS = "loom_templates"
         private const val MAX_SAFETY_COPIES = 3
         private val prettyGson: Gson = GsonBuilder().setPrettyPrinting().create()
