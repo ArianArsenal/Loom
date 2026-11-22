@@ -70,13 +70,14 @@ kotlin {
 dependencies {
     implementation(libs.androidx.profileinstaller)
     implementation("org.jsoup:jsoup:1.17.2")
-    implementation("androidx.biometric:biometric:1.2.0-alpha05")
-    implementation("com.google.code.gson:gson:2.10.1")
+    implementation("androidx.biometric:biometric:1.1.0")
+    implementation("com.google.code.gson:gson:2.11.0")
 
     // --- FIX: Removed the duplicate hardcoded coil-compose dependency ---
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.activity.compose)
     "baselineProfile"(project(":baselineprofile"))
 
@@ -102,11 +103,11 @@ dependencies {
     ksp(libs.room.compiler)
 
     // Compose Navigation
-    implementation("androidx.navigation:navigation-compose:2.8.0")
+    implementation("androidx.navigation:navigation-compose:2.8.5")
 
     // Hilt for Dependency Injection
-    implementation("com.google.dagger:hilt-android:2.51.1")
-    ksp("com.google.dagger:hilt-compiler:2.51.1")
+    implementation("com.google.dagger:hilt-android:2.53.1")
+    ksp("com.google.dagger:hilt-compiler:2.53.1")
     implementation("androidx.hilt:hilt-navigation-compose:1.2.0")
 
     // Serialization
@@ -115,11 +116,11 @@ dependencies {
     // Media & UI Utils
     implementation(libs.androidx.compose.material.icons.extended)
     implementation(libs.coil.compose)
-    implementation("androidx.appcompat:appcompat:1.6.1")
+    implementation("androidx.appcompat:appcompat:1.7.0")
 
     // DataStore & WorkManager
     implementation("androidx.datastore:datastore-preferences:1.1.1")
-    implementation("androidx.work:work-runtime-ktx:2.9.0")
+    implementation("androidx.work:work-runtime-ktx:2.10.0")
 
     // Home-screen widgets and Health Connect sync
     implementation("androidx.glance:glance-appwidget:1.1.1")
