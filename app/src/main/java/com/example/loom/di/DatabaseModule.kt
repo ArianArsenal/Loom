@@ -30,6 +30,7 @@ object DatabaseModule {
             // Only databases older than the first supported migration (v15) are recreated.
             .addMigrations(*AppDatabase.MIGRATIONS)
             .fallbackToDestructiveMigrationFrom(*(1..14).toList().toIntArray())
+            .addCallback(AppDatabase.ensureFoodIndex)
             .build()
     }
 

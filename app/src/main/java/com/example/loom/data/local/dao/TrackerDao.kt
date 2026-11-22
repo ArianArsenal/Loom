@@ -68,6 +68,12 @@ interface TrackerDao {
     @Query("SELECT * FROM exercises WHERE exerciseName = :name COLLATE NOCASE ORDER BY dateId DESC, id DESC")
     suspend fun getExerciseHistory(name: String): List<Exercise>
 
+    @Query("""
+        SELECT food_items.* FROM food_items JOIN food_items_fts ON food_items.rowid = food_items_fts.rowid
+        WHERE food_items_fts MATCH :ftsQuery GROUP BY food_items.name ORDER BY food_items.name ASC LIMIT 30
+    """)
+    fun searchFoodItemsFts(ftsQuery: String): Flow<List<FoodItem>>
+
     @Query("SELECT * FROM food_items WHERE name IN (:names) GROUP BY name")
     suspend fun getFoodsByNames(names: List<String>): List<FoodItem>
 

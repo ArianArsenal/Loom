@@ -161,7 +161,13 @@ class TrackerRepository @Inject constructor(private val dao: TrackerDao) {
     }
 
     // --- FOOD PANTRY ---
-    fun searchFoodItems(query: String): Flow<List<FoodItem>> = dao.searchFoodItemsGrouped(query) // --- FIX: Point to the new optimized DAO method! ---
+    /** Word-prefix matches from the full-text index first, then any substring matches. */
+    fun searchFoodItems(query: String): Flow<List<FoodItem>> {
+        val fts = com.example.loom.data.local.entity.FoodSearch.ftsQuery(query) ?: return dao.searchFoodItemsGrouped(query)
+        return kotlinx.coroutines.flow.combine(dao.searchFoodItemsFts(fts), dao.searchFoodItemsGrouped(query)) { indexed, substring ->
+            (indexed + substring).distinctBy { it.name }.take(30)
+        }
+    }
     suspend fun insertFoodItem(food: FoodItem) = dao.insertFoodItem(food)
     suspend fun deleteFoodItem(food: FoodItem) = dao.deleteFoodItem(food)
 

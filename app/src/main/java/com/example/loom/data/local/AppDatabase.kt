@@ -28,10 +28,11 @@ import com.example.loom.data.local.entity.SandboxBlockEntity
         DiaryNote::class, NoteTag::class,
         SkincareProduct::class, SkincareRoutine::class,
         FoodItem::class,
+        com.example.loom.data.local.entity.FoodItemFts::class,
         NotionSpaceEntity::class,
         SandboxBlockEntity::class
     ],
-    version = 33,
+    version = 34,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -275,6 +276,38 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        // v34: full-text index over food names, kept in sync with food_items by triggers
+        private val MIGRATION_33_34 = object : Migration(33, 34) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE VIRTUAL TABLE IF NOT EXISTS `food_items_fts` USING FTS4(`name` TEXT NOT NULL, content=`food_items`)")
+                FOOD_FTS_TRIGGERS.forEach { db.execSQL(it) }
+                db.execSQL("INSERT INTO `food_items_fts`(`food_items_fts`) VALUES('rebuild')")
+            }
+        }
+
+        private val FOOD_FTS_TRIGGERS = listOf(
+            "CREATE TRIGGER IF NOT EXISTS room_fts_content_sync_food_items_fts_BEFORE_UPDATE BEFORE UPDATE ON `food_items` BEGIN DELETE FROM `food_items_fts` WHERE `docid`=OLD.`rowid`; END",
+            "CREATE TRIGGER IF NOT EXISTS room_fts_content_sync_food_items_fts_BEFORE_DELETE BEFORE DELETE ON `food_items` BEGIN DELETE FROM `food_items_fts` WHERE `docid`=OLD.`rowid`; END",
+            "CREATE TRIGGER IF NOT EXISTS room_fts_content_sync_food_items_fts_AFTER_UPDATE AFTER UPDATE ON `food_items` BEGIN INSERT INTO `food_items_fts`(`docid`, `name`) VALUES (NEW.`rowid`, NEW.`name`); END",
+            "CREATE TRIGGER IF NOT EXISTS room_fts_content_sync_food_items_fts_AFTER_INSERT AFTER INSERT ON `food_items` BEGIN INSERT INTO `food_items_fts`(`docid`, `name`) VALUES (NEW.`rowid`, NEW.`name`); END"
+        )
+
+        /**
+         * A fresh install copies the bundled foods in before the sync triggers exist, leaving the
+         * index empty: build it once whenever it has no segments but there are foods.
+         */
+        val ensureFoodIndex = object : RoomDatabase.Callback() {
+            override fun onOpen(db: SupportSQLiteDatabase) {
+                try {
+                    val indexed = db.query("SELECT count(*) FROM `food_items_fts_segdir`").use { it.moveToFirst(); it.getLong(0) }
+                    val foods = db.query("SELECT count(*) FROM `food_items`").use { it.moveToFirst(); it.getLong(0) }
+                    if (indexed == 0L && foods > 0L) db.execSQL("INSERT INTO `food_items_fts`(`food_items_fts`) VALUES('rebuild')")
+                } catch (e: Exception) {
+                    android.util.Log.e("AppDatabase", "Food index check failed", e)
+                }
+            }
+        }
+
         private fun executeMigration(db: SupportSQLiteDatabase) {
             db.execSQL("""
                 CREATE TABLE IF NOT EXISTS `exercises_new` (
@@ -306,7 +339,7 @@ abstract class AppDatabase : RoomDatabase() {
             MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23,
             MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27,
             MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31,
-            MIGRATION_31_32, MIGRATION_32_33
+            MIGRATION_31_32, MIGRATION_32_33, MIGRATION_33_34
         )
     }
 }

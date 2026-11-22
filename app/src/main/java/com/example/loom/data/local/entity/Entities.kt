@@ -185,3 +185,18 @@ data class FoodItem(
     val fats: Float,
     var isUserCreated: Boolean = false
 )
+
+/** Full-text index over food names (kept in sync with food_items by Room's triggers). */
+@androidx.room.Fts4(contentEntity = FoodItem::class)
+@Entity(tableName = "food_items_fts")
+data class FoodItemFts(val name: String)
+
+object FoodSearch {
+    /** "chicken bre" -> "chicken* bre*": every word must match the start of a word in the name. */
+    fun ftsQuery(input: String): String? {
+        val tokens = input.trim().split(Regex("\\s+"))
+            .map { token -> token.filter { it.isLetterOrDigit() } }
+            .filter { it.isNotEmpty() }
+        return if (tokens.isEmpty()) null else tokens.joinToString(" ") { "$it*" }
+    }
+}
