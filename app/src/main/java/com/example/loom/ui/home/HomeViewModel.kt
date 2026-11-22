@@ -164,7 +164,7 @@ class HomeViewModel @Inject constructor(
 
     val pinnedHomeCards: StateFlow<List<Pair<SandboxSpace, SandboxBlock>>> = allSpaces.map { spaces ->
         val cards = mutableListOf<Pair<SandboxSpace, SandboxBlock>>()
-        spaces.filter { !it.isDeleted }.forEach { space ->
+        spaces.filter { !it.isDeleted && !it.isPrivate }.forEach { space ->
             val foundCards = com.example.loom.ui.sandbox.findPinnedCards(space.blocks, "Home")
             foundCards.forEach { card -> cards.add(Pair(space, card)) }
         }

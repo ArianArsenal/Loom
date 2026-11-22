@@ -61,7 +61,8 @@ class HealthViewModel @Inject constructor(
 
     val pinnedHealthCards: StateFlow<List<Pair<com.example.loom.data.models.SandboxSpace, com.example.loom.data.models.SandboxBlock>>> = allSpaces.map { spaces ->
         val cards = mutableListOf<Pair<com.example.loom.data.models.SandboxSpace, com.example.loom.data.models.SandboxBlock>>()
-        spaces.filter { !it.isDeleted }.forEach { space ->
+        // Private spaces stay behind the lock: never surface their cards on other tabs
+        spaces.filter { !it.isDeleted && !it.isPrivate }.forEach { space ->
             val foundCards = com.example.loom.ui.sandbox.findPinnedCards(space.blocks, "Health")
             foundCards.forEach { card -> cards.add(Pair(space, card)) }
         }

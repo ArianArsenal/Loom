@@ -169,7 +169,7 @@ fun SandboxMainScreen(
             confirmButton = {
                 if (!savedPin.isNullOrBlank()) {
                     Button(onClick = {
-                        if (passwordInput == savedPin) {
+                        if (SecurityManager.verifyPin(context, passwordInput)) {
                             pendingNavigation?.let { (id, isNested) ->
                                 if (isNested) spaceBackstack = spaceBackstack + id
                                 else {

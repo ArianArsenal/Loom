@@ -136,7 +136,7 @@ fun NoteListScreen(
             confirmButton = {
                 if (!savedPin.isNullOrBlank()) {
                     Button(onClick = {
-                        if (passwordInput == savedPin) {
+                        if (SecurityManager.verifyPin(context, passwordInput)) {
                             onNoteClick(noteToUnlock!!)
                             noteToUnlock = null
                             passwordInput = ""

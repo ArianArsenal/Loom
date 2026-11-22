@@ -71,11 +71,13 @@ fun SettingsScreen(
     val isCycling by healthViewModel.calorieCycling.collectAsState()
 
     var currentPin by remember { mutableStateOf<String?>(null) }
+    var isPinLoaded by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
             val pin = SecurityManager.getPin(context)
             withContext(Dispatchers.Main) {
                 currentPin = pin
+                isPinLoaded = true
             }
         }
     }
@@ -327,7 +329,7 @@ fun SettingsScreen(
             },
             confirmButton = {
                 Button(onClick = {
-                    if (pinInput == currentPin) {
+                    if (SecurityManager.verifyPin(context, pinInput)) {
                         showAuthPinDialog = false
                         pinInput = ""
                         pinError = false
@@ -434,6 +436,7 @@ fun SettingsScreen(
                                     }
                                 }
                             },
+                            enabled = isPinLoaded,
                             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp)
                         ) {
                             Text(if (currentPin.isNullOrBlank()) "Setup" else "Manage")
