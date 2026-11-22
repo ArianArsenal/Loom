@@ -5,9 +5,7 @@ import coil.ImageLoader
 import coil.ImageLoaderFactory
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
-import com.example.loom.data.local.dao.SandboxDao
-import com.example.loom.data.local.dao.TrackerDao
-import com.example.loom.data.local.preferences.UserPreferences
+import com.example.loom.data.backup.BackupManager
 import com.example.loom.util.EmergencyCrashHandler
 import dagger.hilt.android.HiltAndroidApp
 import javax.inject.Inject
@@ -16,9 +14,7 @@ import javax.inject.Inject
 class LoomApplication : Application(), ImageLoaderFactory {
 
     // Inject the databases globally so the Crash Handler can reach them
-    @Inject lateinit var trackerDao: TrackerDao
-    @Inject lateinit var sandboxDao: SandboxDao
-    @Inject lateinit var userPreferences: UserPreferences
+    @Inject lateinit var backupManager: BackupManager
 
     override fun onCreate() {
         super.onCreate()
@@ -30,9 +26,7 @@ class LoomApplication : Application(), ImageLoaderFactory {
         Thread.setDefaultUncaughtExceptionHandler(
             EmergencyCrashHandler(
                 context = this,
-                trackerDao = trackerDao,
-                sandboxDao = sandboxDao,
-                userPreferences = userPreferences,
+                backupManager = backupManager,
                 defaultHandler = defaultHandler
             )
         )

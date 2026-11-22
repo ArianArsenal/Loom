@@ -84,6 +84,7 @@ fun SettingsScreen(
     var showSetPinDialog by remember { mutableStateOf(false) }
     var showAuthPinDialog by remember { mutableStateOf(false) }
     var showWipeConfirmDialog by remember { mutableStateOf(false) }
+    var showImportConfirmDialog by remember { mutableStateOf(false) }
     var showEditProfileDialog by remember { mutableStateOf(false) }
 
     var pinInput by remember { mutableStateOf("") }
@@ -203,6 +204,21 @@ fun SettingsScreen(
         )
     }
 
+    if (showImportConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showImportConfirmDialog = false },
+            title = { Text("Replace All Data?") },
+            text = { Text("Importing replaces everything currently in Loom with the backup's contents. A safety copy of your current data is kept automatically.") },
+            confirmButton = {
+                Button(onClick = {
+                    showImportConfirmDialog = false
+                    importLauncher.launch(arrayOf("application/json"))
+                }) { Text("Choose Backup") }
+            },
+            dismissButton = { TextButton(onClick = { showImportConfirmDialog = false }) { Text("Cancel") } }
+        )
+    }
+
     if (showWipeConfirmDialog) {
         AlertDialog(
             onDismissRequest = { showWipeConfirmDialog = false },
@@ -212,7 +228,7 @@ fun SettingsScreen(
             confirmButton = {
                 Button(
                     onClick = {
-                        viewModel.wipeAllData(
+                        viewModel.wipeAllData(context,
                             onSuccess = {
                                 showWipeConfirmDialog = false
                                 Toast.makeText(context, "All data wiped successfully", Toast.LENGTH_SHORT).show()
@@ -567,7 +583,7 @@ fun SettingsScreen(
                     HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.padding(horizontal = 16.dp))
 
                     Row(
-                        modifier = Modifier.padding(16.dp).fillMaxWidth().clickable { importLauncher.launch(arrayOf("application/json")) },
+                        modifier = Modifier.padding(16.dp).fillMaxWidth().clickable { showImportConfirmDialog = true },
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(Icons.Default.CloudDownload, contentDescription = "Import", tint = MaterialTheme.colorScheme.primary)

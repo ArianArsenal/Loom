@@ -65,6 +65,7 @@ data class SpaceBackupDto(
 
 @Keep
 data class LoomBackup(
+    val backupVersion: Int = 1,
     val dailyRecords: List<DailyRecord> = emptyList(),
     val tasks: List<Task> = emptyList(),
     val taskSections: List<TaskSection> = emptyList(),
@@ -84,7 +85,10 @@ data class LoomBackup(
     val defaultWaterIncrement: Int = 250,
     val appTheme: String = "System",
     val isBiometricEnabled: Boolean = true,
-    val dayRolloverHour: Int = 2 // --- NEW: Added to Backup ---
+    val dayRolloverHour: Int = 2, // --- NEW: Added to Backup ---
+    // v2+: every DataStore setting and the template store, restored verbatim
+    val preferences: List<com.example.loom.data.backup.PrefBackup>? = null,
+    val templatePrefs: List<com.example.loom.data.backup.PrefBackup>? = null
 )
 
 @HiltViewModel
@@ -92,7 +96,8 @@ class HomeViewModel @Inject constructor(
     private val repository: TrackerRepository,
     private val userPreferences: UserPreferences,
     private val trackerDao: TrackerDao,
-    private val sandboxDao: SandboxDao
+    private val sandboxDao: SandboxDao,
+    private val backupManager: com.example.loom.data.backup.BackupManager
 ) : ViewModel() {
 
     // --- User Name State ---
@@ -260,47 +265,8 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             _isLoading.value = true
             try {
-                val activeSpaces = sandboxDao.getActiveSpaces().first().map { it.toDomainModel() }
-                val backupSpaces = activeSpaces.map { space ->
-                    SpaceBackupDto(
-                        id = space.id, title = space.title, icon = space.icon, bannerUrl = space.bannerUrl,
-                        updatedAt = space.updatedAt, isPinned = space.isPinned,
-                        tagsJson = Json.encodeToString(space.tags),
-                        isPrivate = space.isPrivate, isDeleted = space.isDeleted,
-                        blocks = space.blocks
-                    )
-                }
-
-                val backup = LoomBackup(
-                    dailyRecords = trackerDao.getAllDailyRecords().first(),
-                    tasks = trackerDao.getAllTasks().first(),
-                    taskSections = trackerDao.getAllTaskSections().first(),
-                    exercises = trackerDao.getAllExercises().first(),
-                    workoutPresets = trackerDao.getAllPresets().first(),
-                    exerciseTemplates = trackerDao.getAllTemplates().first(),
-                    diaryNotes = trackerDao.getAllDiaryNotes().first(),
-                    noteTags = trackerDao.getAllNoteTags().first(),
-                    skincareProducts = trackerDao.getAllSkincareProducts().first(),
-                    skincareRoutines = trackerDao.getAllSkincareRoutines().first(),
-                    foodItems = trackerDao.getUserCreatedFoodItems().first(),
-                    notionSpaces = backupSpaces,
-                    targetCalories = targetCalories.value,
-                    targetProtein = targetProtein.value,
-                    targetCarbs = targetCarbs.value,
-                    targetFats = targetFats.value,
-                    defaultWaterIncrement = defaultWaterIncrement.value,
-                    appTheme = appTheme.value,
-                    isBiometricEnabled = isBiometricEnabled.value,
-                    dayRolloverHour = dayRolloverHour.value // --- NEW: Added to JSON payload ---
-                )
-
-                val gson = com.google.gson.GsonBuilder().setPrettyPrinting().create()
-                val jsonStr = gson.toJson(backup)
-
-                context.contentResolver.openOutputStream(uri)?.use { outputStream ->
-                    outputStream.write(jsonStr.toByteArray())
-                }
-
+                val out = context.contentResolver.openOutputStream(uri) ?: error("Could not open file")
+                out.use { backupManager.writeBackup(it) }
                 launch(Dispatchers.Main) { onSuccess() }
             } catch (e: Exception) {
                 launch(Dispatchers.Main) { onError(e.message ?: "Unknown Error") }
@@ -314,61 +280,17 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             _isLoading.value = true
             try {
-                context.contentResolver.openInputStream(uri)?.use { inputStream ->
-                    val jsonStr = inputStream.bufferedReader().use { it.readText() }
-                    val backup = com.google.gson.Gson().fromJson(jsonStr, LoomBackup::class.java)
+                val input = context.contentResolver.openInputStream(uri) ?: error("Could not open file")
+                val jsonStr = input.bufferedReader().use { it.readText() }
+                backupManager.restore(jsonStr)
 
-                    // 1. WIPE SLATE CLEAN TO PREVENT DUPLICATES
-                    trackerDao.wipeDailyRecords()
-                    trackerDao.wipeTasks()
-                    trackerDao.wipeTaskSections()
-                    trackerDao.wipeExercises()
-                    trackerDao.wipeWorkoutPresets()
-                    trackerDao.wipeExerciseTemplates()
-                    trackerDao.wipeDiaryNotes()
-                    trackerDao.wipeNoteTags()
-                    trackerDao.wipeSkincareProducts()
-                    trackerDao.wipeSkincareRoutines()
-                    trackerDao.wipeUserCreatedFoodItems()
-                    sandboxDao.wipeAllSpaces()
+                repository.initializeTodayRecord()
+                repository.prepopulateTemplatesIfEmpty()
+                repository.prepopulateTagsIfEmpty()
+                repository.prepopulateTaskSectionsIfEmpty()
+                repository.prepopulateSkincareProductsIfEmpty()
 
-                    // 2. BULK INSERT FROM BACKUP
-                    trackerDao.insertDailyRecords(backup.dailyRecords)
-                    trackerDao.insertTasks(backup.tasks)
-                    trackerDao.insertTaskSections(backup.taskSections)
-                    trackerDao.insertExercises(backup.exercises)
-                    trackerDao.insertPresets(backup.workoutPresets)
-                    trackerDao.insertTemplates(backup.exerciseTemplates)
-                    trackerDao.insertDiaryNotes(backup.diaryNotes)
-                    trackerDao.insertNoteTags(backup.noteTags)
-                    trackerDao.insertSkincareProducts(backup.skincareProducts)
-                    trackerDao.insertSkincareRoutines(backup.skincareRoutines)
-                    trackerDao.insertFoodItems(backup.foodItems)
-
-                    // 3. RESTORE SPACES
-                    backup.notionSpaces.forEach { dto ->
-                        val domainSpace = dto.toDomainModel()
-                        val spaceEntity = NotionSpaceEntity.fromDomainModel(domainSpace)
-                        val blockEntities = com.example.loom.ui.sandbox.flattenTree(domainSpace.blocks, domainSpace.id)
-                        sandboxDao.saveSpaceWithBlocks(spaceEntity, blockEntities)
-                    }
-
-                    // 4. RESTORE PREFERENCES
-                    userPreferences.saveTargets(backup.targetCalories, backup.targetProtein, backup.targetCarbs, backup.targetFats)
-                    userPreferences.saveDefaultWaterIncrement(backup.defaultWaterIncrement)
-                    userPreferences.saveAppTheme(backup.appTheme)
-                    userPreferences.setBiometricEnabled(backup.isBiometricEnabled)
-                    userPreferences.saveDayRolloverHour(backup.dayRolloverHour) // --- NEW: Restore Rollover Hour ---
-
-                    // 5. FILL GAPS
-                    repository.initializeTodayRecord()
-                    repository.prepopulateTemplatesIfEmpty()
-                    repository.prepopulateTagsIfEmpty()
-                    repository.prepopulateTaskSectionsIfEmpty()
-                    repository.prepopulateSkincareProductsIfEmpty()
-
-                    launch(Dispatchers.Main) { onSuccess() }
-                }
+                launch(Dispatchers.Main) { onSuccess() }
             } catch (e: Exception) {
                 launch(Dispatchers.Main) { onError(e.message ?: "Invalid Backup File") }
             } finally {
@@ -377,10 +299,13 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    fun wipeAllData(onSuccess: () -> Unit, onError: (String) -> Unit) {
+    fun wipeAllData(context: Context, onSuccess: () -> Unit, onError: (String) -> Unit) {
         viewModelScope.launch(Dispatchers.IO) {
             _isLoading.value = true
             try {
+                // Last-resort copy in app storage in case the wipe was a mistake
+                backupManager.writeSafetyCopy("pre-wipe")
+
                 trackerDao.wipeDailyRecords()
                 trackerDao.wipeTasks()
                 trackerDao.wipeTaskSections()
@@ -394,11 +319,9 @@ class HomeViewModel @Inject constructor(
                 trackerDao.wipeUserCreatedFoodItems()
                 sandboxDao.wipeAllSpaces()
 
-                userPreferences.saveTargets(2800, 140, 350, 75)
-                userPreferences.saveDefaultWaterIncrement(250)
-                userPreferences.saveAppTheme("System")
-                userPreferences.setBiometricEnabled(true)
-                userPreferences.saveDayRolloverHour(2) // --- NEW: Reset to 2 AM default ---
+                // "Wipe database and preferences" must also clear bio data, supplements, name and PIN
+                userPreferences.clearAll()
+                com.example.loom.util.SecurityManager.clearPin(context)
 
                 repository.initializeTodayRecord()
                 repository.prepopulateTemplatesIfEmpty()

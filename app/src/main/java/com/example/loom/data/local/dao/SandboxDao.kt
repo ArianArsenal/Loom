@@ -17,6 +17,10 @@ interface SandboxDao {
     @Query("SELECT * FROM notion_spaces WHERE isDeleted = 1")
     fun getTrashedSpaces(): Flow<List<SpaceWithBlocks>>
 
+    @Transaction
+    @Query("SELECT * FROM notion_spaces")
+    suspend fun getAllSpacesOnce(): List<SpaceWithBlocks>
+
     // 2. Base Saves
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertSpace(space: NotionSpaceEntity)

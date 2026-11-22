@@ -41,12 +41,18 @@ class MainActivity : FragmentActivity() {
         if (uri != null) {
             val file = File(cacheDir, "emergency_backup.json")
             if (file.exists()) {
-                contentResolver.openOutputStream(uri)?.use { out ->
-                    file.inputStream().use { input ->
-                        input.copyTo(out)
+                // A failure here must not crash the app again and start a crash loop
+                try {
+                    contentResolver.openOutputStream(uri)?.use { out ->
+                        file.inputStream().use { input ->
+                            input.copyTo(out)
+                        }
                     }
+                    file.delete()
+                } catch (e: Exception) {
+                    android.util.Log.e("MainActivity", "Emergency backup export failed", e)
+                    android.widget.Toast.makeText(this, "Could not save backup: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
                 }
-                file.delete()
             }
         }
     }

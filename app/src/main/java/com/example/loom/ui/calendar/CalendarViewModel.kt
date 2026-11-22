@@ -229,7 +229,7 @@ class CalendarViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     fun updateFoodSearchQuery(query: String) { _foodSearchQuery.value = query }
-    fun addFoodItem(food: FoodItem) = viewModelScope.launch { repository.insertFoodItem(food) }
+    fun addFoodItem(food: FoodItem) = viewModelScope.launch { repository.insertFoodItem(food.copy(isUserCreated = true)) }
     fun deleteFoodItem(food: FoodItem) = viewModelScope.launch { repository.deleteFoodItem(food) }
 
     fun logFoodItemToPast(food: FoodItem, servings: Float) = viewModelScope.launch {

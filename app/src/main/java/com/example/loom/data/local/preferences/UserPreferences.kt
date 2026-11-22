@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.datastore.preferences.core.*
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.encodeToString
 import javax.inject.Inject
@@ -270,4 +271,31 @@ class UserPreferences @Inject constructor(private val context: Context) {
     suspend fun saveCustomWaterContainers(json: String) { context.dataStore.edit { it[CUSTOM_WATER_CONTAINERS] = json } }
     suspend fun saveTargets(calories: Int, protein: Int, carbs: Int, fats: Int) { context.dataStore.edit { prefs -> prefs[TARGET_CALORIES] = calories; prefs[TARGET_PROTEIN] = protein; prefs[TARGET_CARBS] = carbs; prefs[TARGET_FATS] = fats } }
     suspend fun setBiometricEnabled(enabled: Boolean) { context.dataStore.edit { it[BIOMETRIC_ENABLED] = enabled } }
+
+    // --- Backup support: every stored setting as (key, type, value) so restores are lossless ---
+    suspend fun snapshot(): List<com.example.loom.data.backup.PrefBackup> =
+        context.dataStore.data.first().asMap().mapNotNull { (key, value) ->
+            com.example.loom.data.backup.PrefBackup.of(key.name, value)
+        }
+
+    suspend fun restoreSnapshot(entries: List<com.example.loom.data.backup.PrefBackup>) {
+        context.dataStore.edit { prefs ->
+            prefs.clear()
+            entries.forEach { e ->
+                when (e.type) {
+                    "int" -> e.value.toIntOrNull()?.let { prefs[intPreferencesKey(e.key)] = it }
+                    "long" -> e.value.toLongOrNull()?.let { prefs[longPreferencesKey(e.key)] = it }
+                    "float" -> e.value.toFloatOrNull()?.let { prefs[floatPreferencesKey(e.key)] = it }
+                    "double" -> e.value.toDoubleOrNull()?.let { prefs[doublePreferencesKey(e.key)] = it }
+                    "bool" -> prefs[booleanPreferencesKey(e.key)] = e.value.toBoolean()
+                    "string" -> prefs[stringPreferencesKey(e.key)] = e.value
+                    "stringSet" -> prefs[stringSetPreferencesKey(e.key)] = e.decodeSet()
+                }
+            }
+        }
+    }
+
+    suspend fun clearAll() {
+        context.dataStore.edit { it.clear() }
+    }
 }
