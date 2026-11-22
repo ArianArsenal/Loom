@@ -175,7 +175,7 @@ fun SandboxHubScreen(
                 val filteredSpaces = remember(allSpaces, searchQuery, selectedTag) {
                     allSpaces.filter { space ->
                         val matchesSearch = space.title.contains(searchQuery, ignoreCase = true) ||
-                                space.blocks.any { it.content.contains(searchQuery, ignoreCase = true) }
+                                space.blocks.any { it.containsText(searchQuery) }
                         val matchesTag = selectedTag == null || space.tags.contains(selectedTag)
                         matchesSearch && matchesTag
                     }.sortedWith(compareByDescending<SandboxSpace> { it.isPinned }.thenByDescending { it.updatedAt })
@@ -837,3 +837,7 @@ fun SandboxHubScreen(
         )
     }
 }
+
+/** Search a block and everything nested inside it (toggles, cards, ...). */
+private fun SandboxBlock.containsText(query: String): Boolean =
+    content.contains(query, ignoreCase = true) || children.any { it.containsText(query) }

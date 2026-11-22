@@ -30,6 +30,13 @@ interface SandboxDao {
     @Query("SELECT * FROM notion_spaces WHERE id = :spaceId")
     fun observeSpace(spaceId: String): Flow<SpaceWithBlocks?>
 
+    /** Spaces containing a link block that points at [spaceId]. */
+    @Query("""
+        SELECT DISTINCT s.* FROM notion_spaces s JOIN notion_blocks b ON b.spaceId = s.id
+        WHERE b.type = 'SPACE' AND b.url = :spaceId AND s.isDeleted = 0 AND s.id != :spaceId
+    """)
+    fun getBacklinks(spaceId: String): Flow<List<NotionSpaceEntity>>
+
     @Query("SELECT * FROM notion_blocks WHERE spaceId = :spaceId")
     suspend fun getBlocksForSpace(spaceId: String): List<SandboxBlockEntity>
 

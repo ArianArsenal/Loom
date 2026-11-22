@@ -255,6 +255,38 @@ fun AudioBlockRenderer(
             var recorder by remember { mutableStateOf<android.media.MediaRecorder?>(null) }
             var recordingFile by remember { mutableStateOf<File?>(null) }
 
+            fun startRecording() {
+                val file = File(context.filesDir, "media_${java.util.UUID.randomUUID()}.m4a")
+                val r = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) android.media.MediaRecorder(context)
+                        else @Suppress("DEPRECATION") android.media.MediaRecorder()
+                try {
+                    r.setAudioSource(android.media.MediaRecorder.AudioSource.MIC)
+                    r.setOutputFormat(android.media.MediaRecorder.OutputFormat.MPEG_4)
+                    r.setAudioEncoder(android.media.MediaRecorder.AudioEncoder.AAC)
+                    r.setAudioEncodingBitRate(128_000)
+                    r.setAudioSamplingRate(44_100)
+                    r.setOutputFile(file.absolutePath)
+                    r.prepare()
+                    r.start()
+                    recorder = r
+                    recordingFile = file
+                    isRecording = true
+                } catch (e: Exception) {
+                    r.release()
+                    file.delete()
+                    android.widget.Toast.makeText(context, "Couldn't start recording", android.widget.Toast.LENGTH_SHORT).show()
+                }
+            }
+
+            // The shared launcher's result was ignored before, so "Record" never recorded
+            val micPermission = androidx.activity.compose.rememberLauncherForActivityResult(
+                androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+            ) { granted -> if (granted) startRecording() }
+
+            DisposableEffect(Unit) {
+                onDispose { try { recorder?.stop() } catch (_: Exception) {}; recorder?.release() }
+            }
+
             Row(modifier = Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
                 if (isRecording) {
                     Button(onClick = {
@@ -265,7 +297,8 @@ fun AudioBlockRenderer(
                     }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) { Text("Stop Recording") }
                 } else {
                     Button(onClick = {
-                        audioLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+                        val granted = androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.RECORD_AUDIO) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                        if (granted) startRecording() else micPermission.launch(android.Manifest.permission.RECORD_AUDIO)
                     }) { Text("🎤 Record") }
                     Button(onClick = { mediaLauncher.launch("audio/*") }) { Text("Upload") }
                 }

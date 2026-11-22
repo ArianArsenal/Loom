@@ -1,5 +1,8 @@
 package com.example.loom.ui.sandbox
 
+import kotlinx.coroutines.flow.collectLatest
+import androidx.compose.material.icons.automirrored.filled.Redo
+import androidx.compose.material.icons.automirrored.filled.Undo
 import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -64,7 +67,7 @@ import kotlinx.coroutines.launch
 import java.io.InputStreamReader
 import java.util.UUID
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Suppress("DiscouragedApi") // --- FIX: Tell compiler dynamic resource reflection is intentional ---
 @Composable
 fun NotionCanvasScreen(
@@ -73,7 +76,8 @@ fun NotionCanvasScreen(
     onBack: () -> Unit,
     onNavigateToSpace: (String) -> Unit,
     onCreateLinkedSpace: () -> String,
-    onSave: (SandboxSpace) -> Unit
+    onSave: (SandboxSpace) -> Unit,
+    backlinks: List<SandboxSpace> = emptyList()
 ) {
     var title by remember { mutableStateOf(space.title) }
     var spaceIcon by remember { mutableStateOf(space.icon) }
@@ -149,6 +153,44 @@ fun NotionCanvasScreen(
             }
     }
 
+    // Undo/redo: snapshots of the block list, recorded after edits settle (so a burst of typing
+    // is one step). Restoring a snapshot goes through the normal autosave.
+    val undoStack = remember(currentSpaceId) { ArrayDeque<List<SandboxBlock>>() }
+    val redoStack = remember(currentSpaceId) { ArrayDeque<List<SandboxBlock>>() }
+    var historyVersion by remember { mutableIntStateOf(0) }
+    var lastSnapshot by remember(currentSpaceId) { mutableStateOf(blocks.toList()) }
+    LaunchedEffect(currentSpaceId) {
+        snapshotFlow { blocks.toList() }.collectLatest { current ->
+            kotlinx.coroutines.delay(700)
+            if (current != lastSnapshot) {
+                undoStack.addLast(lastSnapshot)
+                if (undoStack.size > 50) undoStack.removeFirst()
+                redoStack.clear()
+                lastSnapshot = current
+                historyVersion++
+            }
+        }
+    }
+    fun restore(snapshot: List<SandboxBlock>) {
+        focusManager.clearFocus()
+        blocks.clear()
+        blocks.addAll(snapshot)
+        lastSnapshot = snapshot
+        historyVersion++
+    }
+    val undo = {
+        undoStack.removeLastOrNull()?.let { prev ->
+            redoStack.addLast(blocks.toList())
+            restore(prev)
+        }
+    }
+    val redo = {
+        redoStack.removeLastOrNull()?.let { next ->
+            undoStack.addLast(blocks.toList())
+            restore(next)
+        }
+    }
+
     val iconParts = spaceIcon.split("|")
     val isCustomIcon = iconParts.size == 2
     val iconName = if (isCustomIcon) iconParts[0] else ""
@@ -204,6 +246,20 @@ fun NotionCanvasScreen(
                                 Text("Change Cover", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                             }
                             Spacer(Modifier.width(12.dp))
+                        }
+
+                        @Suppress("UNUSED_EXPRESSION") historyVersion // re-read so the buttons update
+                        val barTint = if (bannerUrl.isNotEmpty()) Color.White else MaterialTheme.colorScheme.onSurface
+                        val barBg = if (bannerUrl.isNotEmpty()) Color.Black.copy(alpha = 0.4f) else Color.Transparent
+                        if (undoStack.isNotEmpty() || redoStack.isNotEmpty()) {
+                            IconButton(onClick = { undo() }, enabled = undoStack.isNotEmpty(), modifier = Modifier.background(barBg, CircleShape).size(40.dp)) {
+                                Icon(Icons.AutoMirrored.Filled.Undo, "Undo", tint = barTint.copy(alpha = if (undoStack.isNotEmpty()) 1f else 0.4f))
+                            }
+                            Spacer(Modifier.width(8.dp))
+                            IconButton(onClick = { redo() }, enabled = redoStack.isNotEmpty(), modifier = Modifier.background(barBg, CircleShape).size(40.dp)) {
+                                Icon(Icons.AutoMirrored.Filled.Redo, "Redo", tint = barTint.copy(alpha = if (redoStack.isNotEmpty()) 1f else 0.4f))
+                            }
+                            Spacer(Modifier.width(8.dp))
                         }
 
                         Box {
@@ -343,6 +399,10 @@ fun NotionCanvasScreen(
                             BlockRenderer(
                                 block = block,
                                 numberIndex = currentNumberedIndex,
+                                onDuplicate = {
+                                    val index = blocks.indexOfFirst { it.id == block.id }
+                                    if (index != -1) blocks.add(index + 1, reIdBlocks(listOf(blocks[index])).first())
+                                },
                                 allSpaces = allSpaces,
                                 currentSpaceId = currentSpaceId,
                                 recentTableColors = recentTableColors,
@@ -423,6 +483,20 @@ fun NotionCanvasScreen(
                         }
                     }
                     Spacer(modifier = Modifier.height(4.dp))
+                }
+
+                if (backlinks.isNotEmpty()) {
+                    HorizontalDivider(modifier = Modifier.padding(top = 24.dp, bottom = 8.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                    Text("Linked from", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        backlinks.forEach { linked ->
+                            AssistChip(
+                                onClick = { onNavigateToSpace(linked.id) },
+                                label = { Text(linked.title.ifBlank { "Untitled Space" }) },
+                                leadingIcon = { Text(if (linked.icon.contains("|")) "📄" else linked.icon.ifEmpty { "📄" }) }
+                            )
+                        }
+                    }
                 }
             }
 

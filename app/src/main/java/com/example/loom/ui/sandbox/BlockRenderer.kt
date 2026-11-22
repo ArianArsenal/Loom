@@ -1,5 +1,8 @@
 package com.example.loom.ui.sandbox
 
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.animateDpAsState
@@ -97,7 +100,8 @@ fun BlockRenderer(
     onCreateLinkedSpace: () -> String,
     onUpdate: (SandboxBlock) -> Unit,
     onSplitBlock: (String, BlockType, String) -> Unit,
-    onDeleteBlock: (remainder: String, deleteEntirely: Boolean) -> Unit
+    onDeleteBlock: (remainder: String, deleteEntirely: Boolean) -> Unit,
+    onDuplicate: (() -> Unit)? = null
 ) {
     val currentBlock by rememberUpdatedState(block)
     val context = LocalContext.current
@@ -381,7 +385,22 @@ fun BlockRenderer(
                     },
                 contentAlignment = Alignment.TopStart
             ) {
-                if (showHandle) { Icon(Icons.Default.DragIndicator, "Drag to reorder", tint = Color.LightGray, modifier = Modifier.size(20.dp)) }
+                // Tap the handle for block actions; drag it to reorder
+                var showHandleMenu by remember { mutableStateOf(false) }
+                if (showHandle) {
+                    Icon(
+                        Icons.Default.DragIndicator, "Drag to reorder, tap for options", tint = Color.LightGray,
+                        modifier = Modifier.size(20.dp).pointerInput(block.id) {
+                            if (!isReadOnly) detectTapGestures(onTap = { showHandleMenu = true })
+                        }
+                    )
+                }
+                DropdownMenu(expanded = showHandleMenu, onDismissRequest = { showHandleMenu = false }) {
+                    if (onDuplicate != null) {
+                        DropdownMenuItem(text = { Text("Duplicate") }, onClick = { showHandleMenu = false; onDuplicate() })
+                    }
+                    DropdownMenuItem(text = { Text("Delete", color = MaterialTheme.colorScheme.error) }, onClick = { showHandleMenu = false; onDeleteBlock("", true) })
+                }
             }
         }
 

@@ -49,6 +49,9 @@ class SandboxViewModel @Inject constructor(
         .map { it?.toDomainModel() }
         .flowOn(Dispatchers.Default)
 
+    fun backlinks(spaceId: String): Flow<List<SandboxSpace>> = sandboxDao.getBacklinks(spaceId)
+        .map { rows -> rows.map { it.toDomainModelWithoutBlocks() } }
+
     val trashedSpaces: StateFlow<List<SandboxSpace>> = sandboxDao.getTrashedSpaces()
         .map { entities -> entities.map { it.toDomainModel() } }
         .flowOn(Dispatchers.Default)

@@ -224,6 +224,7 @@ fun SandboxMainScreen(
             NotionCanvasScreen(
                 space = space,
                 allSpaces = spaceSummaries,
+                backlinks = remember(space.id) { viewModel.backlinks(space.id) }.collectAsState(initial = emptyList()).value,
                 onBack = {
                     if (spaceBackstack.size > 1) {
                         spaceBackstack = spaceBackstack.dropLast(1)
