@@ -153,8 +153,10 @@ fun BlockRenderer(
 
     val audioLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
+    // True when the text field itself has focus (e.g. the user tapped it): then keep their cursor
+    var fieldHasFocus by remember { mutableStateOf(false) }
     LaunchedEffect(isFocused, block.type) {
-        if (isFocused && !isReadOnly) {
+        if (isFocused && !isReadOnly && !fieldHasFocus) {
             try {
                 focusRequester.requestFocus()
                 keyboardController?.show()
@@ -303,7 +305,10 @@ fun BlockRenderer(
         .fillMaxWidth()
         .defaultMinSize(minHeight = 24.dp)
         .focusRequester(focusRequester)
-        .onFocusChanged { state -> if (state.isFocused) onFocusRequest(block.id) }
+        .onFocusChanged { state ->
+            fieldHasFocus = state.isFocused
+            if (state.isFocused) onFocusRequest(block.id)
+        }
 
     val placeholderUI: @Composable (innerTextField: @Composable () -> Unit) -> Unit = { inner ->
         Box {

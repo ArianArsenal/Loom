@@ -1,5 +1,6 @@
 package com.example.loom.ui.sandbox.blocks
 
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -138,40 +139,58 @@ fun SketchBlockRenderer(
                 )
             }
 
-            var currentStroke by remember { mutableStateOf<SketchStroke?>(null) }
+            // Points of the stroke being drawn (appended in place, not copied per drag event)
+            val currentPoints = remember { mutableStateListOf<Offset>() }
+            var currentStyle by remember { mutableStateOf(currentColor to currentWidth) }
             // The drag handler lives across recompositions: always copy the newest block
             val latestBlock by rememberUpdatedState(block)
 
             Surface(modifier = Modifier.fillMaxWidth().height(300.dp), shape = RoundedCornerShape(12.dp), border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant), color = Color(0xFFFAFAFA)) {
-                Canvas(modifier = Modifier.fillMaxSize().pointerInput(Unit) {
-                    detectDragGestures(
-                        onDragStart = { offset ->
-                            currentStroke = SketchStroke(color = currentColor, width = currentWidth, points = listOf(SketchPoint(offset.x, offset.y)))
-                        },
-                        onDrag = { change, _ ->
-                            currentStroke = currentStroke?.let { it.copy(points = it.points + SketchPoint(change.position.x, change.position.y)) }
-                        },
-                        onDragEnd = {
-                            currentStroke?.let { stroke ->
-                                val newStrokes = localStrokes + stroke
-                                localStrokes = newStrokes
-                                onUpdate(latestBlock.copy(sketchStrokes = newStrokes))
-                                currentStroke = null
-                            }
+                Canvas(modifier = Modifier.fillMaxSize()
+                    // Finished strokes become Paths once per change/size, not on every frame
+                    .drawWithCache {
+                        val finished = localStrokes.filter { it.points.size > 1 }.map { stroke ->
+                            Triple(sketchPath(stroke.points, size), parseStrokeColor(stroke.color), stroke.width)
                         }
-                    )
-                }) {
-                    val drawStroke = { stroke: SketchStroke ->
-                        if (stroke.points.size > 1) {
-                            val path = Path().apply {
-                                moveTo(stroke.points.first().x, stroke.points.first().y)
-                                stroke.points.drop(1).forEach { lineTo(it.x, it.y) }
+                        onDrawBehind {
+                            finished.forEach { (path, color, width) ->
+                                drawPath(path, color, style = Stroke(width = width, cap = StrokeCap.Round, join = StrokeJoin.Round))
                             }
-                            drawPath(path, color = try { Color(stroke.color.toColorInt()) } catch(_: Exception){Color.Black}, style = Stroke(width = stroke.width, cap = StrokeCap.Round, join = StrokeJoin.Round))
                         }
                     }
-                    localStrokes.forEach { drawStroke(it) }
-                    currentStroke?.let { drawStroke(it) }
+                    .pointerInput(Unit) {
+                        detectDragGestures(
+                            onDragStart = { offset ->
+                                currentPoints.clear()
+                                currentPoints.add(offset)
+                                currentStyle = currentColor to currentWidth
+                            },
+                            onDrag = { change, _ -> currentPoints.add(change.position) },
+                            onDragEnd = {
+                                if (currentPoints.isNotEmpty()) {
+                                    // Stored as fractions of the canvas so drawings survive rotation/other screens
+                                    val w = size.width.toFloat().coerceAtLeast(1f)
+                                    val h = size.height.toFloat().coerceAtLeast(1f)
+                                    val stroke = SketchStroke(
+                                        color = currentStyle.first, width = currentStyle.second,
+                                        points = currentPoints.map { SketchPoint(it.x / w, it.y / h) }
+                                    )
+                                    val newStrokes = localStrokes + stroke
+                                    localStrokes = newStrokes
+                                    onUpdate(latestBlock.copy(sketchStrokes = newStrokes))
+                                    currentPoints.clear()
+                                }
+                            }
+                        )
+                    }
+                ) {
+                    if (currentPoints.size > 1) {
+                        val path = Path().apply {
+                            moveTo(currentPoints[0].x, currentPoints[0].y)
+                            for (i in 1 until currentPoints.size) lineTo(currentPoints[i].x, currentPoints[i].y)
+                        }
+                        drawPath(path, parseStrokeColor(currentStyle.first), style = Stroke(width = currentStyle.second, cap = StrokeCap.Round, join = StrokeJoin.Round))
+                    }
                 }
             }
         }
@@ -222,3 +241,19 @@ fun SketchBlockRenderer(
         )
     }
 }
+
+/**
+ * Builds a stroke path. New strokes store points as 0..1 fractions of the canvas; strokes saved
+ * by older versions used raw pixels (values well above 1) and are drawn as they were.
+ */
+private fun sketchPath(points: List<SketchPoint>, size: androidx.compose.ui.geometry.Size): Path {
+    val legacyPixels = points.any { it.x > 1.5f || it.y > 1.5f }
+    val sx = if (legacyPixels) 1f else size.width
+    val sy = if (legacyPixels) 1f else size.height
+    return Path().apply {
+        moveTo(points[0].x * sx, points[0].y * sy)
+        for (i in 1 until points.size) lineTo(points[i].x * sx, points[i].y * sy)
+    }
+}
+
+private fun parseStrokeColor(hex: String): Color = try { Color(hex.toColorInt()) } catch (_: Exception) { Color.Black }

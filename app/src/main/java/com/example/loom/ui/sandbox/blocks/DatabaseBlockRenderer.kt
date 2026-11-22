@@ -148,8 +148,10 @@ fun DatabaseBlockRenderer(
                                         // Rows converted from a Table can be shorter than the schema
                                         val newWidths = colWidths.toMutableList().apply { if (pIndex < size) removeAt(pIndex) }
                                         val newRows = rows.map { it.toMutableList().apply { if (pIndex < size) removeAt(pIndex) } }
+                                        // Calculations are keyed by column index: drop the deleted one, shift later ones left
+                                        val newCalcs = schema.calculations.filterKeys { it != pIndex }.mapKeys { (k, _) -> if (k > pIndex) k - 1 else k }
                                         onUpdate(block.copy(
-                                            secondaryContent = Json.encodeToString(schema.copy(properties = newProps)),
+                                            secondaryContent = Json.encodeToString(schema.copy(properties = newProps, calculations = newCalcs)),
                                             colWidths = newWidths,
                                             tableData = newRows
                                         ))
@@ -199,7 +201,7 @@ fun DatabaseBlockRenderer(
 
                             Box(
                                 modifier = Modifier
-                                    .width(colWidths[cIndex].dp)
+                                    .width(colWidths.getOrElse(cIndex) { 150f }.dp)
                                     .fillMaxHeight()
                                     .drawBehind {
                                         val stroke = 1.dp.toPx()
@@ -230,8 +232,14 @@ fun DatabaseBlockRenderer(
                                 .fillMaxHeight()
                                 .drawBehind {
                                     drawLine(cellBorderColor, Offset(0f, size.height), Offset(size.width, size.height), 1.dp.toPx())
-                                }
-                        )
+                                },
+                            contentAlignment = Alignment.CenterStart
+                        ) {
+                            IconButton(
+                                onClick = { onUpdate(block.copy(tableData = rows.filterIndexed { i, _ -> i != rIndex })) },
+                                modifier = Modifier.size(32.dp)
+                            ) { Icon(Icons.Default.Close, "Delete row", tint = Color.Gray, modifier = Modifier.size(16.dp)) }
+                        }
                     }
                 }
 

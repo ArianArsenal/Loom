@@ -344,7 +344,7 @@ fun NotionCanvasScreen(
                 ) {
                     AnimatedContent(targetState = isCustomIcon, label = "IconTransition") { custom ->
                         if (custom) {
-                            val resId = context.resources.getIdentifier(iconName, "drawable", context.packageName)
+                            val resId = remember(iconName) { context.resources.getIdentifier(iconName, "drawable", context.packageName) }
                             if (resId != 0) {
                                 Icon(painterResource(resId), contentDescription = "Space Icon", tint = iconTint, modifier = Modifier.size(48.dp))
                             } else {
@@ -809,7 +809,7 @@ fun SpaceIconPicker(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     items(iconsToShow) { iconName ->
-                        val resId = context.resources.getIdentifier(iconName, "drawable", context.packageName)
+                        val resId = remember(iconName) { context.resources.getIdentifier(iconName, "drawable", context.packageName) }
 
                         if (resId != 0) {
                             val isSelected = selectedIconName == iconName

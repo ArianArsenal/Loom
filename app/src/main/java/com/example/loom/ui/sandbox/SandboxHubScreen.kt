@@ -235,7 +235,7 @@ fun SandboxHubScreen(
                                                     val iconName = iconParts[0]
                                                     val iconColorHex = iconParts[1]
                                                     val iconTint = try { Color(iconColorHex.toColorInt()) } catch (_: Exception) { MaterialTheme.colorScheme.onSurface }
-                                                    val resId = context.resources.getIdentifier(iconName, "drawable", context.packageName)
+                                                    val resId = remember(iconName) { context.resources.getIdentifier(iconName, "drawable", context.packageName) }
                                                     if (resId != 0) {
                                                         Icon(painterResource(resId), contentDescription = null, tint = iconTint, modifier = Modifier.size(28.dp))
                                                     } else {
@@ -377,7 +377,7 @@ fun SandboxHubScreen(
                                                     val iconName = iconParts[0]
                                                     val iconColorHex = iconParts[1]
                                                     val iconTint = try { Color(iconColorHex.toColorInt()) } catch (_: Exception) { MaterialTheme.colorScheme.onSurface }
-                                                    val resId = context.resources.getIdentifier(iconName, "drawable", context.packageName)
+                                                    val resId = remember(iconName) { context.resources.getIdentifier(iconName, "drawable", context.packageName) }
                                                     if (resId != 0) {
                                                         Icon(painterResource(resId), contentDescription = null, tint = iconTint.copy(alpha = 0.5f), modifier = Modifier.size(28.dp))
                                                     } else {
@@ -477,7 +477,7 @@ fun SandboxHubScreen(
                                                 Box(contentAlignment = Alignment.Center) {
                                                     if (iconParts.size == 2) {
                                                         val iconTint = try { Color(iconParts[1].toColorInt()) } catch (_: Exception) { MaterialTheme.colorScheme.onSurface }
-                                                        val resId = context.resources.getIdentifier(iconParts[0], "drawable", context.packageName)
+                                                        val resId = remember(iconParts[0]) { context.resources.getIdentifier(iconParts[0], "drawable", context.packageName) }
                                                         if (resId != 0) Icon(painterResource(resId), null, tint = iconTint.copy(alpha=0.5f), modifier = Modifier.size(28.dp))
                                                     } else {
                                                         Text(template.icon.ifEmpty { "📄" }, fontSize = 28.sp)
@@ -593,7 +593,7 @@ fun SandboxHubScreen(
                                         val iconName = iconParts[0]
                                         val iconColorHex = iconParts[1]
                                         val iconTint = try { Color(iconColorHex.toColorInt()) } catch (_: Exception) { MaterialTheme.colorScheme.onSurface }
-                                        val resId = context.resources.getIdentifier(iconName, "drawable", context.packageName)
+                                        val resId = remember(iconName) { context.resources.getIdentifier(iconName, "drawable", context.packageName) }
                                         if (resId != 0) {
                                             Icon(painterResource(resId), contentDescription = null, tint = iconTint, modifier = Modifier.size(24.dp))
                                         } else {
@@ -708,7 +708,7 @@ fun SandboxHubScreen(
                                         val iconName = iconParts[0]
                                         val iconColorHex = iconParts[1]
                                         val iconTint = try { Color(iconColorHex.toColorInt()) } catch (_: Exception) { MaterialTheme.colorScheme.onSurface }
-                                        val resId = context.resources.getIdentifier(iconName, "drawable", context.packageName)
+                                        val resId = remember(iconName) { context.resources.getIdentifier(iconName, "drawable", context.packageName) }
                                         if (resId != 0) {
                                             Icon(painterResource(resId), contentDescription = null, tint = iconTint, modifier = Modifier.size(24.dp))
                                         } else {
@@ -761,7 +761,7 @@ fun SandboxHubScreen(
                                         val iconName = iconParts[0]
                                         val iconColorHex = iconParts[1]
                                         val iconTint = try { Color(iconColorHex.toColorInt()) } catch (_: Exception) { MaterialTheme.colorScheme.onSurface }
-                                        val resId = context.resources.getIdentifier(iconName, "drawable", context.packageName)
+                                        val resId = remember(iconName) { context.resources.getIdentifier(iconName, "drawable", context.packageName) }
                                         if (resId != 0) {
                                             Icon(painterResource(resId), contentDescription = null, tint = iconTint, modifier = Modifier.size(24.dp))
                                         } else {
