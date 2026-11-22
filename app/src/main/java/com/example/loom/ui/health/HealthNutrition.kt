@@ -1,5 +1,6 @@
 package com.example.loom.ui.health
 
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.foundation.clickable
 import com.example.loom.util.TextPatterns
@@ -42,10 +43,10 @@ fun HealthNutrition(viewModel: HealthViewModel) {
     val targetCarbsInt by viewModel.targetCarbs.collectAsState()
     val targetFatsInt by viewModel.targetFats.collectAsState()
 
-    var showFoodDialog by remember { mutableStateOf(false) }
-    var showFoodPantryDialog by remember { mutableStateOf(false) }
+    var showFoodDialog by rememberSaveable { mutableStateOf(false) }
+    var showFoodPantryDialog by rememberSaveable { mutableStateOf(false) }
     var foodToLog by remember { mutableStateOf<FoodItem?>(null) }
-    var showNewFoodDialog by remember { mutableStateOf(false) }
+    var showNewFoodDialog by rememberSaveable { mutableStateOf(false) }
     var foodToDelete by remember { mutableStateOf<FoodItem?>(null) }
     var logDetailsToShow by remember { mutableStateOf<ConsumedFoodLog?>(null) }
 
@@ -154,7 +155,7 @@ fun HealthNutrition(viewModel: HealthViewModel) {
     }
 
     if (foodToLog != null && showFoodDialog) {
-        var servingsStr by remember { mutableStateOf("1") }
+        var servingsStr by rememberSaveable { mutableStateOf("1") }
 
         AlertDialog(
             onDismissRequest = { showFoodDialog = false; foodToLog = null },
@@ -330,12 +331,12 @@ fun HealthNutrition(viewModel: HealthViewModel) {
     }
 
     if (showNewFoodDialog) {
-        var inputName by remember { mutableStateOf("") }
-        var inputServing by remember { mutableStateOf("Plate") }
-        var inputCals by remember { mutableStateOf("") }
-        var inputPro by remember { mutableStateOf("") }
-        var inputCarbs by remember { mutableStateOf("") }
-        var inputFats by remember { mutableStateOf("") }
+        var inputName by rememberSaveable { mutableStateOf("") }
+        var inputServing by rememberSaveable { mutableStateOf("Plate") }
+        var inputCals by rememberSaveable { mutableStateOf("") }
+        var inputPro by rememberSaveable { mutableStateOf("") }
+        var inputCarbs by rememberSaveable { mutableStateOf("") }
+        var inputFats by rememberSaveable { mutableStateOf("") }
 
         AlertDialog(
             onDismissRequest = { showNewFoodDialog = false },
@@ -557,9 +558,9 @@ fun HealthNutrition(viewModel: HealthViewModel) {
 private fun MealShortcutsMenu(viewModel: HealthViewModel) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val templates by viewModel.mealTemplates.collectAsState()
-    var menuOpen by remember { mutableStateOf(false) }
-    var showTemplates by remember { mutableStateOf(false) }
-    var newTemplateName by remember { mutableStateOf("") }
+    var menuOpen by rememberSaveable { mutableStateOf(false) }
+    var showTemplates by rememberSaveable { mutableStateOf(false) }
+    var newTemplateName by rememberSaveable { mutableStateOf("") }
 
     Box {
         IconButton(onClick = { menuOpen = true }) { Icon(Icons.Default.MoreVert, "Meal shortcuts") }

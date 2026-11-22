@@ -1,5 +1,6 @@
 package com.example.loom.ui.calendar
 
+import androidx.compose.runtime.saveable.rememberSaveable
 import com.example.loom.util.TextPatterns
 import android.widget.Toast
 import androidx.compose.animation.AnimatedContent
@@ -198,43 +199,43 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
     val record = snapshot?.record
 
     val analytics by viewModel.monthlyAnalytics.collectAsState()
-    var isMonthView by remember { mutableStateOf(true) }
+    var isMonthView by rememberSaveable { mutableStateOf(true) }
 
-    var showFoodDialog by remember { mutableStateOf(false) }
-    var showFoodPantryDialog by remember { mutableStateOf(false) }
+    var showFoodDialog by rememberSaveable { mutableStateOf(false) }
+    var showFoodPantryDialog by rememberSaveable { mutableStateOf(false) }
     var foodToLog by remember { mutableStateOf<FoodItem?>(null) }
-    var showNewFoodDialog by remember { mutableStateOf(false) }
+    var showNewFoodDialog by rememberSaveable { mutableStateOf(false) }
     var foodToDelete by remember { mutableStateOf<FoodItem?>(null) }
     var logDetailsToShow by remember { mutableStateOf<ConsumedFoodLog?>(null) }
 
     val allPresets by viewModel.allPresets.collectAsState()
     val globalTemplates by viewModel.exerciseTemplates.collectAsState()
-    var showMacroEditDialog by remember { mutableStateOf(false) }
-    var showDetailedExerciseDialog by remember { mutableStateOf(false) }
+    var showMacroEditDialog by rememberSaveable { mutableStateOf(false) }
+    var showDetailedExerciseDialog by rememberSaveable { mutableStateOf(false) }
     var exerciseToDelete by remember { mutableStateOf<Exercise?>(null) }
     var selectedTabIndex by remember { mutableIntStateOf(0) }
 
     val skincareRoutines by viewModel.allSkincareRoutines.collectAsState()
     val skincareProducts by viewModel.allSkincareProducts.collectAsState()
-    var showSkincareDialog by remember { mutableStateOf(false) }
+    var showSkincareDialog by rememberSaveable { mutableStateOf(false) }
     var routineToEdit by remember { mutableStateOf<SkincareRoutine?>(null) }
-    var showDeleteConfirmDialog by remember { mutableStateOf(false) }
+    var showDeleteConfirmDialog by rememberSaveable { mutableStateOf(false) }
     var editingProductContext by remember { mutableStateOf<Pair<SkincareRoutine, SkincareProduct>?>(null) }
     var skincareRoutineToRemove by remember { mutableStateOf<String?>(null) }
 
     val baseWeight by viewModel.weightFlow.collectAsState()
-    var showWeightLogDialog by remember { mutableStateOf(false) }
-    var showSleepDialog by remember { mutableStateOf(false) }
+    var showWeightLogDialog by rememberSaveable { mutableStateOf(false) }
+    var showSleepDialog by rememberSaveable { mutableStateOf(false) }
 
     val supplementsRoster by viewModel.supplementsRoster.collectAsState()
     val todayScheduled by viewModel.selectedDateScheduledSupplements.collectAsState()
     val categories by viewModel.supplementCategories.collectAsState()
-    var showSupplementManageDialog by remember { mutableStateOf(false) }
-    var showCategoryDialog by remember { mutableStateOf(false) }
+    var showSupplementManageDialog by rememberSaveable { mutableStateOf(false) }
+    var showCategoryDialog by rememberSaveable { mutableStateOf(false) }
     var editingSupplementItem by remember { mutableStateOf<SupplementItem?>(null) }
     var categoryToDelete by remember { mutableStateOf<String?>(null) }
 
-    var selectedDate by remember { mutableStateOf(LocalDate.now()) }
+    var selectedDate by rememberSaveable { mutableStateOf(LocalDate.now()) }
 
     LaunchedEffect(Unit) {
         viewModel.selectDate(selectedDate.format(dayMonthYearFormatter))
@@ -406,7 +407,7 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
     }
 
     if (showCategoryDialog) {
-        var newCategoryName by remember { mutableStateOf("") }
+        var newCategoryName by rememberSaveable { mutableStateOf("") }
         AlertDialog(
             onDismissRequest = { showCategoryDialog = false },
             title = { Text("Manage Categories", fontWeight = FontWeight.Bold) },
@@ -438,10 +439,10 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
         var editRecurrenceType by remember { mutableStateOf(editingSupplementItem!!.recurrenceType.ifBlank { "DAILY" }) }
         var editRecurrenceVal by remember { mutableStateOf(editingSupplementItem!!.recurrenceValue) }
         var editInstruction by remember { mutableStateOf(editingSupplementItem!!.instruction.ifBlank { "None" }) }
-        var showSuggestions by remember { mutableStateOf(false) }
-        var catExpanded by remember { mutableStateOf(false) }
-        var timeExpanded by remember { mutableStateOf(false) }
-        var instExpanded by remember { mutableStateOf(false) }
+        var showSuggestions by rememberSaveable { mutableStateOf(false) }
+        var catExpanded by rememberSaveable { mutableStateOf(false) }
+        var timeExpanded by rememberSaveable { mutableStateOf(false) }
+        var instExpanded by rememberSaveable { mutableStateOf(false) }
 
         val allOptions = (supplementTemplates + supplementsRoster).distinctBy { it.name.lowercase(Locale.getDefault()) }
 
@@ -617,7 +618,7 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
     }
 
     if (foodToLog != null && showFoodDialog) {
-        var servingsStr by remember { mutableStateOf("1") }
+        var servingsStr by rememberSaveable { mutableStateOf("1") }
         AlertDialog(
             onDismissRequest = { showFoodDialog = false; foodToLog = null },
             title = { Text("Log ${foodToLog!!.name}") },
@@ -711,12 +712,12 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
     }
 
     if (showNewFoodDialog) {
-        var inputName by remember { mutableStateOf("") }
-        var inputServing by remember { mutableStateOf("Plate") }
-        var inputCals by remember { mutableStateOf("") }
-        var inputPro by remember { mutableStateOf("") }
-        var inputCarbs by remember { mutableStateOf("") }
-        var inputFats by remember { mutableStateOf("") }
+        var inputName by rememberSaveable { mutableStateOf("") }
+        var inputServing by rememberSaveable { mutableStateOf("Plate") }
+        var inputCals by rememberSaveable { mutableStateOf("") }
+        var inputPro by rememberSaveable { mutableStateOf("") }
+        var inputCarbs by rememberSaveable { mutableStateOf("") }
+        var inputFats by rememberSaveable { mutableStateOf("") }
 
         AlertDialog(
             onDismissRequest = { showNewFoodDialog = false },
@@ -808,14 +809,14 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
 
                     Box(modifier = Modifier.padding(16.dp).weight(1f)) {
                         if (selectedTabIndex == 0) {
-                            var inputName by remember { mutableStateOf("") }
-                            var expanded by remember { mutableStateOf(false) }
-                            var isTimeBased by remember { mutableStateOf(false) }
-                            var inputSets by remember { mutableStateOf("3") }
-                            var inputReps by remember { mutableStateOf("10") }
-                            var inputDuration by remember { mutableStateOf("60") }
-                            var varyWeight by remember { mutableStateOf(false) }
-                            var inputWeight by remember { mutableStateOf("60") }
+                            var inputName by rememberSaveable { mutableStateOf("") }
+                            var expanded by rememberSaveable { mutableStateOf(false) }
+                            var isTimeBased by rememberSaveable { mutableStateOf(false) }
+                            var inputSets by rememberSaveable { mutableStateOf("3") }
+                            var inputReps by rememberSaveable { mutableStateOf("10") }
+                            var inputDuration by rememberSaveable { mutableStateOf("60") }
+                            var varyWeight by rememberSaveable { mutableStateOf(false) }
+                            var inputWeight by rememberSaveable { mutableStateOf("60") }
                             var advancedWeights by remember { mutableStateOf(mapOf<Int, String>()) }
 
                             Column(modifier = Modifier.fillMaxSize()) {
@@ -877,8 +878,8 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
                                 }
                             }
                         } else {
-                            var presetDropdownExpanded by remember { mutableStateOf(false) }
-                            var activePresetName by remember { mutableStateOf("") }
+                            var presetDropdownExpanded by rememberSaveable { mutableStateOf(false) }
+                            var activePresetName by rememberSaveable { mutableStateOf("") }
                             var activeExercises by remember { mutableStateOf(listOf<PresetExercise>()) }
 
                             Column(modifier = Modifier.fillMaxSize()) {
@@ -981,9 +982,9 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
             try { Json.decodeFromString<List<SkincareProduct>>(routineToEdit?.productsJson ?: "[]") } catch(_: Exception){ try { Json.decodeFromString<List<String>>(routineToEdit?.productsJson ?: "[]").map { SkincareProduct(name = it) } } catch (_: Exception) { emptyList() } }
         }
         var selectedProducts by remember(routineToEdit) { mutableStateOf(initialProducts) }
-        var routineDropdownExpanded by remember { mutableStateOf(false) }
-        var productSearchText by remember { mutableStateOf("") }
-        var productDropdownExpanded by remember { mutableStateOf(false) }
+        var routineDropdownExpanded by rememberSaveable { mutableStateOf(false) }
+        var productSearchText by rememberSaveable { mutableStateOf("") }
+        var productDropdownExpanded by rememberSaveable { mutableStateOf(false) }
         var dialogProductToEdit by remember { mutableStateOf<SkincareProduct?>(null) }
 
         if (dialogProductToEdit != null) {

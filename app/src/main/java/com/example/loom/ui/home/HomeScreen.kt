@@ -1,5 +1,6 @@
 package com.example.loom.ui.home
 
+import androidx.compose.runtime.saveable.rememberSaveable
 import com.example.loom.util.TextPatterns
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -107,7 +108,7 @@ fun HomeScreen(
 ) {
 
     val userName by viewModel.userName.collectAsState()
-    var showWelcomeDialog by remember { mutableStateOf(false) }
+    var showWelcomeDialog by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(userName) {
         if (userName.isNotBlank()) {
@@ -143,14 +144,14 @@ fun HomeScreen(
     val defaultWaterIncrement by viewModel.defaultWaterIncrement.collectAsState()
     val dailyGoal by viewModel.waterDailyGoal.collectAsState()
 
-    var showNutritionDialog by remember { mutableStateOf(false) }
-    var isManualEntry by remember { mutableStateOf(false) }
-    var showNewFoodDialog by remember { mutableStateOf(false) }
-    var showDashboardConfig by remember { mutableStateOf(false) }
+    var showNutritionDialog by rememberSaveable { mutableStateOf(false) }
+    var isManualEntry by rememberSaveable { mutableStateOf(false) }
+    var showNewFoodDialog by rememberSaveable { mutableStateOf(false) }
+    var showDashboardConfig by rememberSaveable { mutableStateOf(false) }
 
-    var showTaskDialog by remember { mutableStateOf(false) }
+    var showTaskDialog by rememberSaveable { mutableStateOf(false) }
     var taskToEdit by remember { mutableStateOf<Task?>(null) }
-    var isKanbanView by remember { mutableStateOf(false) }
+    var isKanbanView by rememberSaveable { mutableStateOf(false) }
     var sectionToDelete by remember { mutableStateOf<TaskSection?>(null) }
 
     val shortcutAction by viewModel.shortcutAction.collectAsState()
@@ -174,7 +175,7 @@ fun HomeScreen(
     }
 
     if (showWelcomeDialog) {
-        var nameInput by remember { mutableStateOf("") }
+        var nameInput by rememberSaveable { mutableStateOf("") }
 
         AlertDialog(
             onDismissRequest = { },
@@ -305,11 +306,11 @@ fun HomeScreen(
     }
 
     if (showNutritionDialog) {
-        var foodDropdownExpanded by remember { mutableStateOf(false) }
-        var localSearchText by remember { mutableStateOf("") }
+        var foodDropdownExpanded by rememberSaveable { mutableStateOf(false) }
+        var localSearchText by rememberSaveable { mutableStateOf("") }
         var selectedFoodName by remember { mutableStateOf<String?>(null) }
         var selectedVariant by remember { mutableStateOf<FoodItem?>(null) }
-        var servingsStr by remember { mutableStateOf("1") }
+        var servingsStr by rememberSaveable { mutableStateOf("1") }
 
         val variants by viewModel.selectedFoodVariants.collectAsState()
 
@@ -335,10 +336,10 @@ fun HomeScreen(
                     Spacer(modifier = Modifier.height(8.dp))
 
                     if (isManualEntry) {
-                        var inputCalories by remember { mutableStateOf("") }
-                        var inputProtein by remember { mutableStateOf("") }
-                        var inputCarbs by remember { mutableStateOf("") }
-                        var inputFats by remember { mutableStateOf("") }
+                        var inputCalories by rememberSaveable { mutableStateOf("") }
+                        var inputProtein by rememberSaveable { mutableStateOf("") }
+                        var inputCarbs by rememberSaveable { mutableStateOf("") }
+                        var inputFats by rememberSaveable { mutableStateOf("") }
 
                         OutlinedTextField(
                             value = inputCalories,
@@ -560,12 +561,12 @@ fun HomeScreen(
     }
 
     if (showNewFoodDialog) {
-        var inputName by remember { mutableStateOf("") }
-        var inputServing by remember { mutableStateOf("Plate") }
-        var inputCals by remember { mutableStateOf("") }
-        var inputPro by remember { mutableStateOf("") }
-        var inputCarbs by remember { mutableStateOf("") }
-        var inputFats by remember { mutableStateOf("") }
+        var inputName by rememberSaveable { mutableStateOf("") }
+        var inputServing by rememberSaveable { mutableStateOf("Plate") }
+        var inputCals by rememberSaveable { mutableStateOf("") }
+        var inputPro by rememberSaveable { mutableStateOf("") }
+        var inputCarbs by rememberSaveable { mutableStateOf("") }
+        var inputFats by rememberSaveable { mutableStateOf("") }
 
         AlertDialog(
             onDismissRequest = { showNewFoodDialog = false }, title = { Text("Add to Pantry") },
@@ -855,7 +856,7 @@ fun HomeScreen(
 
 @Composable
 fun AgendaCard(agendaText: String, onUpdateText: (String) -> Unit) {
-    var isEditing by remember { mutableStateOf(false) }
+    var isEditing by rememberSaveable { mutableStateOf(false) }
     var editText by remember(agendaText) { mutableStateOf(agendaText) }
 
     ElevatedCard(
@@ -943,20 +944,20 @@ fun CreateTaskDialog(
     onAddSection: (String) -> Unit, onDeleteSection: (TaskSection) -> Unit,
     onAddTag: (String, String) -> Unit, onDeleteTag: (NoteTag) -> Unit
 ) {
-    var title by remember { mutableStateOf(initialTask?.title ?: "") }
-    var description by remember { mutableStateOf(initialTask?.description ?: "") }
+    var title by rememberSaveable { mutableStateOf(initialTask?.title ?: "") }
+    var description by rememberSaveable { mutableStateOf(initialTask?.description ?: "") }
     var priority by remember { mutableIntStateOf(initialTask?.priority ?: 1) }
     var selectedSectionId by remember { mutableIntStateOf(initialTask?.sectionId ?: sections.firstOrNull()?.id ?: 1) }
-    var status by remember { mutableStateOf(initialTask?.status ?: "TO DO") }
+    var status by rememberSaveable { mutableStateOf(initialTask?.status ?: "TO DO") }
 
     val initialTags = try { Json.decodeFromString<List<String>>(initialTask?.tagsJson ?: "[]") } catch (_: Exception) { emptyList() }
     var selectedTags by remember { mutableStateOf(initialTags.toSet()) }
 
     val initialSubtasks = try { Json.decodeFromString<List<SubTask>>(initialTask?.subtasksJson ?: "[]") } catch (_: Exception) { emptyList() }
     var subtasks by remember { mutableStateOf(initialSubtasks) }
-    var newSubtaskText by remember { mutableStateOf("") }
+    var newSubtaskText by rememberSaveable { mutableStateOf("") }
 
-    var isRecurring by remember { mutableStateOf(initialTask?.isRecurring ?: false) }
+    var isRecurring by rememberSaveable { mutableStateOf(initialTask?.isRecurring ?: false) }
     val initialRecInterval = initialTask?.recurringInterval?.split(" ")?.getOrNull(1)?.takeIf { it != "DAILY" } ?: "DAYS"
     val initialRecCount = initialTask?.recurringInterval?.split(" ")?.getOrNull(0) ?: "1"
 
@@ -965,16 +966,16 @@ fun CreateTaskDialog(
 
     var selectedDays by remember { mutableStateOf(setOf<Int>()) }
 
-    var deadlineStr by remember { mutableStateOf(initialTask?.targetDate ?: "") }
-    var showDatePicker by remember { mutableStateOf(false) }
+    var deadlineStr by rememberSaveable { mutableStateOf(initialTask?.targetDate ?: "") }
+    var showDatePicker by rememberSaveable { mutableStateOf(false) }
 
-    var showNewSectionDialog by remember { mutableStateOf(false) }
-    var showNewTagDialog by remember { mutableStateOf(false) }
+    var showNewSectionDialog by rememberSaveable { mutableStateOf(false) }
+    var showNewTagDialog by rememberSaveable { mutableStateOf(false) }
     var tagToDelete by remember { mutableStateOf<NoteTag?>(null) }
     var dialogSectionToDelete by remember { mutableStateOf<TaskSection?>(null) }
 
     if (showNewSectionDialog) {
-        var newSecName by remember { mutableStateOf("") }
+        var newSecName by rememberSaveable { mutableStateOf("") }
         AlertDialog(
             onDismissRequest = { showNewSectionDialog = false }, title = { Text("New Section") },
             text = { OutlinedTextField(value = newSecName, onValueChange = { newSecName = it }, singleLine = true) },
@@ -1008,7 +1009,7 @@ fun CreateTaskDialog(
     }
 
     if (showNewTagDialog) {
-        var newTagName by remember { mutableStateOf("") }
+        var newTagName by rememberSaveable { mutableStateOf("") }
         var hue by remember { mutableFloatStateOf(210f) }
         var saturation by remember { mutableFloatStateOf(0.9f) }
         var value by remember { mutableFloatStateOf(0.9f) }

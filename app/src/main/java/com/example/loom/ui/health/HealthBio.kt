@@ -1,5 +1,6 @@
 package com.example.loom.ui.health
 
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -75,9 +76,9 @@ fun HealthBio(viewModel: HealthViewModel) {
 
     val todayRecord by viewModel.todayRecord.collectAsState()
 
-    var isEditingBio by remember { mutableStateOf(false) }
-    var showEnergyInfoDialog by remember { mutableStateOf(false) }
-    var viewCyclingTab by remember { mutableStateOf("Train") }
+    var isEditingBio by rememberSaveable { mutableStateOf(false) }
+    var showEnergyInfoDialog by rememberSaveable { mutableStateOf(false) }
+    var viewCyclingTab by rememberSaveable { mutableStateOf("Train") }
 
     if (showEnergyInfoDialog) {
         AlertDialog(
@@ -105,18 +106,18 @@ fun HealthBio(viewModel: HealthViewModel) {
 
             AnimatedContent(targetState = isEditingBio, transitionSpec = { fadeIn(tween(300)) togetherWith fadeOut(tween(300)) }, label = "BioEditTransition") { editing ->
                 if (editing) {
-                    var editWeight by remember { mutableStateOf(weight.formatWeight()) }
-                    var editHeight by remember { mutableStateOf(height.toString()) }
-                    var editAge by remember { mutableStateOf(age.toString()) }
+                    var editWeight by rememberSaveable { mutableStateOf(weight.formatWeight()) }
+                    var editHeight by rememberSaveable { mutableStateOf(height.toString()) }
+                    var editAge by rememberSaveable { mutableStateOf(age.toString()) }
                     var editGender by remember { mutableStateOf(gender) }
                     var editActivity by remember { mutableStateOf(activity) }
                     var editGoal by remember { mutableStateOf(goal) }
                     var editBodyFat by remember { mutableStateOf(if (bodyFat > 0f) bodyFat.toString() else "") }
                     var editDietType by remember { mutableStateOf(dietType) }
-                    var editPhaseWeeks by remember { mutableStateOf(phaseWeeks.toString()) }
+                    var editPhaseWeeks by rememberSaveable { mutableStateOf(phaseWeeks.toString()) }
                     var editCycling by remember { mutableStateOf(isCycling) }
 
-                    var activityExpanded by remember { mutableStateOf(false) }
+                    var activityExpanded by rememberSaveable { mutableStateOf(false) }
 
                     Column(modifier = Modifier.fillMaxWidth()) {
                         Spacer(modifier = Modifier.height(8.dp))
@@ -251,7 +252,7 @@ fun HealthBio(viewModel: HealthViewModel) {
                         }
 
                         // Daily Weight Logger
-                        var showWeightLogDialog by remember { mutableStateOf(false) }
+                        var showWeightLogDialog by rememberSaveable { mutableStateOf(false) }
 
                         if (showWeightLogDialog) {
                             var sliderWeight by remember { mutableFloatStateOf(if ((todayRecord?.weightLogKg ?: 0f) > 0f) todayRecord!!.weightLogKg else weight) }

@@ -1,5 +1,6 @@
 package com.example.loom.ui.health
 
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -127,11 +128,11 @@ fun HealthHydration(viewModel: HealthViewModel) {
     val logs by viewModel.waterLogs.collectAsState()
     val defaultContainerId by viewModel.defaultContainerId.collectAsState()
 
-    var showGoalDialog by remember { mutableStateOf(false) }
-    var showContainerDialog by remember { mutableStateOf(false) }
+    var showGoalDialog by rememberSaveable { mutableStateOf(false) }
+    var showContainerDialog by rememberSaveable { mutableStateOf(false) }
 
     if (showGoalDialog) {
-        var inputGoal by remember { mutableStateOf(dailyGoal.toString()) }
+        var inputGoal by rememberSaveable { mutableStateOf(dailyGoal.toString()) }
         var autoToggled by remember { mutableStateOf(isAutoGoal) }
 
         AlertDialog(
@@ -167,7 +168,7 @@ fun HealthHydration(viewModel: HealthViewModel) {
 
     if (showContainerDialog) {
         var localContainers by remember { mutableStateOf(customContainers) }
-        var showNewContainer by remember { mutableStateOf(false) }
+        var showNewContainer by rememberSaveable { mutableStateOf(false) }
 
         AlertDialog(
             onDismissRequest = { showContainerDialog = false },
@@ -191,10 +192,10 @@ fun HealthHydration(viewModel: HealthViewModel) {
                     }
                     if (showNewContainer) {
                         item {
-                            var newName by remember { mutableStateOf("") }
-                            var newIconKey by remember { mutableStateOf("LocalDrink") }
-                            var newVol by remember { mutableStateOf("") }
-                            var newFactor by remember { mutableStateOf("1.0") }
+                            var newName by rememberSaveable { mutableStateOf("") }
+                            var newIconKey by rememberSaveable { mutableStateOf("LocalDrink") }
+                            var newVol by rememberSaveable { mutableStateOf("") }
+                            var newFactor by rememberSaveable { mutableStateOf("1.0") }
 
                             Column(modifier = Modifier.padding(top = 16.dp).background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha=0.5f), RoundedCornerShape(12.dp)).padding(12.dp)) {
 

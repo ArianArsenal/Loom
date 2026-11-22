@@ -17,6 +17,11 @@
 
     <queries>
         <package android:name="com.google.android.apps.healthdata" />
+        <!-- Bug report: see whether an email app is installed -->
+        <intent>
+            <action android:name="android.intent.action.SENDTO" />
+            <data android:scheme="mailto" />
+        </intent>
     </queries>
 
     <!-- Notice the android:name property added here -->

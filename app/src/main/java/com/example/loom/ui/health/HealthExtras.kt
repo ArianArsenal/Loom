@@ -1,5 +1,6 @@
 package com.example.loom.ui.health
 
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -140,7 +141,7 @@ fun SleepRecoveryCard(viewModel: HealthViewModel) {
     val todayRecord by viewModel.todayRecord.collectAsState()
     val loggedHours = todayRecord?.sleepHours ?: 0f
     val loggedRating = todayRecord?.sleepRating ?: 0
-    var showDialog by remember { mutableStateOf(false) }
+    var showDialog by rememberSaveable { mutableStateOf(false) }
 
     if (showDialog) {
         var sliderHours by remember { mutableFloatStateOf(if (loggedHours > 0f) loggedHours else 7.5f) }
@@ -232,7 +233,7 @@ fun BodyMeasurementsCard(viewModel: HealthViewModel) {
     val rawJson = todayRecord?.measurementsJson ?: "{}"
     val measurements = remember(rawJson) { try { Json.decodeFromString<Map<String, Float>>(rawJson.ifBlank { "{}" }) } catch (_: Exception) { emptyMap() } }
 
-    var showDialog by remember { mutableStateOf(false) }
+    var showDialog by rememberSaveable { mutableStateOf(false) }
 
     if (showDialog) {
         var waist by remember { mutableStateOf(measurements["Waist"]?.toString() ?: "") }
@@ -322,8 +323,8 @@ fun SupplementsCard(viewModel: HealthViewModel) {
     val completed by viewModel.completedSupplements.collectAsState()
     val focusManager = LocalFocusManager.current
 
-    var showManageDialog by remember { mutableStateOf(false) }
-    var showCategoryDialog by remember { mutableStateOf(false) }
+    var showManageDialog by rememberSaveable { mutableStateOf(false) }
+    var showCategoryDialog by rememberSaveable { mutableStateOf(false) }
     var editingItem by remember { mutableStateOf<SupplementItem?>(null) }
 
     var categoryToDelete by remember { mutableStateOf<String?>(null) }
@@ -349,7 +350,7 @@ fun SupplementsCard(viewModel: HealthViewModel) {
     }
 
     if (showCategoryDialog) {
-        var newCategoryName by remember { mutableStateOf("") }
+        var newCategoryName by rememberSaveable { mutableStateOf("") }
         AlertDialog(
             onDismissRequest = { showCategoryDialog = false },
             title = { Text("Manage Categories", fontWeight = FontWeight.Bold) },
@@ -404,10 +405,10 @@ fun SupplementsCard(viewModel: HealthViewModel) {
         var editRecurrenceVal by remember { mutableStateOf(editingItem!!.recurrenceValue) }
         var editInstruction by remember { mutableStateOf(editingItem!!.instruction.ifBlank { "None" }) }
 
-        var showSuggestions by remember { mutableStateOf(false) }
-        var catExpanded by remember { mutableStateOf(false) }
-        var timeExpanded by remember { mutableStateOf(false) }
-        var instExpanded by remember { mutableStateOf(false) }
+        var showSuggestions by rememberSaveable { mutableStateOf(false) }
+        var catExpanded by rememberSaveable { mutableStateOf(false) }
+        var timeExpanded by rememberSaveable { mutableStateOf(false) }
+        var instExpanded by rememberSaveable { mutableStateOf(false) }
 
         val allOptions = remember(supplementTemplates, roster) {
             (supplementTemplates + roster).distinctBy { it.name.lowercase() }

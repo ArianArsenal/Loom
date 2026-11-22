@@ -150,7 +150,7 @@ fun TaskCard(task: Task, allTags: List<NoteTag>, viewModel: HomeViewModel, isKan
     val taskTags = remember(task.tagsJson) { try { Json.decodeFromString<List<String>>(task.tagsJson) } catch (_: Exception) { emptyList() } } // FIX: Unused 'e'
 
     ElevatedCard(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).combinedClickable(onClick = { viewModel.toggleTaskCompletion(task) }, onLongClick = { showMenu = true }),
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).combinedClickable(onClick = { onEdit(task) }, onLongClick = { showMenu = true }),
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {

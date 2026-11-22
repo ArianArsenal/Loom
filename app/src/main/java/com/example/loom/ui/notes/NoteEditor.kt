@@ -1,5 +1,6 @@
 package com.example.loom.ui.notes
 
+import androidx.compose.runtime.saveable.rememberSaveable
 import android.content.Intent
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -81,11 +82,11 @@ import kotlin.time.Duration.Companion.milliseconds
 @Composable
 fun NoteEditor(initialNote: DiaryNote?, allTags: List<NoteTag>, viewModel: HomeViewModel, onNavigateBack: () -> Unit) {
     var currentId by remember { mutableIntStateOf(initialNote?.id ?: 0) }
-    var title by remember { mutableStateOf(initialNote?.title ?: "") }
-    var selectedTag by remember { mutableStateOf(initialNote?.tag ?: "Personal") }
-    var isFavorite by remember { mutableStateOf(initialNote?.isFavorite ?: false) }
-    var isPrivate by remember { mutableStateOf(initialNote?.isPrivate ?: false) }
-    var isPinned by remember { mutableStateOf(initialNote?.isPinned ?: false) }
+    var title by rememberSaveable { mutableStateOf(initialNote?.title ?: "") }
+    var selectedTag by rememberSaveable { mutableStateOf(initialNote?.tag ?: "Personal") }
+    var isFavorite by rememberSaveable { mutableStateOf(initialNote?.isFavorite ?: false) }
+    var isPrivate by rememberSaveable { mutableStateOf(initialNote?.isPrivate ?: false) }
+    var isPinned by rememberSaveable { mutableStateOf(initialNote?.isPinned ?: false) }
 
     val initialBlocks = try { Json.decodeFromString<List<NoteBlock>>(initialNote?.blocksJson ?: "[]") } catch (_: Exception) { emptyList() }
     val blocks = remember { mutableStateListOf<NoteBlock>().apply {
@@ -103,7 +104,7 @@ fun NoteEditor(initialNote: DiaryNote?, allTags: List<NoteTag>, viewModel: HomeV
     }}
 
     var focusedBlockId by remember { mutableStateOf<String?>(null) }
-    var showTagDialog by remember { mutableStateOf(false) }
+    var showTagDialog by rememberSaveable { mutableStateOf(false) }
     var tagToDelete by remember { mutableStateOf<NoteTag?>(null) }
 
     val focusRequesters = remember { mutableStateMapOf<String, FocusRequester>() }
@@ -167,7 +168,7 @@ fun NoteEditor(initialNote: DiaryNote?, allTags: List<NoteTag>, viewModel: HomeV
     }
 
     if (showTagDialog) {
-        var newTagName by remember { mutableStateOf("") }
+        var newTagName by rememberSaveable { mutableStateOf("") }
         var hue by remember { mutableFloatStateOf(210f) }
         var saturation by remember { mutableFloatStateOf(0.9f) }
         var value by remember { mutableFloatStateOf(0.9f) }

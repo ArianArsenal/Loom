@@ -1,5 +1,6 @@
 package com.example.loom.ui.settings
 
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.ui.draw.clip
@@ -78,7 +79,7 @@ fun SettingsScreen(
     val isCycling by healthViewModel.calorieCycling.collectAsState()
 
     var currentPin by remember { mutableStateOf<String?>(null) }
-    var isPinLoaded by remember { mutableStateOf(false) }
+    var isPinLoaded by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
             val pin = SecurityManager.getPin(context)
@@ -90,15 +91,15 @@ fun SettingsScreen(
     }
 
     // Dialog States
-    var showSetPinDialog by remember { mutableStateOf(false) }
-    var showAuthPinDialog by remember { mutableStateOf(false) }
-    var showWipeConfirmDialog by remember { mutableStateOf(false) }
-    var showImportConfirmDialog by remember { mutableStateOf(false) }
-    var showEditProfileDialog by remember { mutableStateOf(false) }
+    var showSetPinDialog by rememberSaveable { mutableStateOf(false) }
+    var showAuthPinDialog by rememberSaveable { mutableStateOf(false) }
+    var showWipeConfirmDialog by rememberSaveable { mutableStateOf(false) }
+    var showImportConfirmDialog by rememberSaveable { mutableStateOf(false) }
+    var showEditProfileDialog by rememberSaveable { mutableStateOf(false) }
 
-    var pinInput by remember { mutableStateOf("") }
-    var pinError by remember { mutableStateOf(false) }
-    var pendingDisableBiometric by remember { mutableStateOf(false) }
+    var pinInput by rememberSaveable { mutableStateOf("") }
+    var pinError by rememberSaveable { mutableStateOf(false) }
+    var pendingDisableBiometric by rememberSaveable { mutableStateOf(false) }
 
     val exportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/zip"),
@@ -525,8 +526,8 @@ fun SettingsScreen(
             Text("General", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
             Spacer(modifier = Modifier.height(8.dp))
 
-            var themeDropdownExpanded by remember { mutableStateOf(false) }
-            var rolloverDropdownExpanded by remember { mutableStateOf(false) }
+            var themeDropdownExpanded by rememberSaveable { mutableStateOf(false) }
+            var rolloverDropdownExpanded by rememberSaveable { mutableStateOf(false) }
 
             ElevatedCard(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                 Column {
