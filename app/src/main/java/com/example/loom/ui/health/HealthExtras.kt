@@ -145,7 +145,7 @@ fun SleepRecoveryCard(viewModel: HealthViewModel) {
     if (showDialog) {
         var sliderHours by remember { mutableFloatStateOf(if (loggedHours > 0f) loggedHours else 7.5f) }
         var rating by remember { mutableIntStateOf(if (loggedRating > 0) loggedRating else 3) }
-        val listState = rememberLazyListState(initialFirstVisibleItemIndex = (sliderHours * 2).toInt() - 4)
+        val listState = rememberLazyListState(initialFirstVisibleItemIndex = ((sliderHours - 1f) * 2).toInt().coerceAtLeast(0))
 
         AlertDialog(
             onDismissRequest = { showDialog = false },
@@ -155,8 +155,8 @@ fun SleepRecoveryCard(viewModel: HealthViewModel) {
                     Text("${String.format(Locale.US, "%.1f", sliderHours)} Hours", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
 
                     LazyRow(state = listState, modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp), horizontalArrangement = Arrangement.spacedBy(16.dp), contentPadding = PaddingValues(horizontal = 60.dp)) {
-                        items(24, key = { it }) { index ->
-                            val itemHours = 2f + (index * 0.5f)
+                        items(31, key = { it }) { index ->
+                            val itemHours = 1f + (index * 0.5f)
                             val isSelected = itemHours == sliderHours
                             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clip(RoundedCornerShape(12.dp)).clickable { sliderHours = itemHours }.padding(8.dp)) {
                                 Text(itemHours.toString(), style = if (isSelected) MaterialTheme.typography.titleLarge else MaterialTheme.typography.titleMedium, color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f), fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal)

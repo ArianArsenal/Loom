@@ -35,6 +35,7 @@ class UserPreferences @Inject constructor(private val context: Context) {
         val TARGET_FATS = intPreferencesKey("target_fats")
 
         val DEFAULT_WATER_ML = intPreferencesKey("default_water_ml")
+        val DEFAULT_CONTAINER_ID = stringPreferencesKey("default_container_id")
         val WATER_DAILY_GOAL = intPreferencesKey("water_daily_goal")
         val AUTO_WATER_GOAL = booleanPreferencesKey("auto_water_goal")
         val CUSTOM_WATER_CONTAINERS = stringPreferencesKey("custom_water_containers")
@@ -276,6 +277,26 @@ class UserPreferences @Inject constructor(private val context: Context) {
     }
 
     suspend fun saveDefaultWaterIncrement(ml: Int) { context.dataStore.edit { it[DEFAULT_WATER_ML] = ml } }
+
+    val defaultContainerIdFlow: Flow<String> = context.dataStore.data.map { it[DEFAULT_CONTAINER_ID] ?: "" }
+
+    /** Remember the chosen container itself: two containers can share a volume. */
+    suspend fun saveDefaultContainer(id: String, ml: Int) {
+        context.dataStore.edit { it[DEFAULT_CONTAINER_ID] = id; it[DEFAULT_WATER_ML] = ml }
+    }
+
+    /** A weight logged today becomes the profile weight (and drives the automatic water goal). */
+    suspend fun updateProfileWeight(weight: Float) {
+        context.dataStore.edit { prefs ->
+            prefs[WEIGHT] = weight
+            if (prefs[AUTO_WATER_GOAL] ?: true) prefs[WATER_DAILY_GOAL] = (weight * 35).toInt()
+        }
+    }
+
+    /** The diet phase start was never stored unless the phase length changed, so it stayed at "Week 1". */
+    suspend fun ensurePhaseStart() {
+        context.dataStore.edit { if (it[PHASE_START_TIME] == null) it[PHASE_START_TIME] = System.currentTimeMillis() }
+    }
     suspend fun saveWaterDailyGoal(goalMl: Int, isAuto: Boolean) { context.dataStore.edit { it[WATER_DAILY_GOAL] = goalMl; it[AUTO_WATER_GOAL] = isAuto } }
     suspend fun saveCustomWaterContainers(json: String) { context.dataStore.edit { it[CUSTOM_WATER_CONTAINERS] = json } }
     suspend fun saveTargets(calories: Int, protein: Int, carbs: Int, fats: Int) { context.dataStore.edit { prefs -> prefs[TARGET_CALORIES] = calories; prefs[TARGET_PROTEIN] = protein; prefs[TARGET_CARBS] = carbs; prefs[TARGET_FATS] = fats } }

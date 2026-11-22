@@ -125,6 +125,7 @@ fun HealthHydration(viewModel: HealthViewModel) {
     val defaultIncrement by viewModel.defaultWaterIncrement.collectAsState()
     val customContainers by viewModel.customWaterContainers.collectAsState()
     val logs by viewModel.waterLogs.collectAsState()
+    val defaultContainerId by viewModel.defaultContainerId.collectAsState()
 
     var showGoalDialog by remember { mutableStateOf(false) }
     var showContainerDialog by remember { mutableStateOf(false) }
@@ -272,10 +273,11 @@ fun HealthHydration(viewModel: HealthViewModel) {
 
             Row(modifier = Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 customContainers.forEach { container ->
-                    val isDefault = defaultIncrement == container.volumeMl
+                    val isDefault = if (defaultContainerId.isNotEmpty() && customContainers.any { it.id == defaultContainerId }) container.id == defaultContainerId
+                                    else defaultIncrement == container.volumeMl
                     Surface(
                         modifier = Modifier.weight(1f).clickable {
-                            viewModel.saveDefaultWaterIncrement(container.volumeMl)
+                            viewModel.selectDefaultContainer(container)
                         },
                         shape = RoundedCornerShape(12.dp),
                         color = if (isDefault) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
@@ -292,7 +294,8 @@ fun HealthHydration(viewModel: HealthViewModel) {
             Spacer(modifier = Modifier.height(12.dp))
             Button(
                 onClick = {
-                    val selectedContainer = customContainers.find { it.volumeMl == defaultIncrement } ?: customContainers.firstOrNull()
+                    val selectedContainer = customContainers.find { it.id == defaultContainerId }
+                        ?: customContainers.find { it.volumeMl == defaultIncrement } ?: customContainers.firstOrNull()
                     if (selectedContainer != null) {
                         viewModel.logDetailedWater(selectedContainer)
                     }

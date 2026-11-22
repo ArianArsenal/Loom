@@ -144,7 +144,7 @@ private fun Float.formatWeight(): String {
 }
 
 @Composable
-fun SimpleMacroRing(calories: Int, modifier: Modifier = Modifier) {
+fun SimpleMacroRing(calories: Int, target: Int, modifier: Modifier = Modifier) {
     Box(modifier = modifier, contentAlignment = Alignment.Center) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             val strokeW = 5.dp.toPx()
@@ -155,7 +155,7 @@ fun SimpleMacroRing(calories: Int, modifier: Modifier = Modifier) {
                 useCenter = false,
                 style = Stroke(width = strokeW, cap = StrokeCap.Round)
             )
-            val fillPercentage = (calories.toFloat() / 2500f).coerceIn(0f, 1f)
+            val fillPercentage = if (target > 0) (calories.toFloat() / target).coerceIn(0f, 1f) else 0f
             drawArc(
                 color = Color(0xFF4CAF50),
                 startAngle = -90f,
@@ -190,6 +190,7 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
     val focusManager = LocalFocusManager.current
     val visibleMonth by viewModel.visibleMonth.collectAsState()
     val weekStart by viewModel.weekStart.collectAsState()
+    val targetCalories by viewModel.targetCalories.collectAsState()
     val activeDays by viewModel.activeDays.collectAsState()
 
     val selectedDateId by viewModel.selectedDateId.collectAsState()
@@ -1278,7 +1279,7 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
 
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                SimpleMacroRing(calories = record?.calories ?: 0, modifier = Modifier.size(46.dp))
+                                SimpleMacroRing(calories = record?.calories ?: 0, target = targetCalories, modifier = Modifier.size(46.dp))
                                 Spacer(modifier = Modifier.width(12.dp))
                                 Column {
                                     Row(verticalAlignment = Alignment.CenterVertically) {

@@ -26,6 +26,7 @@ import java.time.LocalDate
 import java.util.Calendar
 import java.util.UUID
 import javax.inject.Inject
+import kotlin.math.roundToInt
 import kotlin.time.Duration.Companion.milliseconds
 
 @Serializable
@@ -237,7 +238,7 @@ class HealthViewModel @Inject constructor(
     // --- NEW: Toggle active state of a supplement ---
     fun toggleSupplementActive(item: SupplementItem) = viewModelScope.launch {
         val current = supplementsRoster.value.toMutableList()
-        val index = current.indexOfFirst { it.name.equals(item.name, ignoreCase = true) }
+        val index = current.indexOfFirst { it.id == item.id }
 
         if (index >= 0) {
             current[index] = current[index].copy(isActive = !current[index].isActive)
@@ -293,14 +294,19 @@ class HealthViewModel @Inject constructor(
     fun applyMealTemplate(template: com.example.loom.data.food.MealTemplate) = viewModelScope.launch { foodShortcuts.applyTemplate(template) }
     fun deleteMealTemplate(name: String) = viewModelScope.launch { foodShortcuts.deleteTemplate(name) }
 
-    init { viewModelScope.launch { repository.prepopulateSkincareProductsIfEmpty() } }
+    init { viewModelScope.launch { repository.prepopulateSkincareProductsIfEmpty(); userPreferences.ensurePhaseStart() } }
 
     fun saveBioMetrics(weight: Float, height: Int, age: Int, gender: String, activity: String, goal: String, bodyFat: Float, dietType: String, phaseWeeks: Int, isCycling: Boolean) = viewModelScope.launch { userPreferences.saveBioMetrics(weight, height, age, gender, activity, goal, bodyFat, dietType, phaseWeeks, isCycling) }
-    fun logDailyWeight(weightKg: Float) = viewModelScope.launch { repository.editRecord { it.copy(weightLogKg = weightKg) } }
+    fun logDailyWeight(weightKg: Float) = viewModelScope.launch {
+        repository.editRecord { it.copy(weightLogKg = weightKg) }
+        if (weightKg > 0f) userPreferences.updateProfileWeight(weightKg)
+    }
     fun saveDefaultWaterIncrement(ml: Int) = viewModelScope.launch { userPreferences.saveDefaultWaterIncrement(ml) }
+    fun selectDefaultContainer(container: WaterContainer) = viewModelScope.launch { userPreferences.saveDefaultContainer(container.id, container.volumeMl) }
+    val defaultContainerId: StateFlow<String> = userPreferences.defaultContainerIdFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
     fun addFoodItem(food: FoodItem) = viewModelScope.launch { repository.insertFoodItem(food.copy(isUserCreated = true)) }
     fun deleteFoodItem(food: FoodItem) = viewModelScope.launch { repository.deleteFoodItem(food) }
-    fun logFoodItem(food: FoodItem, servings: Float) = viewModelScope.launch { val totalCals = (food.calories * servings).toInt(); val totalPro = (food.protein * servings).toInt(); val totalCarbs = (food.carbs * servings).toInt(); val totalFats = (food.fats * servings).toInt(); val currentTime = System.currentTimeMillis(); val log = ConsumedFoodLog(id = UUID.randomUUID().toString(), foodName = food.name, emoji = getMealEmojiForTime(currentTime), servings = servings, servingUnit = food.servingUnit, calories = totalCals, protein = totalPro, carbs = totalCarbs, fats = totalFats, timestamp = currentTime); repository.addConsumedFood(log) }
+    fun logFoodItem(food: FoodItem, servings: Float) = viewModelScope.launch { val totalCals = (food.calories * servings).roundToInt(); val totalPro = (food.protein * servings).roundToInt(); val totalCarbs = (food.carbs * servings).roundToInt(); val totalFats = (food.fats * servings).roundToInt(); val currentTime = System.currentTimeMillis(); val log = ConsumedFoodLog(id = UUID.randomUUID().toString(), foodName = food.name, emoji = getMealEmojiForTime(currentTime), servings = servings, servingUnit = food.servingUnit, calories = totalCals, protein = totalPro, carbs = totalCarbs, fats = totalFats, timestamp = currentTime); repository.addConsumedFood(log) }
     fun removeConsumedFoodLog(log: ConsumedFoodLog) = viewModelScope.launch { repository.removeConsumedFood(log.id) }
     suspend fun exerciseStats(name: String): ExerciseStats = ExerciseStats.from(repository.getExerciseHistory(name))
     fun createExerciseTemplate(name: String) = viewModelScope.launch { repository.insertTemplateIfNotExists(name) }

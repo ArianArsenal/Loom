@@ -1,5 +1,6 @@
 package com.example.loom.ui.home
 
+import kotlin.math.roundToInt
 import android.content.Context
 import android.net.Uri
 import androidx.annotation.Keep
@@ -381,10 +382,10 @@ class HomeViewModel @Inject constructor(
     }
 
     fun logFoodItem(food: FoodItem, servings: Float) = viewModelScope.launch(Dispatchers.IO) {
-        val totalCals = (food.calories * servings).toInt()
-        val totalPro = (food.protein * servings).toInt()
-        val totalCarbs = (food.carbs * servings).toInt()
-        val totalFats = (food.fats * servings).toInt()
+        val totalCals = (food.calories * servings).roundToInt()
+        val totalPro = (food.protein * servings).roundToInt()
+        val totalCarbs = (food.carbs * servings).roundToInt()
+        val totalFats = (food.fats * servings).roundToInt()
         val currentTime = System.currentTimeMillis()
 
         val log = ConsumedFoodLog(

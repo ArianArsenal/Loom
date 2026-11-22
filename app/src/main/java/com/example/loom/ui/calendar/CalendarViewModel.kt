@@ -1,5 +1,6 @@
 package com.example.loom.ui.calendar
 
+import kotlin.math.roundToInt
 import com.example.loom.ui.health.isScheduledOn
 import com.example.loom.util.TextPatterns
 import androidx.lifecycle.ViewModel
@@ -247,11 +248,12 @@ class CalendarViewModel @Inject constructor(
 
     fun logFoodItemToPast(food: FoodItem, servings: Float) = viewModelScope.launch {
         val dateId = _selectedDateId.value ?: return@launch
-        val totalCals = (food.calories * servings).toInt()
-        val totalPro = (food.protein * servings).toInt()
-        val totalCarbs = (food.carbs * servings).toInt()
-        val totalFats = (food.fats * servings).toInt()
-        val currentTime = System.currentTimeMillis()
+        val totalCals = (food.calories * servings).roundToInt()
+        val totalPro = (food.protein * servings).roundToInt()
+        val totalCarbs = (food.carbs * servings).roundToInt()
+        val totalFats = (food.fats * servings).roundToInt()
+        // Stamp the meal on the selected day (at the current time of day), not "now"
+        val currentTime = LocalDate.parse(dateId).atTime(java.time.LocalTime.now()).atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
 
         val hour = java.util.Calendar.getInstance().apply { timeInMillis = currentTime }.get(java.util.Calendar.HOUR_OF_DAY)
         val emoji = when (hour) { in 5..9 -> "🍳"; in 10..12 -> "🍎"; in 13..15 -> "🍛"; in 16..19 -> "☕"; in 20..23 -> "🍲"; else -> "🌙" }
@@ -273,7 +275,10 @@ class CalendarViewModel @Inject constructor(
     fun logDailyWeight(weightKg: Float) = viewModelScope.launch {
         val dateId = _selectedDateId.value ?: return@launch
         repository.editRecord(dateId) { it.copy(weightLogKg = weightKg) }
+        if (weightKg > 0f && dateId == com.example.loom.util.DateUtils.getTodayDateId()) userPreferences.updateProfileWeight(weightKg)
     }
+
+    val targetCalories: StateFlow<Int> = userPreferences.targetCaloriesFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 2500)
 
     fun deleteDailyWeight() = viewModelScope.launch {
         val dateId = _selectedDateId.value ?: return@launch
