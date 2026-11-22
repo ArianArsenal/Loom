@@ -85,7 +85,8 @@ data class SandboxBlockEntity(
 ) {
     fun toDomainModel(): SandboxBlock {
         return SandboxBlock(
-            id = id, type = BlockType.valueOf(type), content = content,
+            // Unknown types (e.g. from a newer backup) must not crash the whole spaces flow
+            id = id, type = runCatching { BlockType.valueOf(type) }.getOrDefault(BlockType.TEXT), content = content,
             textFormats = try { Json.decodeFromString(textFormatsJson) } catch(_: Exception){ emptyList() }, // --- FIX: Unused e ---
             secondaryContent = secondaryContent, icon = icon, url = url, isChecked = isChecked,
             isExpanded = isExpanded, progress = progress,

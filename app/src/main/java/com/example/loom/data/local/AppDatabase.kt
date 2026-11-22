@@ -32,7 +32,7 @@ import com.example.loom.data.local.entity.SandboxBlockEntity
         SandboxBlockEntity::class
     ],
     version = 32,
-    exportSchema = false
+    exportSchema = true
 )
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {

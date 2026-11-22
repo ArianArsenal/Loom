@@ -26,7 +26,10 @@ object DatabaseModule {
             "loom_database.db"
         )
             .createFromAsset("loom_database.db")
-            .fallbackToDestructiveMigration()
+            // Never wipe user data on a version bump: every schema change needs a real Migration.
+            // Only databases older than the first supported migration (v15) are recreated.
+            .addMigrations(*AppDatabase.MIGRATIONS)
+            .fallbackToDestructiveMigrationFrom(*(1..14).toList().toIntArray())
             .build()
     }
 

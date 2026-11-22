@@ -47,6 +47,10 @@ android {
     }
 }
 
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
+}
+
 // --- FIX: Modern Kotlin 2.0 compilerOptions format ---
 kotlin {
     compilerOptions {
