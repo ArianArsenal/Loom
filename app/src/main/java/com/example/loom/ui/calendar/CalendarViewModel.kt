@@ -5,6 +5,9 @@ import androidx.lifecycle.viewModelScope
 import com.example.loom.data.local.entity.*
 import com.example.loom.data.local.preferences.UserPreferences
 import com.example.loom.data.repository.TrackerRepository
+import com.example.loom.data.repository.addJsonIds
+import com.example.loom.data.repository.removeJsonIds
+import com.example.loom.data.repository.toggleJsonId
 import com.example.loom.ui.health.SupplementItem
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -233,7 +236,7 @@ class CalendarViewModel @Inject constructor(
     fun deleteFoodItem(food: FoodItem) = viewModelScope.launch { repository.deleteFoodItem(food) }
 
     fun logFoodItemToPast(food: FoodItem, servings: Float) = viewModelScope.launch {
-        val record = _selectedDateSnapshot.value?.record ?: return@launch
+        val dateId = _selectedDateId.value ?: return@launch
         val totalCals = (food.calories * servings).toInt()
         val totalPro = (food.protein * servings).toInt()
         val totalCarbs = (food.carbs * servings).toInt()
@@ -248,49 +251,33 @@ class CalendarViewModel @Inject constructor(
             foodName = food.name, emoji = emoji, servings = servings, servingUnit = food.servingUnit,
             calories = totalCals, protein = totalPro, carbs = totalCarbs, fats = totalFats, timestamp = currentTime
         )
-
-        val currentLogs = try { Json.decodeFromString<List<ConsumedFoodLog>>(record.consumedFoodsJson) } catch (_: Exception) { emptyList() } // --- FIX: Unused 'e' ---
-        repository.updateDailyRecord(record.copy(
-            calories = record.calories + totalCals,
-            protein = record.protein + totalPro,
-            carbs = record.carbs + totalCarbs,
-            fats = record.fats + totalFats,
-            consumedFoodsJson = Json.encodeToString(currentLogs + log)
-        ))
+        repository.addConsumedFood(log, dateId)
     }
 
     fun removeConsumedFoodLog(log: ConsumedFoodLog) = viewModelScope.launch {
-        val record = _selectedDateSnapshot.value?.record ?: return@launch
-        val currentLogs = try { Json.decodeFromString<List<ConsumedFoodLog>>(record.consumedFoodsJson) } catch (_: Exception) { emptyList() } // --- FIX: Unused 'e' ---
-        val updatedLogs = currentLogs.filter { it.id != log.id }
-        repository.updateDailyRecord(record.copy(
-            calories = record.calories - log.calories,
-            protein = record.protein - log.protein,
-            carbs = record.carbs - log.carbs,
-            fats = record.fats - log.fats,
-            consumedFoodsJson = Json.encodeToString(updatedLogs)
-        ))
+        val dateId = _selectedDateId.value ?: return@launch
+        repository.removeConsumedFood(log.id, dateId)
     }
 
     // --- WEIGHT & SLEEP ---
     fun logDailyWeight(weightKg: Float) = viewModelScope.launch {
-        val record = _selectedDateSnapshot.value?.record ?: return@launch
-        repository.updateDailyRecord(record.copy(weightLogKg = weightKg))
+        val dateId = _selectedDateId.value ?: return@launch
+        repository.editRecord(dateId) { it.copy(weightLogKg = weightKg) }
     }
 
     fun deleteDailyWeight() = viewModelScope.launch {
-        val record = _selectedDateSnapshot.value?.record ?: return@launch
-        repository.updateDailyRecord(record.copy(weightLogKg = 0f))
+        val dateId = _selectedDateId.value ?: return@launch
+        repository.editRecord(dateId) { it.copy(weightLogKg = 0f) }
     }
 
     fun logSleep(hours: Float, rating: Int) = viewModelScope.launch {
-        val record = _selectedDateSnapshot.value?.record ?: return@launch
-        repository.updateDailyRecord(record.copy(sleepHours = hours, sleepRating = rating))
+        val dateId = _selectedDateId.value ?: return@launch
+        repository.editRecord(dateId) { it.copy(sleepHours = hours, sleepRating = rating) }
     }
 
     fun deleteSleep() = viewModelScope.launch {
-        val record = _selectedDateSnapshot.value?.record ?: return@launch
-        repository.updateDailyRecord(record.copy(sleepHours = 0f, sleepRating = 0))
+        val dateId = _selectedDateId.value ?: return@launch
+        repository.editRecord(dateId) { it.copy(sleepHours = 0f, sleepRating = 0) }
     }
 
     // --- SUPPLEMENTS ---
@@ -319,19 +306,13 @@ class CalendarViewModel @Inject constructor(
         val current = supplementsRoster.value.filter { it.id != id }
         userPreferences.saveSupplementsRoster(Json.encodeToString(current))
 
-        val record = _selectedDateSnapshot.value?.record ?: return@launch
-        val currentCompleted = try { Json.decodeFromString<List<String>>(record.completedSupplementsJson) } catch (_: Exception) { emptyList() }.toMutableList() // --- FIX: Unused 'e' ---
-        if (currentCompleted.contains(id)) {
-            currentCompleted.remove(id)
-            repository.updateDailyRecord(record.copy(completedSupplementsJson = Json.encodeToString(currentCompleted)))
-        }
+        val dateId = _selectedDateId.value ?: return@launch
+        repository.editRecord(dateId) { it.copy(completedSupplementsJson = removeJsonIds(it.completedSupplementsJson, listOf(id))) }
     }
 
     fun toggleSupplement(id: String) = viewModelScope.launch {
-        val record = _selectedDateSnapshot.value?.record ?: return@launch
-        val currentList = try { Json.decodeFromString<List<String>>(record.completedSupplementsJson) } catch (_: Exception) { emptyList() }.toMutableList() // --- FIX: Unused 'e' ---
-        if (currentList.contains(id)) currentList.remove(id) else currentList.add(id)
-        repository.updateDailyRecord(record.copy(completedSupplementsJson = Json.encodeToString(currentList)))
+        val dateId = _selectedDateId.value ?: return@launch
+        repository.editRecord(dateId) { it.copy(completedSupplementsJson = toggleJsonId(it.completedSupplementsJson, id)) }
     }
 
     // --- SKINCARE ---
@@ -340,29 +321,23 @@ class CalendarViewModel @Inject constructor(
     fun addSkincareProduct(name: String) = viewModelScope.launch { repository.insertSkincareProduct(SkincareProduct(name = name)) }
 
     fun logSkincareRoutine(routineName: String) = viewModelScope.launch {
-        val record = _selectedDateSnapshot.value?.record ?: return@launch
-        val currentRoutines = try { Json.decodeFromString<List<String>>(record.completedSkincareRoutinesJson) } catch (_: Exception) { emptyList() }.toMutableList() // --- FIX: Unused 'e' ---
-        if (!currentRoutines.contains(routineName)) {
-            currentRoutines.add(routineName)
-            repository.updateDailyRecord(record.copy(completedSkincareRoutinesJson = Json.encodeToString(currentRoutines)))
-        }
+        val dateId = _selectedDateId.value ?: return@launch
+        repository.editRecord(dateId) { it.copy(completedSkincareRoutinesJson = addJsonIds(it.completedSkincareRoutinesJson, listOf(routineName))) }
     }
 
     fun toggleSkincareStep(routineName: String, productName: String) = viewModelScope.launch {
-        val record = _selectedDateSnapshot.value?.record ?: return@launch
-        val stepId = "${routineName}_${productName}"
-        val currentList = try { Json.decodeFromString<List<String>>(record.completedSkincareStepsJson) } catch (_: Exception) { emptyList() }.toMutableList() // --- FIX: Unused 'e' ---
-        if (currentList.contains(stepId)) currentList.remove(stepId) else currentList.add(stepId)
-        repository.updateDailyRecord(record.copy(completedSkincareStepsJson = Json.encodeToString(currentList)))
+        val dateId = _selectedDateId.value ?: return@launch
+        repository.editRecord(dateId) { it.copy(completedSkincareStepsJson = toggleJsonId(it.completedSkincareStepsJson, "${routineName}_${productName}")) }
     }
 
     fun removeLoggedSkincareRoutine(routineName: String, products: List<String>) = viewModelScope.launch {
-        val record = _selectedDateSnapshot.value?.record ?: return@launch
-        val currentRoutines = try { Json.decodeFromString<List<String>>(record.completedSkincareRoutinesJson) } catch (_: Exception) { emptyList() }.toMutableList() // --- FIX: Unused 'e' ---
-        val currentSteps = try { Json.decodeFromString<List<String>>(record.completedSkincareStepsJson) } catch (_: Exception) { emptyList() }.toMutableList() // --- FIX: Unused 'e' ---
-        currentRoutines.remove(routineName)
-        products.forEach { p -> currentSteps.remove("${routineName}_$p") }
-        repository.updateDailyRecord(record.copy(completedSkincareRoutinesJson = Json.encodeToString(currentRoutines), completedSkincareStepsJson = Json.encodeToString(currentSteps)))
+        val dateId = _selectedDateId.value ?: return@launch
+        repository.editRecord(dateId) {
+            it.copy(
+                completedSkincareRoutinesJson = removeJsonIds(it.completedSkincareRoutinesJson, listOf(routineName)),
+                completedSkincareStepsJson = removeJsonIds(it.completedSkincareStepsJson, products.map { p -> "${routineName}_$p" })
+            )
+        }
     }
 
     // --- WORKOUTS ---

@@ -12,6 +12,9 @@ import com.example.loom.data.local.preferences.UserPreferences
 import com.example.loom.data.models.SandboxBlock
 import com.example.loom.data.models.SandboxSpace
 import com.example.loom.data.repository.TrackerRepository
+import com.example.loom.data.repository.addJsonIds
+import com.example.loom.data.repository.removeJsonIds
+import com.example.loom.data.repository.toggleJsonId
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -338,8 +341,8 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    fun addWater() = viewModelScope.launch(Dispatchers.IO) { repository.addWater(defaultWaterIncrement.value) }
-    fun removeWater() = viewModelScope.launch(Dispatchers.IO) { repository.removeWater(defaultWaterIncrement.value) }
+    fun addWater() = viewModelScope.launch(Dispatchers.IO) { repository.addWater(userPreferences.defaultWaterIncrementFlow.first()) }
+    fun removeWater() = viewModelScope.launch(Dispatchers.IO) { repository.removeWater(userPreferences.defaultWaterIncrementFlow.first()) }
 
     fun updateFoodSearchQuery(query: String) {
         _foodSearchQuery.value = query
@@ -350,7 +353,6 @@ class HomeViewModel @Inject constructor(
     }
 
     fun logFoodItem(food: FoodItem, servings: Float) = viewModelScope.launch(Dispatchers.IO) {
-        val record = todayRecord.value ?: return@launch
         val totalCals = (food.calories * servings).toInt()
         val totalPro = (food.protein * servings).toInt()
         val totalCarbs = (food.carbs * servings).toInt()
@@ -366,32 +368,18 @@ class HomeViewModel @Inject constructor(
             calories = totalCals, protein = totalPro, carbs = totalCarbs, fats = totalFats,
             timestamp = currentTime
         )
-
-        val currentLogs = try { Json.decodeFromString<List<ConsumedFoodLog>>(record.consumedFoodsJson) } catch (_: Exception) { emptyList() }
-        repository.logConsumedFood(totalCals, totalPro, totalCarbs, totalFats, Json.encodeToString(currentLogs + log))
+        repository.addConsumedFood(log)
     }
 
     fun toggleSkincareStep(routineName: String, productName: String) = viewModelScope.launch(Dispatchers.IO) {
-        val record = todayRecord.value ?: return@launch
-        val stepId = "${routineName}_${productName}"
-        val currentList = try { Json.decodeFromString<List<String>>(record.completedSkincareStepsJson) } catch (_: Exception) { emptyList() }.toMutableList()
-        if (currentList.contains(stepId)) currentList.remove(stepId) else currentList.add(stepId)
-        repository.updateCompletedSkincareSteps(Json.encodeToString(currentList))
+        repository.editRecord { it.copy(completedSkincareStepsJson = toggleJsonId(it.completedSkincareStepsJson, "${routineName}_${productName}")) }
     }
 
     fun toggleAllSkincareSteps(routineName: String, products: List<String>, isCompleted: Boolean) = viewModelScope.launch(Dispatchers.IO) {
-        val record = todayRecord.value ?: return@launch
-        val currentSteps = try { Json.decodeFromString<List<String>>(record.completedSkincareStepsJson) } catch (_: Exception) { emptyList() }.toMutableList()
-
-        products.forEach { p ->
-            val stepId = "${routineName}_$p"
-            if (isCompleted) {
-                if (!currentSteps.contains(stepId)) currentSteps.add(stepId)
-            } else {
-                currentSteps.remove(stepId)
-            }
+        val stepIds = products.map { p -> "${routineName}_$p" }
+        repository.editRecord {
+            it.copy(completedSkincareStepsJson = if (isCompleted) addJsonIds(it.completedSkincareStepsJson, stepIds) else removeJsonIds(it.completedSkincareStepsJson, stepIds))
         }
-        repository.updateCompletedSkincareSteps(Json.encodeToString(currentSteps))
     }
 
     fun saveSkincareRoutine(routine: SkincareRoutine) = viewModelScope.launch(Dispatchers.IO) { repository.insertSkincareRoutine(routine) }
@@ -487,9 +475,6 @@ class HomeViewModel @Inject constructor(
     }
 
     fun logManualMeal(cals: Int, pro: Int, carbs: Int, fats: Int) = viewModelScope.launch(Dispatchers.IO) {
-        val record = todayRecord.value ?: return@launch
-        val currentTime = System.currentTimeMillis()
-
         val log = ConsumedFoodLog(
             id = UUID.randomUUID().toString(),
             foodName = "Manual Entry",
@@ -497,19 +482,13 @@ class HomeViewModel @Inject constructor(
             servings = 1f,
             servingUnit = "serving",
             calories = cals, protein = pro, carbs = carbs, fats = fats,
-            timestamp = currentTime
+            timestamp = System.currentTimeMillis()
         )
-
-        val currentLogs = try { Json.decodeFromString<List<ConsumedFoodLog>>(record.consumedFoodsJson) } catch (_: Exception) { emptyList() }
-        repository.logConsumedFood(cals, pro, carbs, fats, Json.encodeToString(currentLogs + log))
+        repository.addConsumedFood(log)
     }
 
     fun removeConsumedFoodLog(log: ConsumedFoodLog) = viewModelScope.launch(Dispatchers.IO) {
-        val record = todayRecord.value ?: return@launch
-        val currentLogs = try { Json.decodeFromString<List<ConsumedFoodLog>>(record.consumedFoodsJson) } catch (_: Exception) { emptyList() }
-
-        val updatedLogs = currentLogs.filter { it.id != log.id }
-        repository.logConsumedFood(-log.calories, -log.protein, -log.carbs, -log.fats, Json.encodeToString(updatedLogs))
+        repository.removeConsumedFood(log.id)
     }
 
     private val _shortcutAction = MutableStateFlow<String?>(null)

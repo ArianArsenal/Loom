@@ -14,7 +14,14 @@ import com.example.loom.data.local.entity.TaskSection
 import com.example.loom.data.local.entity.WaterLog
 import com.example.loom.data.local.entity.WorkoutPreset
 import com.example.loom.util.DateUtils
+import com.example.loom.data.local.entity.ConsumedFoodLog
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.util.UUID
@@ -23,115 +30,130 @@ import javax.inject.Inject
 class TrackerRepository @Inject constructor(private val dao: TrackerDao) {
 
     // --- Daily Records ---
-    suspend fun initializeTodayRecord() {
-        val todayId = DateUtils.getTodayDateId()
-        val existingRecord = dao.getDailyRecordSync(todayId)
+    // Every read-modify-write of a DailyRecord goes through editRecord under this lock, so two quick
+    // taps (or Home + Health at once) can't overwrite each other with stale copies.
+    private val recordLock = Mutex()
 
-        if (existingRecord == null) {
-            val newRecord = DailyRecord(dateId = todayId)
-            dao.insertDailyRecord(newRecord)
+    suspend fun initializeTodayRecord() = ensureRecord(DateUtils.getTodayDateId())
+
+    private suspend fun ensureRecord(dateId: String) {
+        dao.insertDailyRecord(DailyRecord(dateId = dateId)) // IGNORE on conflict
+    }
+
+    /** Today's record; follows the logical day as it changes while the app stays open. */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun getTodayRecord(): Flow<DailyRecord?> = DateUtils.todayDateIdFlow.flatMapLatest { dateId ->
+        flow {
+            ensureRecord(dateId)
+            emitAll(dao.getDailyRecordFlow(dateId))
         }
     }
 
-    fun getTodayRecord(): Flow<DailyRecord?> = dao.getDailyRecordFlow(DateUtils.getTodayDateId())
+    /** Exercises for the logical today, switching over at the rollover hour. */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun getTodayExercises(): Flow<List<Exercise>> = DateUtils.todayDateIdFlow.flatMapLatest { dao.getExercisesForDate(it) }
 
     fun getDailyRecordFlow(dateId: String): Flow<DailyRecord?> = dao.getDailyRecordFlow(dateId)
     fun getRecordsForMonth(monthPrefix: String): Flow<List<DailyRecord>> = dao.getRecordsForMonth(monthPrefix)
 
+    /** Atomically applies [transform] to the freshest copy of a day's record, creating the day if needed. */
+    suspend fun editRecord(dateId: String = DateUtils.getTodayDateId(), transform: (DailyRecord) -> DailyRecord) {
+        recordLock.withLock {
+            val current = dao.getDailyRecordSync(dateId) ?: DailyRecord(dateId = dateId).also { dao.insertDailyRecord(it) }
+            dao.updateDailyRecord(transform(current.copy()))
+        }
+    }
 
-    suspend fun logDetailedWater(logsJson: String) {
-        val record = dao.getDailyRecordSync(DateUtils.getTodayDateId())
-        if (record != null) {
-            // Calculate total net hydration from logs
-            val logsList = try { Json.decodeFromString<List<WaterLog>>(logsJson) } catch (_: Exception) { emptyList() }
-            var netHydration = 0f
-            logsList.forEach { netHydration += (it.amountMl * it.hydrationFactor) }
-
-            record.waterLogsJson = logsJson
-            record.waterIntakeMl = netHydration.toInt() // Syncs the Home Tab progress bar automatically!
-            dao.updateDailyRecord(record)
+    /** Detailed hydration log (Health tab): intake is recomputed from the logs and their hydration factors. */
+    suspend fun editWaterLogs(dateId: String = DateUtils.getTodayDateId(), transform: (List<WaterLog>) -> List<WaterLog>) {
+        editRecord(dateId) { record ->
+            val logs = transform(decodeList<WaterLog>(record.waterLogsJson))
+            val netHydration = logs.sumOf { (it.amountMl * it.hydrationFactor).toDouble() }
+            record.copy(waterLogsJson = Json.encodeToString(logs), waterIntakeMl = netHydration.toInt())
         }
     }
 
     // Keep this for backward compatibility and Home tab Quick Add
     suspend fun addWater(amountMl: Int, targetDateId: String = DateUtils.getTodayDateId()) {
-        val record = dao.getDailyRecordSync(targetDateId)
-        if (record != null) {
-            val currentLogs = try { Json.decodeFromString<List<WaterLog>>(record.waterLogsJson) } catch (_: Exception) { emptyList() }
+        // Find matching container name/icon based on volume, or fallback nicely
+        val containerName = when (amountMl) {
+            250 -> "Glass"
+            600 -> "Shaker"
+            1500 -> "Bottle"
+            else -> "${amountMl}ml Drink"
+        }
+        val iconKey = when (amountMl) {
+            250 -> "LocalDrink"
+            600 -> "LocalCafe"
+            1500 -> "WaterDrop"
+            else -> "LocalDrink"
+        }
 
-            // Find matching container name/icon based on volume, or fallback nicely
-            val containerName = when (amountMl) {
-                250 -> "Glass"
-                600 -> "Shaker"
-                1500 -> "Bottle"
-                else -> "${amountMl}ml Drink"
-            }
-            val iconKey = when (amountMl) {
-                250 -> "LocalDrink"
-                600 -> "LocalCafe"
-                1500 -> "WaterDrop"
-                else -> "LocalDrink"
-            }
-
-            val newLog = WaterLog(
-                id = UUID.randomUUID().toString(),
-                containerName = containerName,
-                emoji = iconKey,
-                amountMl = amountMl,
-                hydrationFactor = 1.0f,
-                timestamp = System.currentTimeMillis()
-            )
-            val updatedJson = Json.encodeToString(currentLogs + newLog)
-
-            record.waterLogsJson = updatedJson
-            record.waterIntakeMl += amountMl
-            dao.updateDailyRecord(record)
+        val newLog = WaterLog(
+            id = UUID.randomUUID().toString(),
+            containerName = containerName,
+            emoji = iconKey,
+            amountMl = amountMl,
+            hydrationFactor = 1.0f,
+            timestamp = System.currentTimeMillis()
+        )
+        editRecord(targetDateId) { record ->
+            val currentLogs = decodeList<WaterLog>(record.waterLogsJson)
+            record.copy(waterLogsJson = Json.encodeToString(currentLogs + newLog), waterIntakeMl = record.waterIntakeMl + amountMl)
         }
     }
 
     suspend fun removeWater(amountMl: Int, targetDateId: String = DateUtils.getTodayDateId()) {
-        val record = dao.getDailyRecordSync(targetDateId)
-        if (record != null) {
-            val currentLogs = try { Json.decodeFromString<List<WaterLog>>(record.waterLogsJson) } catch (_: Exception) { emptyList() }.toMutableList()
+        editRecord(targetDateId) { record ->
+            val currentLogs = decodeList<WaterLog>(record.waterLogsJson)
             if (currentLogs.isNotEmpty()) {
-                val removedLog = currentLogs.removeAt(currentLogs.lastIndex)
-                val updatedJson = Json.encodeToString(currentLogs)
-                record.waterLogsJson = updatedJson
-                record.waterIntakeMl = (record.waterIntakeMl - (removedLog.amountMl * removedLog.hydrationFactor).toInt()).coerceAtLeast(0)
+                val removedLog = currentLogs.last()
+                record.copy(
+                    waterLogsJson = Json.encodeToString(currentLogs.dropLast(1)),
+                    waterIntakeMl = (record.waterIntakeMl - (removedLog.amountMl * removedLog.hydrationFactor).toInt()).coerceAtLeast(0)
+                )
             } else {
-                record.waterIntakeMl = (record.waterIntakeMl - amountMl).coerceAtLeast(0)
+                record.copy(waterIntakeMl = (record.waterIntakeMl - amountMl).coerceAtLeast(0))
             }
-            dao.updateDailyRecord(record)
         }
     }
 
-    suspend fun logConsumedFood(cals: Int, pro: Int, carbs: Int, fats: Int, logsJson: String) {
-        val record = dao.getDailyRecordSync(DateUtils.getTodayDateId())
-        if (record != null) {
-            record.calories = (record.calories + cals).coerceAtLeast(0)
-            record.protein = (record.protein + pro).coerceAtLeast(0)
-            record.carbs = (record.carbs + carbs).coerceAtLeast(0)
-            record.fats = (record.fats + fats).coerceAtLeast(0)
-            record.consumedFoodsJson = logsJson
-            dao.updateDailyRecord(record)
+    suspend fun addConsumedFood(log: ConsumedFoodLog, dateId: String = DateUtils.getTodayDateId()) {
+        editRecord(dateId) { record ->
+            val logs = decodeList<ConsumedFoodLog>(record.consumedFoodsJson)
+            record.copy(
+                calories = record.calories + log.calories,
+                protein = record.protein + log.protein,
+                carbs = record.carbs + log.carbs,
+                fats = record.fats + log.fats,
+                consumedFoodsJson = Json.encodeToString(logs + log)
+            )
+        }
+    }
+
+    suspend fun removeConsumedFood(logId: String, dateId: String = DateUtils.getTodayDateId()) {
+        editRecord(dateId) { record ->
+            val logs = decodeList<ConsumedFoodLog>(record.consumedFoodsJson)
+            val removed = logs.find { it.id == logId }
+            if (removed == null) record else record.copy(
+                calories = (record.calories - removed.calories).coerceAtLeast(0),
+                protein = (record.protein - removed.protein).coerceAtLeast(0),
+                carbs = (record.carbs - removed.carbs).coerceAtLeast(0),
+                fats = (record.fats - removed.fats).coerceAtLeast(0),
+                consumedFoodsJson = Json.encodeToString(logs.filter { it.id != logId })
+            )
         }
     }
 
     suspend fun setNutrition(cals: Int, pro: Int, carbs: Int, fats: Int, targetDateId: String = DateUtils.getTodayDateId()) {
-        val record = dao.getDailyRecordSync(targetDateId)
-        if (record != null) {
-            record.calories = cals.coerceAtLeast(0)
-            record.protein = pro.coerceAtLeast(0)
-            record.carbs = carbs.coerceAtLeast(0)
-            record.fats = fats.coerceAtLeast(0)
-
-            if (cals == 0 && pro == 0 && carbs == 0 && fats == 0) {
-                record.consumedFoodsJson = "[]"
-            }
-            dao.updateDailyRecord(record)
-        } else {
-            val newRecord = DailyRecord(dateId = targetDateId, calories = cals, protein = pro, carbs = carbs, fats = fats)
-            dao.insertDailyRecord(newRecord)
+        editRecord(targetDateId) { record ->
+            record.copy(
+                calories = cals.coerceAtLeast(0),
+                protein = pro.coerceAtLeast(0),
+                carbs = carbs.coerceAtLeast(0),
+                fats = fats.coerceAtLeast(0),
+                consumedFoodsJson = if (cals == 0 && pro == 0 && carbs == 0 && fats == 0) "[]" else record.consumedFoodsJson
+            )
         }
     }
 
@@ -140,13 +162,6 @@ class TrackerRepository @Inject constructor(private val dao: TrackerDao) {
     suspend fun insertFoodItem(food: FoodItem) = dao.insertFoodItem(food)
     suspend fun deleteFoodItem(food: FoodItem) = dao.deleteFoodItem(food)
 
-    suspend fun updateCompletedSkincareRoutines(routinesJson: String) {
-        val record = dao.getDailyRecordSync(DateUtils.getTodayDateId())
-        if (record != null) {
-            record.completedSkincareRoutinesJson = routinesJson
-            dao.updateDailyRecord(record)
-        }
-    }
 
     // --- Tasks Engine ---
     fun getAllTasks(): Flow<List<Task>> = dao.getAllTasks()
@@ -272,15 +287,29 @@ class TrackerRepository @Inject constructor(private val dao: TrackerDao) {
         }
     }
 
-    suspend fun updateCompletedSkincareSteps(stepsJson: String) {
-        val record = dao.getDailyRecordSync(DateUtils.getTodayDateId())
-        if (record != null) {
-            record.completedSkincareStepsJson = stepsJson
-            dao.updateDailyRecord(record)
-        }
-    }
 
     suspend fun updateDailyRecord(record: DailyRecord) = dao.updateDailyRecord(record)
 
     fun getExercisesForMonth(monthPrefix: String): Flow<List<Exercise>> = dao.getExercisesForMonth(monthPrefix)
 }
+
+@PublishedApi
+internal val lenientListJson = Json { ignoreUnknownKeys = true }
+
+/** Decodes a JSON list column, treating corrupt or empty values as an empty list. */
+inline fun <reified T> decodeList(json: String?): List<T> =
+    try { lenientListJson.decodeFromString<List<T>>(json ?: "[]") } catch (_: Exception) { emptyList() }
+
+/** Helpers for the id lists stored on a DailyRecord (supplements, skincare routines/steps). */
+fun toggleJsonId(json: String, id: String): String {
+    val list = decodeList<String>(json)
+    return Json.encodeToString(if (id in list) list - id else list + id)
+}
+
+fun addJsonIds(json: String, ids: Collection<String>): String {
+    val list = decodeList<String>(json)
+    return Json.encodeToString(list + ids.filter { it !in list })
+}
+
+fun removeJsonIds(json: String, ids: Collection<String>): String =
+    Json.encodeToString(decodeList<String>(json).filter { it !in ids })

@@ -6,6 +6,9 @@ import com.example.loom.data.local.dao.SandboxDao
 import com.example.loom.data.local.entity.*
 import com.example.loom.data.local.preferences.UserPreferences
 import com.example.loom.data.repository.TrackerRepository
+import com.example.loom.data.repository.addJsonIds
+import com.example.loom.data.repository.removeJsonIds
+import com.example.loom.data.repository.toggleJsonId
 import com.example.loom.util.DateUtils
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -82,7 +85,7 @@ class HealthViewModel @Inject constructor(
     }
 
     val todayRecord: StateFlow<DailyRecord?> = repository.getTodayRecord().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
-    val todayExercises: StateFlow<List<Exercise>> = repository.getExercisesForDate(DateUtils.getTodayDateId()).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val todayExercises: StateFlow<List<Exercise>> = repository.getTodayExercises().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val allPresets: StateFlow<List<WorkoutPreset>> = repository.getAllPresets().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val exerciseTemplates: StateFlow<List<ExerciseTemplate>> = repository.getAllTemplates().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -121,8 +124,9 @@ class HealthViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // --- FIX: Only show ACTIVE supplements on the daily card ---
-    val todayScheduledSupplements: StateFlow<List<SupplementItem>> = supplementsRoster.map { roster ->
-        val today = LocalDate.now()
+    val todayScheduledSupplements: StateFlow<List<SupplementItem>> = combine(supplementsRoster, DateUtils.todayDateIdFlow) { roster, todayId ->
+        // Logical today (respects the rollover hour) and re-evaluated when the day changes
+        val today = LocalDate.parse(todayId)
         roster.filter { item ->
             if (!item.isActive) return@filter false
 
@@ -157,10 +161,7 @@ class HealthViewModel @Inject constructor(
     }
 
     fun toggleSupplement(id: String) = viewModelScope.launch {
-        val record = todayRecord.value ?: return@launch
-        val currentList = try { jsonParser.decodeFromString<List<String>>(record.completedSupplementsJson) } catch (_: Exception) { emptyList() }.toMutableList()
-        if (currentList.contains(id)) currentList.remove(id) else currentList.add(id)
-        repository.updateDailyRecord(record.copy(completedSupplementsJson = Json.encodeToString(currentList)))
+        repository.editRecord { it.copy(completedSupplementsJson = toggleJsonId(it.completedSupplementsJson, id)) }
     }
 
     // --- NEW: Toggle active state of a supplement ---
@@ -186,24 +187,19 @@ class HealthViewModel @Inject constructor(
     fun deleteSupplementItem(id: String) = viewModelScope.launch {
         val current = supplementsRoster.value.filter { it.id != id }
         userPreferences.saveSupplementsRoster(Json.encodeToString(current))
-        val record = todayRecord.value ?: return@launch
-        val currentCompleted = try { jsonParser.decodeFromString<List<String>>(record.completedSupplementsJson) } catch (_: Exception) { emptyList() }.toMutableList()
-        if (currentCompleted.contains(id)) {
-            currentCompleted.remove(id)
-            repository.updateDailyRecord(record.copy(completedSupplementsJson = Json.encodeToString(currentCompleted)))
-        }
+        repository.editRecord { it.copy(completedSupplementsJson = removeJsonIds(it.completedSupplementsJson, listOf(id))) }
     }
 
     fun toggleCardVisibility(cardName: String, isVisible: Boolean) = viewModelScope.launch { userPreferences.toggleHealthCardVisibility(cardName, isVisible) }
-    fun deleteDailyWeight() = viewModelScope.launch { val record = todayRecord.value ?: return@launch; repository.updateDailyRecord(record.copy(weightLogKg = 0f)) }
+    fun deleteDailyWeight() = viewModelScope.launch { repository.editRecord { it.copy(weightLogKg = 0f) } }
 
     val customWaterContainers: StateFlow<List<WaterContainer>> = userPreferences.customWaterContainersFlow.map { try { jsonParser.decodeFromString<List<WaterContainer>>(it) } catch (_: Exception) { emptyList() } }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val waterLogs: StateFlow<List<WaterLog>> = todayRecord.map { try { jsonParser.decodeFromString<List<WaterLog>>(it?.waterLogsJson ?: "[]") } catch (_: Exception) { emptyList() } }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     fun saveWaterGoal(goal: Int, isAuto: Boolean) = viewModelScope.launch { userPreferences.saveWaterDailyGoal(goal, isAuto) }
     fun saveCustomWaterContainers(containers: List<WaterContainer>) = viewModelScope.launch { userPreferences.saveCustomWaterContainers(Json.encodeToString(containers)) }
-    fun logDetailedWater(container: WaterContainer) = viewModelScope.launch { val newLog = WaterLog(id = UUID.randomUUID().toString(), containerName = container.name, emoji = container.iconEmoji, amountMl = container.volumeMl, hydrationFactor = container.hydrationFactor, timestamp = System.currentTimeMillis()); repository.logDetailedWater(Json.encodeToString(waterLogs.value + newLog)) }
-    fun removeDetailedWaterLog(logId: String) = viewModelScope.launch { repository.logDetailedWater(Json.encodeToString(waterLogs.value.filter { it.id != logId })) }
+    fun logDetailedWater(container: WaterContainer) = viewModelScope.launch { val newLog = WaterLog(id = UUID.randomUUID().toString(), containerName = container.name, emoji = container.iconEmoji, amountMl = container.volumeMl, hydrationFactor = container.hydrationFactor, timestamp = System.currentTimeMillis()); repository.editWaterLogs { it + newLog } }
+    fun removeDetailedWaterLog(logId: String) = viewModelScope.launch { repository.editWaterLogs { logs -> logs.filter { it.id != logId } } }
 
     val consumedFoods: StateFlow<List<ConsumedFoodLog>> = todayRecord.map { try { jsonParser.decodeFromString<List<ConsumedFoodLog>>(it?.consumedFoodsJson ?: "[]") } catch (_: Exception) { emptyList() } }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val completedSkincareRoutines: StateFlow<List<String>> = todayRecord.map { try { jsonParser.decodeFromString<List<String>>(it?.completedSkincareRoutinesJson ?: "[]") } catch (_: Exception) { emptyList() } }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -220,12 +216,12 @@ class HealthViewModel @Inject constructor(
     init { viewModelScope.launch { repository.prepopulateSkincareProductsIfEmpty() } }
 
     fun saveBioMetrics(weight: Float, height: Int, age: Int, gender: String, activity: String, goal: String, bodyFat: Float, dietType: String, phaseWeeks: Int, isCycling: Boolean) = viewModelScope.launch { userPreferences.saveBioMetrics(weight, height, age, gender, activity, goal, bodyFat, dietType, phaseWeeks, isCycling) }
-    fun logDailyWeight(weightKg: Float) = viewModelScope.launch { val record = todayRecord.value ?: return@launch; repository.updateDailyRecord(record.copy(weightLogKg = weightKg)) }
+    fun logDailyWeight(weightKg: Float) = viewModelScope.launch { repository.editRecord { it.copy(weightLogKg = weightKg) } }
     fun saveDefaultWaterIncrement(ml: Int) = viewModelScope.launch { userPreferences.saveDefaultWaterIncrement(ml) }
     fun addFoodItem(food: FoodItem) = viewModelScope.launch { repository.insertFoodItem(food.copy(isUserCreated = true)) }
     fun deleteFoodItem(food: FoodItem) = viewModelScope.launch { repository.deleteFoodItem(food) }
-    fun logFoodItem(food: FoodItem, servings: Float) = viewModelScope.launch { val record = todayRecord.value ?: return@launch; val totalCals = (food.calories * servings).toInt(); val totalPro = (food.protein * servings).toInt(); val totalCarbs = (food.carbs * servings).toInt(); val totalFats = (food.fats * servings).toInt(); val currentTime = System.currentTimeMillis(); val log = ConsumedFoodLog(id = UUID.randomUUID().toString(), foodName = food.name, emoji = getMealEmojiForTime(currentTime), servings = servings, servingUnit = food.servingUnit, calories = totalCals, protein = totalPro, carbs = totalCarbs, fats = totalFats, timestamp = currentTime); val currentLogs = try { jsonParser.decodeFromString<List<ConsumedFoodLog>>(record.consumedFoodsJson) } catch (_: Exception) { emptyList() }; repository.logConsumedFood(totalCals, totalPro, totalCarbs, totalFats, Json.encodeToString(currentLogs + log)) }
-    fun removeConsumedFoodLog(log: ConsumedFoodLog) = viewModelScope.launch { val record = todayRecord.value ?: return@launch; val currentLogs = try { jsonParser.decodeFromString<List<ConsumedFoodLog>>(record.consumedFoodsJson) } catch (_: Exception) { emptyList() }; val updatedLogs = currentLogs.filter { it.id != log.id }; repository.logConsumedFood(-log.calories, -log.protein, -log.carbs, -log.fats, Json.encodeToString(updatedLogs)) }
+    fun logFoodItem(food: FoodItem, servings: Float) = viewModelScope.launch { val totalCals = (food.calories * servings).toInt(); val totalPro = (food.protein * servings).toInt(); val totalCarbs = (food.carbs * servings).toInt(); val totalFats = (food.fats * servings).toInt(); val currentTime = System.currentTimeMillis(); val log = ConsumedFoodLog(id = UUID.randomUUID().toString(), foodName = food.name, emoji = getMealEmojiForTime(currentTime), servings = servings, servingUnit = food.servingUnit, calories = totalCals, protein = totalPro, carbs = totalCarbs, fats = totalFats, timestamp = currentTime); repository.addConsumedFood(log) }
+    fun removeConsumedFoodLog(log: ConsumedFoodLog) = viewModelScope.launch { repository.removeConsumedFood(log.id) }
     fun createExerciseTemplate(name: String) = viewModelScope.launch { repository.insertTemplateIfNotExists(name) }
     fun addExercise(name: String, sets: Int, reps: Int, weight: Float, weightListJson: String = "[]", isTimeBased: Boolean, duration: Int, presetName: String? = null) = viewModelScope.launch { repository.insertExercise(name, sets, reps, weight, weightListJson, isTimeBased, duration, presetName); repository.insertTemplateIfNotExists(name) }
     fun updateExercise(exercise: Exercise) = viewModelScope.launch { repository.updateExercise(exercise) }
@@ -239,12 +235,12 @@ class HealthViewModel @Inject constructor(
     fun saveSkincareRoutine(routine: SkincareRoutine) = viewModelScope.launch { repository.insertSkincareRoutine(routine) }
     fun deleteSkincareRoutine(routine: SkincareRoutine) = viewModelScope.launch { repository.deleteSkincareRoutine(routine) }
     fun addSkincareProduct(name: String) = viewModelScope.launch { repository.insertSkincareProduct(SkincareProduct(name = name)) }
-    fun toggleSkincareStep(routineName: String, productName: String) = viewModelScope.launch { val record = todayRecord.value ?: return@launch; val stepId = "${routineName}_${productName}"; val currentList = try { jsonParser.decodeFromString<List<String>>(record.completedSkincareStepsJson) } catch (_: Exception) { emptyList() }.toMutableList(); if (currentList.contains(stepId)) currentList.remove(stepId) else currentList.add(stepId); repository.updateDailyRecord(record.copy(completedSkincareStepsJson = Json.encodeToString(currentList))) }
-    fun logSkincareRoutine(routineName: String) = viewModelScope.launch { val record = todayRecord.value ?: return@launch; val currentRoutines = try { jsonParser.decodeFromString<List<String>>(record.completedSkincareRoutinesJson) } catch (_: Exception) { emptyList() }.toMutableList(); if (!currentRoutines.contains(routineName)) { currentRoutines.add(routineName); repository.updateCompletedSkincareRoutines(Json.encodeToString(currentRoutines)) } }
-    fun removeLoggedSkincareRoutine(routineName: String, products: List<String>) = viewModelScope.launch { val record = todayRecord.value ?: return@launch; val currentRoutines = try { jsonParser.decodeFromString<List<String>>(record.completedSkincareRoutinesJson) } catch (_: Exception) { emptyList() }.toMutableList(); val currentSteps = try { jsonParser.decodeFromString<List<String>>(record.completedSkincareStepsJson) } catch (_: Exception) { emptyList() }.toMutableList(); currentRoutines.remove(routineName); products.forEach { p -> currentSteps.remove("${routineName}_$p") }; repository.updateCompletedSkincareRoutines(Json.encodeToString(currentRoutines)); repository.updateCompletedSkincareSteps(Json.encodeToString(currentSteps)) }
-    fun toggleAllSkincareSteps(routineName: String, products: List<String>, isCompleted: Boolean) = viewModelScope.launch { val record = todayRecord.value ?: return@launch; val currentSteps = try { jsonParser.decodeFromString<List<String>>(record.completedSkincareStepsJson) } catch (_: Exception) { emptyList() }.toMutableList(); products.forEach { p -> val stepId = "${routineName}_$p"; if (isCompleted) { if (!currentSteps.contains(stepId)) currentSteps.add(stepId) } else { currentSteps.remove(stepId) } }; repository.updateCompletedSkincareSteps(Json.encodeToString(currentSteps)) }
+    fun toggleSkincareStep(routineName: String, productName: String) = viewModelScope.launch { repository.editRecord { it.copy(completedSkincareStepsJson = toggleJsonId(it.completedSkincareStepsJson, "${routineName}_${productName}")) } }
+    fun logSkincareRoutine(routineName: String) = viewModelScope.launch { repository.editRecord { it.copy(completedSkincareRoutinesJson = addJsonIds(it.completedSkincareRoutinesJson, listOf(routineName))) } }
+    fun removeLoggedSkincareRoutine(routineName: String, products: List<String>) = viewModelScope.launch { repository.editRecord { it.copy(completedSkincareRoutinesJson = removeJsonIds(it.completedSkincareRoutinesJson, listOf(routineName)), completedSkincareStepsJson = removeJsonIds(it.completedSkincareStepsJson, products.map { p -> "${routineName}_$p" })) } }
+    fun toggleAllSkincareSteps(routineName: String, products: List<String>, isCompleted: Boolean) = viewModelScope.launch { val stepIds = products.map { p -> "${routineName}_$p" }; repository.editRecord { it.copy(completedSkincareStepsJson = if (isCompleted) addJsonIds(it.completedSkincareStepsJson, stepIds) else removeJsonIds(it.completedSkincareStepsJson, stepIds)) } }
     private fun getMealEmojiForTime(timestamp: Long): String { val hour = Calendar.getInstance().apply { timeInMillis = timestamp }.get(Calendar.HOUR_OF_DAY); return when (hour) { in 5..9 -> "🍳"; in 10..12 -> "🍎"; in 13..15 -> "🍛"; in 16..19 -> "☕"; in 20..23 -> "🍲"; else -> "🌙" } }
     fun toggleFasting(start: Boolean, goalHours: Int) = viewModelScope.launch { if (start) { userPreferences.setFastingState(true, System.currentTimeMillis(), goalHours) } else { userPreferences.setFastingState(false, 0L, goalHours) } }
-    fun logSleep(hours: Float, rating: Int) = viewModelScope.launch { val record = todayRecord.value ?: return@launch; repository.updateDailyRecord(record.copy(sleepHours = hours, sleepRating = rating)) }
-    fun logMeasurements(measurements: Map<String, Float>) = viewModelScope.launch { val record = todayRecord.value ?: return@launch; repository.updateDailyRecord(record.copy(measurementsJson = Json.encodeToString(measurements))) }
+    fun logSleep(hours: Float, rating: Int) = viewModelScope.launch { repository.editRecord { it.copy(sleepHours = hours, sleepRating = rating) } }
+    fun logMeasurements(measurements: Map<String, Float>) = viewModelScope.launch { repository.editRecord { it.copy(measurementsJson = Json.encodeToString(measurements)) } }
 }
