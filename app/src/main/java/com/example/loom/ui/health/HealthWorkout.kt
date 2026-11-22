@@ -161,7 +161,7 @@ fun HealthWorkout(viewModel: HealthViewModel) {
                         }
 
                         if (editVaryWeight) {
-                            val setCount = editSets.toIntOrNull() ?: 0
+                            val setCount = (editSets.toIntOrNull() ?: 0).coerceIn(0, MAX_SETS)
                             if (setCount > 0) {
                                 Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                     for (i in 0 until setCount) {
@@ -192,7 +192,7 @@ fun HealthWorkout(viewModel: HealthViewModel) {
                 Button(onClick = {
                     if (editName.isNotBlank()) {
                         val wList = if (editVaryWeight) {
-                            val setCount = editSets.toIntOrNull() ?: 0
+                            val setCount = (editSets.toIntOrNull() ?: 0).coerceIn(0, MAX_SETS)
                             (0 until setCount).map { editAdvancedWeights[it]?.toFloatOrNull() ?: 0f }
                         } else emptyList()
 
@@ -252,7 +252,7 @@ fun HealthWorkout(viewModel: HealthViewModel) {
         var editAdvancedWeights by remember {
             mutableStateOf(
                 try {
-                    val list = Json.decodeFromString<List<Float>>(loggedExerciseToEdit!!.weightListJson)
+                    val list = Json.decodeFromString<List<Float>>(presetExerciseToEdit!!.weightListJson)
                     list.mapIndexed { index, w -> index to w.formatWeight() }.toMap()
                 } catch(_: Exception) { emptyMap<Int, String>() } // <-- Explicit type moved here!
             )
@@ -286,7 +286,7 @@ fun HealthWorkout(viewModel: HealthViewModel) {
                         }
 
                         if (editVaryWeight) {
-                            val setCount = editSets.toIntOrNull() ?: 0
+                            val setCount = (editSets.toIntOrNull() ?: 0).coerceIn(0, MAX_SETS)
                             if (setCount > 0) {
                                 Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                     for (i in 0 until setCount) {
@@ -316,7 +316,7 @@ fun HealthWorkout(viewModel: HealthViewModel) {
             confirmButton = {
                 Button(onClick = {
                     val wList = if (editVaryWeight) {
-                        val setCount = editSets.toIntOrNull() ?: 0
+                        val setCount = (editSets.toIntOrNull() ?: 0).coerceIn(0, MAX_SETS)
                         (0 until setCount).map { editAdvancedWeights[it]?.toFloatOrNull() ?: 0f }
                     } else emptyList()
 
@@ -430,7 +430,7 @@ fun HealthWorkout(viewModel: HealthViewModel) {
                                         }
 
                                         if (varyWeight) {
-                                            val setCount = inputSets.toIntOrNull() ?: 0
+                                            val setCount = (inputSets.toIntOrNull() ?: 0).coerceIn(0, MAX_SETS)
                                             if (setCount > 0) {
                                                 Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                                     for (i in 0 until setCount) {
@@ -463,7 +463,7 @@ fun HealthWorkout(viewModel: HealthViewModel) {
                                     Button(onClick = {
                                         if (inputName.isNotBlank()) {
                                             val wList = if (varyWeight) {
-                                                val setCount = inputSets.toIntOrNull() ?: 0
+                                                val setCount = (inputSets.toIntOrNull() ?: 0).coerceIn(0, MAX_SETS)
                                                 (0 until setCount).map { advancedWeights[it]?.toFloatOrNull() ?: 0f }
                                             } else emptyList()
 
@@ -629,7 +629,7 @@ fun HealthWorkout(viewModel: HealthViewModel) {
                                             Text("Different weight per set", style = MaterialTheme.typography.bodySmall)
                                         }
                                         if (builderVaryWeight) {
-                                            val setCount = builderSets.toIntOrNull() ?: 0
+                                            val setCount = (builderSets.toIntOrNull() ?: 0).coerceIn(0, MAX_SETS)
                                             if (setCount > 0) {
                                                 Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                                     for (i in 0 until setCount) {
@@ -659,7 +659,7 @@ fun HealthWorkout(viewModel: HealthViewModel) {
                                         onClick = {
                                             if (builderName.isNotBlank()) {
                                                 val wList = if (builderVaryWeight) {
-                                                    val setCount = builderSets.toIntOrNull() ?: 0
+                                                    val setCount = (builderSets.toIntOrNull() ?: 0).coerceIn(0, MAX_SETS)
                                                     (0 until setCount).map { builderAdvancedWeights[it]?.toFloatOrNull() ?: 0f }
                                                 } else emptyList()
 
@@ -796,3 +796,6 @@ fun HealthWorkout(viewModel: HealthViewModel) {
         }
     }
 }
+
+// Each set renders its own input field; cap it so a typo like "1000" cannot freeze the UI
+private const val MAX_SETS = 50

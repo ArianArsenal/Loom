@@ -744,7 +744,7 @@ fun TimelineBlockRenderer(
                                         Text("${settings.endHour}:00", style = MaterialTheme.typography.labelSmall, color = Color.Gray, modifier = Modifier.align(Alignment.BottomEnd).padding(end = 4.dp, bottom = 4.dp))
                                     }
 
-                                    val ticksPerHour = 60 / settings.granularityMin
+                                    val ticksPerHour = 60 / settings.granularityMin.coerceIn(1, 60)
                                     val tickSpacingPx = hourWidth / ticksPerHour
                                     for (t in 0 until ticksPerHour) {
                                         val tickHeight = if (t == 0) 12.dp else 6.dp

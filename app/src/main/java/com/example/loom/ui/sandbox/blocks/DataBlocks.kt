@@ -163,7 +163,8 @@ fun ChartBlockRenderer(
                         "PIE" -> {
                             val total = chartData.sumOf { it.second.toDouble() }.toFloat()
                             var startAngle = -90f
-                            chartData.forEachIndexed { index, dataPoint ->
+                            // An all-zero dataset would produce NaN sweep angles
+                            if (total > 0f) chartData.forEachIndexed { index, dataPoint ->
                                 val sweepAngle = (dataPoint.second / total) * 360f
                                 drawArc(color = chartColors[index % chartColors.size], startAngle = startAngle, sweepAngle = sweepAngle, useCenter = true)
                                 startAngle += sweepAngle

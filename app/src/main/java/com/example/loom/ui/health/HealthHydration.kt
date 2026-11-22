@@ -253,7 +253,7 @@ fun HealthHydration(viewModel: HealthViewModel) {
             }
             Spacer(modifier = Modifier.height(12.dp))
             val currentIntake = todayRecord?.waterIntakeMl ?: 0
-            val progress = (currentIntake.toFloat() / dailyGoal.toFloat()).coerceIn(0f, 1f)
+            val progress = if (dailyGoal > 0) (currentIntake.toFloat() / dailyGoal.toFloat()).coerceIn(0f, 1f) else 0f
 
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text("$currentIntake ml", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)

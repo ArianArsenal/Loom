@@ -87,7 +87,7 @@ fun TableBlockRenderer(
                             val cell = parseCell(rawCell)
                             val isFocused = focusedCell == (rIndex to cIndex)
 
-                            Box(modifier = Modifier.width(colWidths[cIndex].dp).height(rowHeights[rIndex].dp)) {
+                            Box(modifier = Modifier.width(colWidths.getOrElse(cIndex) { 120f }.dp).height(rowHeights.getOrElse(rIndex) { 48f }.dp)) {
                                 if (cell.isDeleted) {
                                     Box(modifier = Modifier.fillMaxSize().padding(4.dp))
                                 } else {

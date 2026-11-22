@@ -81,7 +81,7 @@ class CalendarViewModel @Inject constructor(
                     item.recurrenceValue.contains(dayStr, ignoreCase = true)
                 }
                 "INTERVAL" -> {
-                    val interval = item.recurrenceValue.toIntOrNull() ?: 1
+                    val interval = item.recurrenceValue.toIntOrNull()?.takeIf { it > 0 } ?: 1 // "0" would divide by zero
                     (date.toEpochDay() % interval) == 0L
                 }
                 else -> true

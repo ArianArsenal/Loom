@@ -144,8 +144,9 @@ fun DatabaseBlockRenderer(
                                     },
                                     onDeleteProp = {
                                         val newProps = schema.properties.toMutableList().apply { removeAt(pIndex) }
-                                        val newWidths = colWidths.toMutableList().apply { removeAt(pIndex) }
-                                        val newRows = rows.map { it.toMutableList().apply { removeAt(pIndex) } }
+                                        // Rows converted from a Table can be shorter than the schema
+                                        val newWidths = colWidths.toMutableList().apply { if (pIndex < size) removeAt(pIndex) }
+                                        val newRows = rows.map { it.toMutableList().apply { if (pIndex < size) removeAt(pIndex) } }
                                         onUpdate(block.copy(
                                             secondaryContent = Json.encodeToString(schema.copy(properties = newProps)),
                                             colWidths = newWidths,

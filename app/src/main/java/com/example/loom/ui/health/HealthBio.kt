@@ -174,7 +174,7 @@ fun HealthBio(viewModel: HealthViewModel) {
                         // Phase Tracking
                         val daysElapsed = ((System.currentTimeMillis() - phaseStart) / (1000 * 60 * 60 * 24)).toInt()
                         val currentWeek = (daysElapsed / 7) + 1
-                        val phaseProgress = (daysElapsed.toFloat() / (phaseWeeks * 7).toFloat()).coerceIn(0f, 1f)
+                        val phaseProgress = if (phaseWeeks > 0) (daysElapsed.toFloat() / (phaseWeeks * 7).toFloat()).coerceIn(0f, 1f) else 0f
 
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             Text("Phase Progress", style = MaterialTheme.typography.labelMedium)
