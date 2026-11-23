@@ -84,7 +84,7 @@ fun EditSpaceTagsDialog(
                                 shape = RoundedCornerShape(8.dp),
                                 color = tagColor.copy(alpha = 0.2f),
                                 border = BorderStroke(1.dp, tagColor),
-                                modifier = Modifier.pointerInput(Unit) {
+                                modifier = Modifier.pointerInput(tagString) {
                                     detectTapGestures(
                                         onTap = {
                                             currentTags = currentTags.filter { it != tagString }
@@ -129,7 +129,7 @@ fun EditSpaceTagsDialog(
                                 shape = RoundedCornerShape(8.dp),
                                 color = Color.Transparent,
                                 border = BorderStroke(1.dp, tagColor),
-                                modifier = Modifier.pointerInput(Unit) {
+                                modifier = Modifier.pointerInput(tagString) {
                                     detectTapGestures(
                                         onTap = {
                                             currentTags = currentTags + tagString

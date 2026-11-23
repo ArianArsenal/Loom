@@ -1,5 +1,6 @@
 package com.example.loom.ui.sandbox.blocks
 
+import kotlinx.coroutines.sync.withLock
 import android.content.Intent
 import android.media.MediaPlayer
 import android.net.Uri
@@ -169,6 +170,8 @@ fun VideoBlockRenderer(
                             seekTo(1)
                         }
                     },
+                    // Stop decoding when the block leaves the screen instead of leaking the player
+                    onRelease = { it.stopPlayback() },
                     modifier = Modifier.fillMaxSize()
                 )
                 IconButton(onClick = { onUpdate(block.copy(url = "")) }, modifier = Modifier.align(Alignment.TopEnd).padding(8.dp).background(Color.Black.copy(alpha=0.5f), CircleShape)) {
@@ -222,10 +225,13 @@ fun AudioBlockRenderer(
             withContext(kotlinx.coroutines.Dispatchers.IO) {
                 try {
                     val mmr = android.media.MediaMetadataRetriever()
-                    mmr.setDataSource(context, block.url.toUri())
-                    val bytes = mmr.embeddedPicture
-                    if (bytes != null) albumArt = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-                    mmr.release()
+                    try {
+                        mmr.setDataSource(context, block.url.toUri())
+                        val bytes = mmr.embeddedPicture
+                        if (bytes != null) albumArt = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                    } finally {
+                        mmr.release()
+                    }
                 } catch (_: Exception) {}
             }
         }
@@ -249,6 +255,38 @@ fun AudioBlockRenderer(
             var recorder by remember { mutableStateOf<android.media.MediaRecorder?>(null) }
             var recordingFile by remember { mutableStateOf<File?>(null) }
 
+            fun startRecording() {
+                val file = File(context.filesDir, "media_${java.util.UUID.randomUUID()}.m4a")
+                val r = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) android.media.MediaRecorder(context)
+                        else @Suppress("DEPRECATION") android.media.MediaRecorder()
+                try {
+                    r.setAudioSource(android.media.MediaRecorder.AudioSource.MIC)
+                    r.setOutputFormat(android.media.MediaRecorder.OutputFormat.MPEG_4)
+                    r.setAudioEncoder(android.media.MediaRecorder.AudioEncoder.AAC)
+                    r.setAudioEncodingBitRate(128_000)
+                    r.setAudioSamplingRate(44_100)
+                    r.setOutputFile(file.absolutePath)
+                    r.prepare()
+                    r.start()
+                    recorder = r
+                    recordingFile = file
+                    isRecording = true
+                } catch (e: Exception) {
+                    r.release()
+                    file.delete()
+                    android.widget.Toast.makeText(context, "Couldn't start recording", android.widget.Toast.LENGTH_SHORT).show()
+                }
+            }
+
+            // The shared launcher's result was ignored before, so "Record" never recorded
+            val micPermission = androidx.activity.compose.rememberLauncherForActivityResult(
+                androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+            ) { granted -> if (granted) startRecording() }
+
+            DisposableEffect(Unit) {
+                onDispose { try { recorder?.stop() } catch (_: Exception) {}; recorder?.release() }
+            }
+
             Row(modifier = Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
                 if (isRecording) {
                     Button(onClick = {
@@ -259,7 +297,8 @@ fun AudioBlockRenderer(
                     }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) { Text("Stop Recording") }
                 } else {
                     Button(onClick = {
-                        audioLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+                        val granted = androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.RECORD_AUDIO) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                        if (granted) startRecording() else micPermission.launch(android.Manifest.permission.RECORD_AUDIO)
                     }) { Text("🎤 Record") }
                     Button(onClick = { mediaLauncher.launch("audio/*") }) { Text("Upload") }
                 }
@@ -270,7 +309,7 @@ fun AudioBlockRenderer(
             var currentPosition by remember { mutableIntStateOf(0) }
             var duration by remember { mutableIntStateOf(0) }
             var playbackSpeed by remember { mutableFloatStateOf(1f) }
-            val mediaPlayer = remember { MediaPlayer() }
+            val mediaPlayer = remember(block.url) { MediaPlayer() }
 
             DisposableEffect(block.url) {
                 try {
@@ -397,19 +436,18 @@ fun FileBlockRenderer(
             withContext(kotlinx.coroutines.Dispatchers.IO) {
                 try {
                     val uri = block.url.toUri()
-                    val pfd = context.contentResolver.openFileDescriptor(uri, "r")
-                    if (pfd != null) {
-                        val renderer = android.graphics.pdf.PdfRenderer(pfd)
-                        if (renderer.pageCount > 0) {
-                            isPdf = true
-                            val page = renderer.openPage(0)
-                            val bitmap = createBitmap(page.width * 2, page.height * 2, android.graphics.Bitmap.Config.ARGB_8888)
-                            page.render(bitmap, null, null, android.graphics.pdf.PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-                            page.close()
-                            pdfBitmap = bitmap
+                    // use{} closes the descriptor even when PdfRenderer rejects a non-PDF file
+                    context.contentResolver.openFileDescriptor(uri, "r")?.use { pfd ->
+                        android.graphics.pdf.PdfRenderer(pfd).use { renderer ->
+                            if (renderer.pageCount > 0) {
+                                isPdf = true
+                                renderer.openPage(0).use { page ->
+                                    val bitmap = createBitmap(page.width * 2, page.height * 2, android.graphics.Bitmap.Config.ARGB_8888)
+                                    page.render(bitmap, null, null, android.graphics.pdf.PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                                    pdfBitmap = bitmap
+                                }
+                            }
                         }
-                        renderer.close()
-                        pfd.close()
                     }
                 } catch (_: Exception) { isPdf = false }
             }
@@ -491,6 +529,8 @@ fun FileBlockRenderer(
                     var pageCount by remember { mutableIntStateOf(0) }
                     var pdfRenderer by remember { mutableStateOf<android.graphics.pdf.PdfRenderer?>(null) }
                     var pfd by remember { mutableStateOf<android.os.ParcelFileDescriptor?>(null) }
+                    // PdfRenderer allows only one open page at a time; pages render from parallel coroutines
+                    val renderLock = remember { kotlinx.coroutines.sync.Mutex() }
 
                     DisposableEffect(block.url) {
                         try {
@@ -498,14 +538,23 @@ fun FileBlockRenderer(
                             val fd = context.contentResolver.openFileDescriptor(uri, "r")
                             if (fd != null) {
                                 pfd = fd
-                                val renderer = android.graphics.pdf.PdfRenderer(fd)
+                                val renderer = try { android.graphics.pdf.PdfRenderer(fd) } catch (e: Exception) { fd.close(); pfd = null; throw e }
                                 pdfRenderer = renderer
                                 pageCount = renderer.pageCount
                             }
                         } catch (_: Exception) {}
                         onDispose {
-                            pdfRenderer?.close()
-                            pfd?.close()
+                            val renderer = pdfRenderer
+                            val descriptor = pfd
+                            pdfRenderer = null
+                            pageCount = 0
+                            // Close only after any in-flight page render has finished
+                            kotlinx.coroutines.runBlocking {
+                                renderLock.withLock {
+                                    try { renderer?.close() } catch (_: Exception) {}
+                                    try { descriptor?.close() } catch (_: Exception) {}
+                                }
+                            }
                         }
                     }
 
@@ -517,11 +566,14 @@ fun FileBlockRenderer(
                                 LaunchedEffect(index) {
                                     withContext(kotlinx.coroutines.Dispatchers.IO) {
                                         try {
-                                            val page = pdfRenderer!!.openPage(index)
-                                            val bitmap = createBitmap(page.width * 2, page.height * 2, android.graphics.Bitmap.Config.ARGB_8888)
-                                            page.render(bitmap, null, null, android.graphics.pdf.PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-                                            page.close()
-                                            pageBitmap = bitmap
+                                            renderLock.withLock {
+                                                val renderer = pdfRenderer ?: return@withLock
+                                                renderer.openPage(index).use { page ->
+                                                    val bitmap = createBitmap(page.width * 2, page.height * 2, android.graphics.Bitmap.Config.ARGB_8888)
+                                                    page.render(bitmap, null, null, android.graphics.pdf.PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                                                    pageBitmap = bitmap
+                                                }
+                                            }
                                         } catch (_: Exception) {}
                                     }
                                 }

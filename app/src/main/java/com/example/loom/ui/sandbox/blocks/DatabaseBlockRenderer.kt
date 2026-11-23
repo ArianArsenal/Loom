@@ -1,5 +1,6 @@
 package com.example.loom.ui.sandbox.blocks
 
+import kotlinx.coroutines.launch
 import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -79,7 +80,7 @@ fun DatabaseBlockRenderer(
     onUpdate: (SandboxBlock) -> Unit,
     onDeleteBlock: (String, Boolean) -> Unit
 ) {
-    val schema = getSchema(block)
+    val schema = remember(block.secondaryContent) { getSchema(block) }
     var showTableOptions by remember { mutableStateOf(false) }
 
     val rows = block.tableData.ifEmpty { listOf(List(schema.properties.size) { "" }) }
@@ -144,10 +145,13 @@ fun DatabaseBlockRenderer(
                                     },
                                     onDeleteProp = {
                                         val newProps = schema.properties.toMutableList().apply { removeAt(pIndex) }
-                                        val newWidths = colWidths.toMutableList().apply { removeAt(pIndex) }
-                                        val newRows = rows.map { it.toMutableList().apply { removeAt(pIndex) } }
+                                        // Rows converted from a Table can be shorter than the schema
+                                        val newWidths = colWidths.toMutableList().apply { if (pIndex < size) removeAt(pIndex) }
+                                        val newRows = rows.map { it.toMutableList().apply { if (pIndex < size) removeAt(pIndex) } }
+                                        // Calculations are keyed by column index: drop the deleted one, shift later ones left
+                                        val newCalcs = schema.calculations.filterKeys { it != pIndex }.mapKeys { (k, _) -> if (k > pIndex) k - 1 else k }
                                         onUpdate(block.copy(
-                                            secondaryContent = Json.encodeToString(schema.copy(properties = newProps)),
+                                            secondaryContent = Json.encodeToString(schema.copy(properties = newProps, calculations = newCalcs)),
                                             colWidths = newWidths,
                                             tableData = newRows
                                         ))
@@ -197,7 +201,7 @@ fun DatabaseBlockRenderer(
 
                             Box(
                                 modifier = Modifier
-                                    .width(colWidths[cIndex].dp)
+                                    .width(colWidths.getOrElse(cIndex) { 150f }.dp)
                                     .fillMaxHeight()
                                     .drawBehind {
                                         val stroke = 1.dp.toPx()
@@ -228,8 +232,14 @@ fun DatabaseBlockRenderer(
                                 .fillMaxHeight()
                                 .drawBehind {
                                     drawLine(cellBorderColor, Offset(0f, size.height), Offset(size.width, size.height), 1.dp.toPx())
-                                }
-                        )
+                                },
+                            contentAlignment = Alignment.CenterStart
+                        ) {
+                            IconButton(
+                                onClick = { onUpdate(block.copy(tableData = rows.filterIndexed { i, _ -> i != rIndex })) },
+                                modifier = Modifier.size(32.dp)
+                            ) { Icon(Icons.Default.Close, "Delete row", tint = Color.Gray, modifier = Modifier.size(16.dp)) }
+                        }
                     }
                 }
 
@@ -474,9 +484,9 @@ fun DatabaseCell(
                     confirmButton = {
                         TextButton(onClick = {
                             dateState.selectedDateMillis?.let {
-                                val cal = Calendar.getInstance().apply { timeInMillis = it }
-                                val sdf = SimpleDateFormat("MMM d, yyyy", Locale.getDefault())
-                                onValueChange(sdf.format(cal.time))
+                                // Format in UTC: the picker returns UTC midnight, local time could show the previous day
+                                val sdf = SimpleDateFormat("MMM d, yyyy", Locale.getDefault()).apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }
+                                onValueChange(sdf.format(java.util.Date(it)))
                             }
                             showDatePicker = false
                         }) { Text("OK") }
@@ -590,15 +600,18 @@ fun DatabaseCell(
                 modifier = Modifier.fillMaxWidth(), cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                 decorationBox = { inner -> Box { if (value.isEmpty()) Text("http://", color = Color.LightGray) else inner() } }
             )
-            if (value.isNotEmpty() && !value.contains("http://")) {
-                Spacer(Modifier.fillMaxWidth().height(24.dp).clickable {
-                    try { context.startActivity(Intent(Intent.ACTION_VIEW, "https://$value".toUri())) } catch (_: Exception) {}
-                })
+            if (value.isNotEmpty()) {
+                // Only add a scheme when there isn't one ("https://x" used to become "https://https://x")
+                val target = if (value.contains("://")) value else "https://$value"
+                TextButton(onClick = {
+                    try { context.startActivity(Intent(Intent.ACTION_VIEW, target.toUri())) } catch (_: Exception) {}
+                }, contentPadding = PaddingValues(0.dp)) { Text("Open link", style = MaterialTheme.typography.labelSmall) }
             }
         }
         PropertyType.MEDIA -> {
+            val mediaScope = rememberCoroutineScope()
             val mediaLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-                uri?.let { val localUrl = copyMediaToLocal(context, it); if (localUrl != null) onValueChange(localUrl) }
+                uri?.let { mediaScope.launch { val localUrl = copyMediaToLocal(context, it); if (localUrl != null) onValueChange(localUrl) } }
             }
             if (value.isEmpty()) {
                 TextButton(onClick = { mediaLauncher.launch("image/*") }, contentPadding = PaddingValues(0.dp)) { Text("+ Image") }

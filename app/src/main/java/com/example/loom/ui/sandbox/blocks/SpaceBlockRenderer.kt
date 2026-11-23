@@ -89,7 +89,7 @@ fun SpaceBlockRenderer(
                                 }) { Text("+ Create New Space", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold) }
                                 HorizontalDivider(Modifier.padding(vertical = 8.dp))
                             }
-                            items(allSpaces) { s ->
+                            items(allSpaces, key = { it.id }) { s ->
                                 Row(
                                     modifier = Modifier.fillMaxWidth().clickable {
                                         onUpdate(currentBlock.copy(url = s.id))

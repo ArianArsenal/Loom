@@ -1,5 +1,8 @@
 package com.example.loom.ui.health
 
+import androidx.lifecycle.repeatOnLifecycle
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -52,15 +55,20 @@ import kotlin.time.Duration.Companion.milliseconds
 
 @Composable
 fun FastingTimerCard(viewModel: HealthViewModel) {
-    val isFasting by viewModel.isFasting.collectAsState()
-    val startTime by viewModel.fastingStartTime.collectAsState()
-    val goalHours by viewModel.fastingGoalHours.collectAsState()
+    val isFasting by viewModel.isFasting.collectAsStateWithLifecycle()
+    val startTime by viewModel.fastingStartTime.collectAsStateWithLifecycle()
+    val goalHours by viewModel.fastingGoalHours.collectAsStateWithLifecycle()
 
     var currentTime by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var selectedGoal by remember { mutableIntStateOf(goalHours) }
 
     LaunchedEffect(goalHours) { selectedGoal = goalHours }
-    LaunchedEffect(isFasting) { while (isFasting) { delay(1000.milliseconds); currentTime = System.currentTimeMillis() } }
+    val tickerLifecycle = androidx.compose.ui.platform.LocalLifecycleOwner.current.lifecycle
+    LaunchedEffect(isFasting) {
+        tickerLifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.RESUMED) {
+            while (isFasting) { currentTime = System.currentTimeMillis(); delay(1000.milliseconds) }
+        }
+    }
 
     ElevatedCard(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp), colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)) {
         Column(modifier = Modifier.padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -137,15 +145,15 @@ fun FastingTimerCard(viewModel: HealthViewModel) {
 
 @Composable
 fun SleepRecoveryCard(viewModel: HealthViewModel) {
-    val todayRecord by viewModel.todayRecord.collectAsState()
+    val todayRecord by viewModel.todayRecord.collectAsStateWithLifecycle()
     val loggedHours = todayRecord?.sleepHours ?: 0f
     val loggedRating = todayRecord?.sleepRating ?: 0
-    var showDialog by remember { mutableStateOf(false) }
+    var showDialog by rememberSaveable { mutableStateOf(false) }
 
     if (showDialog) {
         var sliderHours by remember { mutableFloatStateOf(if (loggedHours > 0f) loggedHours else 7.5f) }
         var rating by remember { mutableIntStateOf(if (loggedRating > 0) loggedRating else 3) }
-        val listState = rememberLazyListState(initialFirstVisibleItemIndex = (sliderHours * 2).toInt() - 4)
+        val listState = rememberLazyListState(initialFirstVisibleItemIndex = ((sliderHours - 1f) * 2).toInt().coerceAtLeast(0))
 
         AlertDialog(
             onDismissRequest = { showDialog = false },
@@ -155,8 +163,8 @@ fun SleepRecoveryCard(viewModel: HealthViewModel) {
                     Text("${String.format(Locale.US, "%.1f", sliderHours)} Hours", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
 
                     LazyRow(state = listState, modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp), horizontalArrangement = Arrangement.spacedBy(16.dp), contentPadding = PaddingValues(horizontal = 60.dp)) {
-                        items(24, key = { it }) { index ->
-                            val itemHours = 2f + (index * 0.5f)
+                        items(31, key = { it }) { index ->
+                            val itemHours = 1f + (index * 0.5f)
                             val isSelected = itemHours == sliderHours
                             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clip(RoundedCornerShape(12.dp)).clickable { sliderHours = itemHours }.padding(8.dp)) {
                                 Text(itemHours.toString(), style = if (isSelected) MaterialTheme.typography.titleLarge else MaterialTheme.typography.titleMedium, color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f), fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal)
@@ -228,11 +236,11 @@ fun SleepRecoveryCard(viewModel: HealthViewModel) {
 
 @Composable
 fun BodyMeasurementsCard(viewModel: HealthViewModel) {
-    val todayRecord by viewModel.todayRecord.collectAsState()
+    val todayRecord by viewModel.todayRecord.collectAsStateWithLifecycle()
     val rawJson = todayRecord?.measurementsJson ?: "{}"
     val measurements = remember(rawJson) { try { Json.decodeFromString<Map<String, Float>>(rawJson.ifBlank { "{}" }) } catch (_: Exception) { emptyMap() } }
 
-    var showDialog by remember { mutableStateOf(false) }
+    var showDialog by rememberSaveable { mutableStateOf(false) }
 
     if (showDialog) {
         var waist by remember { mutableStateOf(measurements["Waist"]?.toString() ?: "") }
@@ -316,14 +324,14 @@ val supplementTemplates = listOf(
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun SupplementsCard(viewModel: HealthViewModel) {
-    val roster by viewModel.supplementsRoster.collectAsState()
-    val todayScheduled by viewModel.todayScheduledSupplements.collectAsState()
-    val categories by viewModel.supplementCategories.collectAsState()
-    val completed by viewModel.completedSupplements.collectAsState()
+    val roster by viewModel.supplementsRoster.collectAsStateWithLifecycle()
+    val todayScheduled by viewModel.todayScheduledSupplements.collectAsStateWithLifecycle()
+    val categories by viewModel.supplementCategories.collectAsStateWithLifecycle()
+    val completed by viewModel.completedSupplements.collectAsStateWithLifecycle()
     val focusManager = LocalFocusManager.current
 
-    var showManageDialog by remember { mutableStateOf(false) }
-    var showCategoryDialog by remember { mutableStateOf(false) }
+    var showManageDialog by rememberSaveable { mutableStateOf(false) }
+    var showCategoryDialog by rememberSaveable { mutableStateOf(false) }
     var editingItem by remember { mutableStateOf<SupplementItem?>(null) }
 
     var categoryToDelete by remember { mutableStateOf<String?>(null) }
@@ -349,7 +357,7 @@ fun SupplementsCard(viewModel: HealthViewModel) {
     }
 
     if (showCategoryDialog) {
-        var newCategoryName by remember { mutableStateOf("") }
+        var newCategoryName by rememberSaveable { mutableStateOf("") }
         AlertDialog(
             onDismissRequest = { showCategoryDialog = false },
             title = { Text("Manage Categories", fontWeight = FontWeight.Bold) },
@@ -404,10 +412,10 @@ fun SupplementsCard(viewModel: HealthViewModel) {
         var editRecurrenceVal by remember { mutableStateOf(editingItem!!.recurrenceValue) }
         var editInstruction by remember { mutableStateOf(editingItem!!.instruction.ifBlank { "None" }) }
 
-        var showSuggestions by remember { mutableStateOf(false) }
-        var catExpanded by remember { mutableStateOf(false) }
-        var timeExpanded by remember { mutableStateOf(false) }
-        var instExpanded by remember { mutableStateOf(false) }
+        var showSuggestions by rememberSaveable { mutableStateOf(false) }
+        var catExpanded by rememberSaveable { mutableStateOf(false) }
+        var timeExpanded by rememberSaveable { mutableStateOf(false) }
+        var instExpanded by rememberSaveable { mutableStateOf(false) }
 
         val allOptions = remember(supplementTemplates, roster) {
             (supplementTemplates + roster).distinctBy { it.name.lowercase() }

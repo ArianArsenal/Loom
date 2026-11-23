@@ -1,5 +1,7 @@
 package com.example.loom.ui.health
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -119,18 +121,19 @@ private val hydrationTimeFormatter = object : ThreadLocal<SimpleDateFormat>() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HealthHydration(viewModel: HealthViewModel) {
-    val todayRecord by viewModel.todayRecord.collectAsState()
-    val dailyGoal by viewModel.waterDailyGoal.collectAsState()
-    val isAutoGoal by viewModel.isAutoWaterGoal.collectAsState()
-    val defaultIncrement by viewModel.defaultWaterIncrement.collectAsState()
-    val customContainers by viewModel.customWaterContainers.collectAsState()
-    val logs by viewModel.waterLogs.collectAsState()
+    val todayRecord by viewModel.todayRecord.collectAsStateWithLifecycle()
+    val dailyGoal by viewModel.waterDailyGoal.collectAsStateWithLifecycle()
+    val isAutoGoal by viewModel.isAutoWaterGoal.collectAsStateWithLifecycle()
+    val defaultIncrement by viewModel.defaultWaterIncrement.collectAsStateWithLifecycle()
+    val customContainers by viewModel.customWaterContainers.collectAsStateWithLifecycle()
+    val logs by viewModel.waterLogs.collectAsStateWithLifecycle()
+    val defaultContainerId by viewModel.defaultContainerId.collectAsStateWithLifecycle()
 
-    var showGoalDialog by remember { mutableStateOf(false) }
-    var showContainerDialog by remember { mutableStateOf(false) }
+    var showGoalDialog by rememberSaveable { mutableStateOf(false) }
+    var showContainerDialog by rememberSaveable { mutableStateOf(false) }
 
     if (showGoalDialog) {
-        var inputGoal by remember { mutableStateOf(dailyGoal.toString()) }
+        var inputGoal by rememberSaveable { mutableStateOf(dailyGoal.toString()) }
         var autoToggled by remember { mutableStateOf(isAutoGoal) }
 
         AlertDialog(
@@ -166,7 +169,7 @@ fun HealthHydration(viewModel: HealthViewModel) {
 
     if (showContainerDialog) {
         var localContainers by remember { mutableStateOf(customContainers) }
-        var showNewContainer by remember { mutableStateOf(false) }
+        var showNewContainer by rememberSaveable { mutableStateOf(false) }
 
         AlertDialog(
             onDismissRequest = { showContainerDialog = false },
@@ -190,10 +193,10 @@ fun HealthHydration(viewModel: HealthViewModel) {
                     }
                     if (showNewContainer) {
                         item {
-                            var newName by remember { mutableStateOf("") }
-                            var newIconKey by remember { mutableStateOf("LocalDrink") }
-                            var newVol by remember { mutableStateOf("") }
-                            var newFactor by remember { mutableStateOf("1.0") }
+                            var newName by rememberSaveable { mutableStateOf("") }
+                            var newIconKey by rememberSaveable { mutableStateOf("LocalDrink") }
+                            var newVol by rememberSaveable { mutableStateOf("") }
+                            var newFactor by rememberSaveable { mutableStateOf("1.0") }
 
                             Column(modifier = Modifier.padding(top = 16.dp).background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha=0.5f), RoundedCornerShape(12.dp)).padding(12.dp)) {
 
@@ -253,7 +256,7 @@ fun HealthHydration(viewModel: HealthViewModel) {
             }
             Spacer(modifier = Modifier.height(12.dp))
             val currentIntake = todayRecord?.waterIntakeMl ?: 0
-            val progress = (currentIntake.toFloat() / dailyGoal.toFloat()).coerceIn(0f, 1f)
+            val progress = if (dailyGoal > 0) (currentIntake.toFloat() / dailyGoal.toFloat()).coerceIn(0f, 1f) else 0f
 
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text("$currentIntake ml", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
@@ -272,10 +275,11 @@ fun HealthHydration(viewModel: HealthViewModel) {
 
             Row(modifier = Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 customContainers.forEach { container ->
-                    val isDefault = defaultIncrement == container.volumeMl
+                    val isDefault = if (defaultContainerId.isNotEmpty() && customContainers.any { it.id == defaultContainerId }) container.id == defaultContainerId
+                                    else defaultIncrement == container.volumeMl
                     Surface(
                         modifier = Modifier.weight(1f).clickable {
-                            viewModel.saveDefaultWaterIncrement(container.volumeMl)
+                            viewModel.selectDefaultContainer(container)
                         },
                         shape = RoundedCornerShape(12.dp),
                         color = if (isDefault) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
@@ -292,7 +296,8 @@ fun HealthHydration(viewModel: HealthViewModel) {
             Spacer(modifier = Modifier.height(12.dp))
             Button(
                 onClick = {
-                    val selectedContainer = customContainers.find { it.volumeMl == defaultIncrement } ?: customContainers.firstOrNull()
+                    val selectedContainer = customContainers.find { it.id == defaultContainerId }
+                        ?: customContainers.find { it.volumeMl == defaultIncrement } ?: customContainers.firstOrNull()
                     if (selectedContainer != null) {
                         viewModel.logDetailedWater(selectedContainer)
                     }

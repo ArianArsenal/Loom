@@ -1,5 +1,6 @@
 package com.example.loom.ui.health
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.animation.*
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -23,15 +24,16 @@ import com.example.loom.ui.home.PinnedCardWidget
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HealthScreen(viewModel: HealthViewModel) {
-    val hiddenCards by viewModel.hiddenHealthCards.collectAsState()
+    val hiddenCards by viewModel.hiddenHealthCards.collectAsStateWithLifecycle()
 
-    val pinnedCards by viewModel.pinnedHealthCards.collectAsState()
-    val allSpaces by viewModel.allSpaces.collectAsState()
+    val pinnedCards by viewModel.pinnedHealthCards.collectAsStateWithLifecycle()
+    val allSpaces by viewModel.allSpaces.collectAsStateWithLifecycle()
 
     var showBottomSheet by remember { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     val availableCards: List<Pair<String, @Composable () -> Unit>> = listOf(
+        "Trends & Streaks" to { TrendsCard(viewModel) },
         "Workout Tracker" to { HealthWorkout(viewModel) },
         "Nutrition Engine" to { HealthNutrition(viewModel) },
         "Supplements & Vitamins" to { SupplementsCard(viewModel) },

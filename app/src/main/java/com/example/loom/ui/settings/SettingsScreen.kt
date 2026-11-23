@@ -1,5 +1,11 @@
 package com.example.loom.ui.settings
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.ui.draw.clip
+import com.example.loom.data.backup.AutoBackup
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -13,6 +19,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.BugReport
+import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Favorite
+import com.example.loom.data.health.HealthConnectSync
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.CloudUpload
@@ -50,48 +59,51 @@ fun SettingsScreen(
 ) {
     val context = LocalContext.current
 
-    val userName by viewModel.userName.collectAsState()
-    val appTheme by viewModel.appTheme.collectAsState()
-    val isBiometricEnabled by viewModel.isBiometricEnabled.collectAsState()
-    val isLoading by viewModel.isLoading.collectAsState()
+    val userName by viewModel.userName.collectAsStateWithLifecycle()
+    val appTheme by viewModel.appTheme.collectAsStateWithLifecycle()
+    val isBiometricEnabled by viewModel.isBiometricEnabled.collectAsStateWithLifecycle()
+    val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
 
     // --- NEW: Collect Night Owl State ---
-    val rolloverHour by viewModel.dayRolloverHour.collectAsState()
+    val rolloverHour by viewModel.dayRolloverHour.collectAsStateWithLifecycle()
 
     // --- BIO METRICS SYNC ---
-    val weight by healthViewModel.weight.collectAsState()
-    val height by healthViewModel.height.collectAsState()
-    val age by healthViewModel.age.collectAsState()
-    val gender by healthViewModel.gender.collectAsState()
-    val activity by healthViewModel.activity.collectAsState()
-    val goal by healthViewModel.goal.collectAsState()
-    val bodyFat by healthViewModel.bodyFat.collectAsState()
-    val dietType by healthViewModel.dietType.collectAsState()
-    val phaseWeeks by healthViewModel.phaseWeeks.collectAsState()
-    val isCycling by healthViewModel.calorieCycling.collectAsState()
+    val weight by healthViewModel.weight.collectAsStateWithLifecycle()
+    val height by healthViewModel.height.collectAsStateWithLifecycle()
+    val age by healthViewModel.age.collectAsStateWithLifecycle()
+    val gender by healthViewModel.gender.collectAsStateWithLifecycle()
+    val activity by healthViewModel.activity.collectAsStateWithLifecycle()
+    val goal by healthViewModel.goal.collectAsStateWithLifecycle()
+    val bodyFat by healthViewModel.bodyFat.collectAsStateWithLifecycle()
+    val dietType by healthViewModel.dietType.collectAsStateWithLifecycle()
+    val phaseWeeks by healthViewModel.phaseWeeks.collectAsStateWithLifecycle()
+    val isCycling by healthViewModel.calorieCycling.collectAsStateWithLifecycle()
 
     var currentPin by remember { mutableStateOf<String?>(null) }
+    var isPinLoaded by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
             val pin = SecurityManager.getPin(context)
             withContext(Dispatchers.Main) {
                 currentPin = pin
+                isPinLoaded = true
             }
         }
     }
 
     // Dialog States
-    var showSetPinDialog by remember { mutableStateOf(false) }
-    var showAuthPinDialog by remember { mutableStateOf(false) }
-    var showWipeConfirmDialog by remember { mutableStateOf(false) }
-    var showEditProfileDialog by remember { mutableStateOf(false) }
+    var showSetPinDialog by rememberSaveable { mutableStateOf(false) }
+    var showAuthPinDialog by rememberSaveable { mutableStateOf(false) }
+    var showWipeConfirmDialog by rememberSaveable { mutableStateOf(false) }
+    var showImportConfirmDialog by rememberSaveable { mutableStateOf(false) }
+    var showEditProfileDialog by rememberSaveable { mutableStateOf(false) }
 
-    var pinInput by remember { mutableStateOf("") }
-    var pinError by remember { mutableStateOf(false) }
-    var pendingDisableBiometric by remember { mutableStateOf(false) }
+    var pinInput by rememberSaveable { mutableStateOf("") }
+    var pinError by rememberSaveable { mutableStateOf(false) }
+    var pendingDisableBiometric by rememberSaveable { mutableStateOf(false) }
 
     val exportLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.CreateDocument("application/json"),
+        contract = ActivityResultContracts.CreateDocument("application/zip"),
         onResult = { uri ->
             uri?.let {
                 viewModel.exportDatabase(context, it,
@@ -102,12 +114,45 @@ fun SettingsScreen(
         }
     )
 
+    var autoBackup by remember { mutableStateOf(AutoBackup.state(context)) }
+
+    val healthConnectAvailable = remember { HealthConnectSync.isAvailable(context) }
+    var healthConnectEnabled by remember { mutableStateOf(HealthConnectSync.isEnabled(context)) }
+    var healthConnectLastSync by remember { mutableLongStateOf(HealthConnectSync.lastSyncMillis(context)) }
+    val runHealthSync = {
+        viewModel.syncHealthConnect(context) { msg ->
+            healthConnectLastSync = HealthConnectSync.lastSyncMillis(context)
+            Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+        }
+    }
+    val healthPermissionLauncher = rememberLauncherForActivityResult(
+        androidx.health.connect.client.PermissionController.createRequestPermissionResultContract()
+    ) { granted ->
+        if (granted.containsAll(HealthConnectSync.permissions)) {
+            HealthConnectSync.setEnabled(context, true)
+            healthConnectEnabled = true
+            runHealthSync()
+        } else {
+            Toast.makeText(context, "Health Connect access wasn't granted", Toast.LENGTH_LONG).show()
+        }
+    }
+    val backupFolderLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri != null) {
+            AutoBackup.enable(context, uri)
+            autoBackup = AutoBackup.state(context)
+            Toast.makeText(context, "Weekly backups on. First backup started.", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     val importLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument(),
         onResult = { uri ->
             uri?.let {
                 viewModel.importDatabase(context, it,
-                    onSuccess = { Toast.makeText(context, "Import Successful!", Toast.LENGTH_SHORT).show() },
+                    onSuccess = { skipped ->
+                        val msg = if (skipped > 0) "Import successful ($skipped invalid items skipped)" else "Import Successful!"
+                        Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                    },
                     onError = { err -> Toast.makeText(context, "Import Failed: $err", Toast.LENGTH_LONG).show() }
                 )
             }
@@ -203,6 +248,21 @@ fun SettingsScreen(
         )
     }
 
+    if (showImportConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showImportConfirmDialog = false },
+            title = { Text("Replace All Data?") },
+            text = { Text("Importing replaces everything currently in Loom with the backup's contents. A safety copy of your current data is kept automatically.") },
+            confirmButton = {
+                Button(onClick = {
+                    showImportConfirmDialog = false
+                    importLauncher.launch(arrayOf("application/json"))
+                }) { Text("Choose Backup") }
+            },
+            dismissButton = { TextButton(onClick = { showImportConfirmDialog = false }) { Text("Cancel") } }
+        )
+    }
+
     if (showWipeConfirmDialog) {
         AlertDialog(
             onDismissRequest = { showWipeConfirmDialog = false },
@@ -212,7 +272,7 @@ fun SettingsScreen(
             confirmButton = {
                 Button(
                     onClick = {
-                        viewModel.wipeAllData(
+                        viewModel.wipeAllData(context,
                             onSuccess = {
                                 showWipeConfirmDialog = false
                                 Toast.makeText(context, "All data wiped successfully", Toast.LENGTH_SHORT).show()
@@ -311,7 +371,7 @@ fun SettingsScreen(
             },
             confirmButton = {
                 Button(onClick = {
-                    if (pinInput == currentPin) {
+                    if (SecurityManager.verifyPin(context, pinInput)) {
                         showAuthPinDialog = false
                         pinInput = ""
                         pinError = false
@@ -418,6 +478,7 @@ fun SettingsScreen(
                                     }
                                 }
                             },
+                            enabled = isPinLoaded,
                             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp)
                         ) {
                             Text(if (currentPin.isNullOrBlank()) "Setup" else "Manage")
@@ -466,8 +527,8 @@ fun SettingsScreen(
             Text("General", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
             Spacer(modifier = Modifier.height(8.dp))
 
-            var themeDropdownExpanded by remember { mutableStateOf(false) }
-            var rolloverDropdownExpanded by remember { mutableStateOf(false) }
+            var themeDropdownExpanded by rememberSaveable { mutableStateOf(false) }
+            var rolloverDropdownExpanded by rememberSaveable { mutableStateOf(false) }
 
             ElevatedCard(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                 Column {
@@ -503,6 +564,10 @@ fun SettingsScreen(
                             }
                         }
                     }
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.padding(horizontal = 16.dp))
+
+                    AppearanceSettings(viewModel)
 
                     HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.padding(horizontal = 16.dp))
 
@@ -553,32 +618,122 @@ fun SettingsScreen(
             ElevatedCard(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                 Column {
                     Row(
-                        modifier = Modifier.padding(16.dp).fillMaxWidth().clickable { exportLauncher.launch("Loom_Backup.json") },
+                        modifier = Modifier.padding(16.dp).fillMaxWidth().clickable { exportLauncher.launch("Loom_Backup_${java.time.LocalDate.now()}.zip") },
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(Icons.Default.CloudUpload, contentDescription = "Export", tint = MaterialTheme.colorScheme.primary)
                         Spacer(modifier = Modifier.width(16.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text("Export Data", fontWeight = FontWeight.Bold)
-                            Text("Save all your logs, spaces, and routines to a file", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("Save everything, including images, to a ZIP file", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
 
                     HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.padding(horizontal = 16.dp))
 
                     Row(
-                        modifier = Modifier.padding(16.dp).fillMaxWidth().clickable { importLauncher.launch(arrayOf("application/json")) },
+                        modifier = Modifier.padding(16.dp).fillMaxWidth().clickable { showImportConfirmDialog = true },
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(Icons.Default.CloudDownload, contentDescription = "Import", tint = MaterialTheme.colorScheme.primary)
                         Spacer(modifier = Modifier.width(16.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text("Import Data", fontWeight = FontWeight.Bold)
-                            Text("Restore everything from a previous Loom backup", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("Restore from a Loom backup (.zip or older .json)", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.padding(horizontal = 16.dp))
+
+                    // --- AUTOMATIC BACKUPS ---
+                    Column(modifier = Modifier.padding(16.dp).fillMaxWidth()) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Schedule, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                            Spacer(modifier = Modifier.width(16.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Weekly Automatic Backup", fontWeight = FontWeight.Bold)
+                                val last = autoBackup.lastBackupMillis
+                                val status = when {
+                                    !autoBackup.enabled -> "Keeps the latest ${AutoBackup.KEEP_COPIES} backups in a folder you choose"
+                                    autoBackup.lastError != null -> "Last attempt failed: ${autoBackup.lastError}"
+                                    last == 0L -> "Waiting for the first backup"
+                                    else -> {
+                                        val days = java.util.concurrent.TimeUnit.MILLISECONDS.toDays(System.currentTimeMillis() - last)
+                                        "Last backup: " + when (days) { 0L -> "today"; 1L -> "yesterday"; else -> "$days days ago" }
+                                    }
+                                }
+                                Text(status, style = MaterialTheme.typography.bodySmall, color = if (autoBackup.lastError != null && autoBackup.enabled) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Switch(
+                                checked = autoBackup.enabled,
+                                onCheckedChange = { on ->
+                                    if (on) backupFolderLauncher.launch(autoBackup.folder)
+                                    else { AutoBackup.disable(context); autoBackup = AutoBackup.state(context) }
+                                }
+                            )
+                        }
+                        if (autoBackup.enabled) {
+                            Row(modifier = Modifier.padding(start = 40.dp, top = 4.dp)) {
+                                TextButton(onClick = {
+                                    AutoBackup.backUpNow(context)
+                                    Toast.makeText(context, "Backing up…", Toast.LENGTH_SHORT).show()
+                                }) { Text("Back up now") }
+                                TextButton(onClick = { backupFolderLauncher.launch(autoBackup.folder) }) { Text("Change folder") }
+                            }
                         }
                     }
                 }
             }
+
+            // Refresh the "last backup" line when returning to this screen
+            LaunchedEffect(Unit) {
+                while (true) {
+                    kotlinx.coroutines.delay(3000)
+                    autoBackup = AutoBackup.state(context)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // --- HEALTH CONNECT ---
+            Text("Health Connect", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+            Spacer(modifier = Modifier.height(8.dp))
+            ElevatedCard(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                Column(modifier = Modifier.padding(16.dp).fillMaxWidth()) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Favorite, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Sync with Health Connect", fontWeight = FontWeight.Bold)
+                            val sub = when {
+                                !healthConnectAvailable -> "Health Connect isn't available on this device"
+                                !healthConnectEnabled -> "Share weight, sleep and water; import weight and sleep from other apps"
+                                healthConnectLastSync == 0L -> "Not synced yet"
+                                else -> "Last synced " + android.text.format.DateUtils.getRelativeTimeSpanString(healthConnectLastSync)
+                            }
+                            Text(sub, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Switch(
+                            checked = healthConnectEnabled,
+                            enabled = healthConnectAvailable,
+                            onCheckedChange = { on ->
+                                if (on) healthPermissionLauncher.launch(HealthConnectSync.permissions)
+                                else { HealthConnectSync.setEnabled(context, false); healthConnectEnabled = false }
+                            }
+                        )
+                    }
+                    if (healthConnectEnabled) {
+                        TextButton(onClick = { runHealthSync() }, modifier = Modifier.padding(start = 40.dp)) { Text("Sync now") }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // --- REMINDERS ---
+            Text("Reminders", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+            Spacer(modifier = Modifier.height(8.dp))
+            ReminderSettingsSection(onChanged = { viewModel.rescheduleReminders(context) })
 
             Spacer(modifier = Modifier.height(24.dp))
 
@@ -625,6 +780,66 @@ fun SettingsScreen(
             }
 
             Spacer(modifier = Modifier.height(40.dp))
+        }
+    }
+}
+
+/** Colours (Material You, AMOLED black, accent) and calendar display (Jalali, first day of week). */
+@Composable
+private fun AppearanceSettings(viewModel: HomeViewModel) {
+    val dynamicColor by viewModel.dynamicColor.collectAsStateWithLifecycle()
+    val amoled by viewModel.amoled.collectAsStateWithLifecycle()
+    val accent by viewModel.accentColor.collectAsStateWithLifecycle()
+    val calendarSystem by viewModel.calendarSystem.collectAsStateWithLifecycle()
+    val weekStart by viewModel.weekStart.collectAsStateWithLifecycle()
+
+    @Composable
+    fun SwitchRow(title: String, subtitle: String, checked: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
+        Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(modifier = Modifier.weight(1f).padding(start = 40.dp)) {
+                Text(title, fontWeight = FontWeight.Bold)
+                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Switch(checked = checked, enabled = enabled, onCheckedChange = onChange)
+        }
+    }
+
+    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+        SwitchRow("Material You colours", "Use colours from your wallpaper", dynamicColor) { viewModel.setDynamicColor(it) }
+    }
+    SwitchRow("Pure black", "True black backgrounds in dark mode (saves battery on OLED)", amoled) { viewModel.setAmoled(it) }
+
+    if (!dynamicColor) {
+        Column(modifier = Modifier.fillMaxWidth().padding(start = 56.dp, end = 16.dp, top = 4.dp, bottom = 12.dp)) {
+            Text("Accent colour", fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(8.dp))
+            val accents = listOf(0, 0xFF6B8E76.toInt(), 0xFF5B7FA6.toInt(), 0xFF8E6BA8.toInt(), 0xFFC0705A.toInt(), 0xFFC49A3A.toInt(), 0xFF4E9A9A.toInt())
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                accents.forEach { argb ->
+                    val color = if (argb == 0) com.example.loom.ui.theme.SagePrimary else androidx.compose.ui.graphics.Color(argb)
+                    val selected = accent == argb || (accent == 0 && argb == 0)
+                    Box(
+                        modifier = Modifier.size(32.dp).clip(androidx.compose.foundation.shape.CircleShape).background(color)
+                            .then(if (selected) Modifier.border(3.dp, MaterialTheme.colorScheme.onSurface, androidx.compose.foundation.shape.CircleShape) else Modifier)
+                            .clickable { viewModel.setAccentColor(if (argb == 0xFF6B8E76.toInt()) 0 else argb) }
+                    )
+                }
+            }
+        }
+    }
+
+    HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.padding(horizontal = 16.dp))
+
+    SwitchRow("Jalali calendar", "Show the Calendar tab in the Solar Hijri calendar", calendarSystem == "Jalali") { on ->
+        viewModel.setCalendarSystem(if (on) "Jalali" else "Gregorian")
+    }
+    Column(modifier = Modifier.fillMaxWidth().padding(start = 56.dp, end = 16.dp, bottom = 12.dp)) {
+        Text("Week starts on", fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(6.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf("SATURDAY" to "Saturday", "SUNDAY" to "Sunday", "MONDAY" to "Monday").forEach { (key, label) ->
+                FilterChip(selected = weekStart == key, onClick = { viewModel.setWeekStart(key) }, label = { Text(label) })
+            }
         }
     }
 }

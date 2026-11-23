@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.datastore.preferences.core.*
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.encodeToString
 import javax.inject.Inject
@@ -34,6 +35,7 @@ class UserPreferences @Inject constructor(private val context: Context) {
         val TARGET_FATS = intPreferencesKey("target_fats")
 
         val DEFAULT_WATER_ML = intPreferencesKey("default_water_ml")
+        val DEFAULT_CONTAINER_ID = stringPreferencesKey("default_container_id")
         val WATER_DAILY_GOAL = intPreferencesKey("water_daily_goal")
         val AUTO_WATER_GOAL = booleanPreferencesKey("auto_water_goal")
         val CUSTOM_WATER_CONTAINERS = stringPreferencesKey("custom_water_containers")
@@ -55,6 +57,15 @@ class UserPreferences @Inject constructor(private val context: Context) {
 
         val SUPPLEMENTS_ROSTER = stringPreferencesKey("supplements_roster")
         val SUPPLEMENT_CATEGORIES = stringPreferencesKey("supplement_categories")
+
+        val FAVORITE_FOODS = stringSetPreferencesKey("favorite_foods")
+
+        val DYNAMIC_COLOR = booleanPreferencesKey("dynamic_color")
+        val AMOLED = booleanPreferencesKey("amoled_black")
+        val ACCENT_COLOR = intPreferencesKey("accent_color") // ARGB; 0 = default sage
+        val CALENDAR_SYSTEM = stringPreferencesKey("calendar_system") // "Gregorian" or "Jalali"
+        val WEEK_START = stringPreferencesKey("week_start") // "SUNDAY", "MONDAY" or "SATURDAY"
+        val MEAL_TEMPLATES = stringPreferencesKey("meal_templates")
     }
 
     val userNameFlow: Flow<String> = context.dataStore.data.map { it[USER_NAME] ?: "" }
@@ -266,8 +277,81 @@ class UserPreferences @Inject constructor(private val context: Context) {
     }
 
     suspend fun saveDefaultWaterIncrement(ml: Int) { context.dataStore.edit { it[DEFAULT_WATER_ML] = ml } }
+
+    val defaultContainerIdFlow: Flow<String> = context.dataStore.data.map { it[DEFAULT_CONTAINER_ID] ?: "" }
+
+    /** Remember the chosen container itself: two containers can share a volume. */
+    suspend fun saveDefaultContainer(id: String, ml: Int) {
+        context.dataStore.edit { it[DEFAULT_CONTAINER_ID] = id; it[DEFAULT_WATER_ML] = ml }
+    }
+
+    /** A weight logged today becomes the profile weight (and drives the automatic water goal). */
+    suspend fun updateProfileWeight(weight: Float) {
+        context.dataStore.edit { prefs ->
+            prefs[WEIGHT] = weight
+            if (prefs[AUTO_WATER_GOAL] ?: true) prefs[WATER_DAILY_GOAL] = (weight * 35).toInt()
+        }
+    }
+
+    /** The diet phase start was never stored unless the phase length changed, so it stayed at "Week 1". */
+    suspend fun ensurePhaseStart() {
+        context.dataStore.edit { if (it[PHASE_START_TIME] == null) it[PHASE_START_TIME] = System.currentTimeMillis() }
+    }
     suspend fun saveWaterDailyGoal(goalMl: Int, isAuto: Boolean) { context.dataStore.edit { it[WATER_DAILY_GOAL] = goalMl; it[AUTO_WATER_GOAL] = isAuto } }
     suspend fun saveCustomWaterContainers(json: String) { context.dataStore.edit { it[CUSTOM_WATER_CONTAINERS] = json } }
     suspend fun saveTargets(calories: Int, protein: Int, carbs: Int, fats: Int) { context.dataStore.edit { prefs -> prefs[TARGET_CALORIES] = calories; prefs[TARGET_PROTEIN] = protein; prefs[TARGET_CARBS] = carbs; prefs[TARGET_FATS] = fats } }
     suspend fun setBiometricEnabled(enabled: Boolean) { context.dataStore.edit { it[BIOMETRIC_ENABLED] = enabled } }
+
+    val dynamicColorFlow: Flow<Boolean> = context.dataStore.data.map { it[DYNAMIC_COLOR] ?: false }
+    val amoledFlow: Flow<Boolean> = context.dataStore.data.map { it[AMOLED] ?: false }
+    val accentColorFlow: Flow<Int> = context.dataStore.data.map { it[ACCENT_COLOR] ?: 0 }
+    val calendarSystemFlow: Flow<String> = context.dataStore.data.map { it[CALENDAR_SYSTEM] ?: "Gregorian" }
+    val weekStartFlow: Flow<String> = context.dataStore.data.map { it[WEEK_START] ?: "SUNDAY" }
+
+    suspend fun setDynamicColor(on: Boolean) { context.dataStore.edit { it[DYNAMIC_COLOR] = on } }
+    suspend fun setAmoled(on: Boolean) { context.dataStore.edit { it[AMOLED] = on } }
+    suspend fun setAccentColor(argb: Int) { context.dataStore.edit { it[ACCENT_COLOR] = argb } }
+    suspend fun setCalendarSystem(system: String) { context.dataStore.edit { it[CALENDAR_SYSTEM] = system } }
+    suspend fun setWeekStart(day: String) { context.dataStore.edit { it[WEEK_START] = day } }
+
+    val favoriteFoodsFlow: Flow<Set<String>> = context.dataStore.data.map { it[FAVORITE_FOODS] ?: emptySet() }
+    val mealTemplatesFlow: Flow<String> = context.dataStore.data.map { it[MEAL_TEMPLATES] ?: "[]" }
+
+    suspend fun toggleFavoriteFood(name: String) {
+        context.dataStore.edit { prefs ->
+            val current = prefs[FAVORITE_FOODS] ?: emptySet()
+            prefs[FAVORITE_FOODS] = if (name in current) current - name else current + name
+        }
+    }
+
+    suspend fun saveMealTemplates(json: String) {
+        context.dataStore.edit { it[MEAL_TEMPLATES] = json }
+    }
+
+    // --- Backup support: every stored setting as (key, type, value) so restores are lossless ---
+    suspend fun snapshot(): List<com.example.loom.data.backup.PrefBackup> =
+        context.dataStore.data.first().asMap().mapNotNull { (key, value) ->
+            com.example.loom.data.backup.PrefBackup.of(key.name, value)
+        }
+
+    suspend fun restoreSnapshot(entries: List<com.example.loom.data.backup.PrefBackup>) {
+        context.dataStore.edit { prefs ->
+            prefs.clear()
+            entries.forEach { e ->
+                when (e.type) {
+                    "int" -> e.value.toIntOrNull()?.let { prefs[intPreferencesKey(e.key)] = it }
+                    "long" -> e.value.toLongOrNull()?.let { prefs[longPreferencesKey(e.key)] = it }
+                    "float" -> e.value.toFloatOrNull()?.let { prefs[floatPreferencesKey(e.key)] = it }
+                    "double" -> e.value.toDoubleOrNull()?.let { prefs[doublePreferencesKey(e.key)] = it }
+                    "bool" -> prefs[booleanPreferencesKey(e.key)] = e.value.toBoolean()
+                    "string" -> prefs[stringPreferencesKey(e.key)] = e.value
+                    "stringSet" -> prefs[stringSetPreferencesKey(e.key)] = e.decodeSet()
+                }
+            }
+        }
+    }
+
+    suspend fun clearAll() {
+        context.dataStore.edit { it.clear() }
+    }
 }

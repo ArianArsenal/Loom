@@ -1,6 +1,7 @@
 package com.example.loom.data.local.entity
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 import kotlinx.serialization.Serializable
 
@@ -45,7 +46,10 @@ data class WaterContainer(
     val hydrationFactor: Float = 1.0f
 )
 
-@Entity(tableName = "tasks")
+@Entity(
+    tableName = "tasks",
+    indices = [Index("targetDate"), Index("isCompleted", "completionDateMillis")]
+)
 data class Task(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
     val title: String,
@@ -90,7 +94,7 @@ data class SubTask(
     var isCompleted: Boolean = false
 )
 
-@Entity(tableName = "exercises")
+@Entity(tableName = "exercises", indices = [Index("dateId")])
 data class Exercise(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
     val dateId: String,
@@ -129,7 +133,7 @@ data class ExerciseTemplate(
     val name: String
 )
 
-@Entity(tableName = "diary_notes")
+@Entity(tableName = "diary_notes", indices = [Index("timestamp")])
 data class DiaryNote(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
     val title: String,
@@ -162,7 +166,7 @@ data class SkincareProduct(
     val frequency: String = "Daily"
 )
 
-@Entity(tableName = "skincare_routines")
+@Entity(tableName = "skincare_routines", indices = [Index("isPinnedToHome")])
 data class SkincareRoutine(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
     val name: String,
@@ -170,7 +174,7 @@ data class SkincareRoutine(
     val isPinnedToHome: Boolean = true
 )
 
-@Entity(tableName = "food_items")
+@Entity(tableName = "food_items", indices = [Index("name"), Index("isUserCreated")])
 data class FoodItem(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
     val name: String,
@@ -181,3 +185,18 @@ data class FoodItem(
     val fats: Float,
     var isUserCreated: Boolean = false
 )
+
+/** Full-text index over food names (kept in sync with food_items by Room's triggers). */
+@androidx.room.Fts4(contentEntity = FoodItem::class)
+@Entity(tableName = "food_items_fts")
+data class FoodItemFts(val name: String)
+
+object FoodSearch {
+    /** "chicken bre" -> "chicken* bre*": every word must match the start of a word in the name. */
+    fun ftsQuery(input: String): String? {
+        val tokens = input.trim().split(Regex("\\s+"))
+            .map { token -> token.filter { it.isLetterOrDigit() } }
+            .filter { it.isNotEmpty() }
+        return if (tokens.isEmpty()) null else tokens.joinToString(" ") { "$it*" }
+    }
+}

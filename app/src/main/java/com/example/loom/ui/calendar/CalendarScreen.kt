@@ -1,5 +1,8 @@
 package com.example.loom.ui.calendar
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.runtime.saveable.rememberSaveable
+import com.example.loom.util.TextPatterns
 import android.widget.Toast
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
@@ -134,7 +137,8 @@ private val timelineDateFormatter = object : ThreadLocal<SimpleDateFormat>() {
     }
 }
 private val dayMonthYearFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd")
-private val monthYearFormatter = DateTimeFormatter.ofPattern("MMMM yyyy")
+// Persian weekday initials indexed by DayOfWeek.value % 7 (Sunday = 0)
+private val persianWeekdays = listOf("ی", "د", "س", "چ", "پ", "ج", "ش")
 private val fullDateFormatter = DateTimeFormatter.ofPattern("EEEE, MMMM d")
 
 private fun Float.formatWeight(): String {
@@ -142,7 +146,7 @@ private fun Float.formatWeight(): String {
 }
 
 @Composable
-fun SimpleMacroRing(calories: Int, modifier: Modifier = Modifier) {
+fun SimpleMacroRing(calories: Int, target: Int, modifier: Modifier = Modifier) {
     Box(modifier = modifier, contentAlignment = Alignment.Center) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             val strokeW = 5.dp.toPx()
@@ -153,7 +157,7 @@ fun SimpleMacroRing(calories: Int, modifier: Modifier = Modifier) {
                 useCenter = false,
                 style = Stroke(width = strokeW, cap = StrokeCap.Round)
             )
-            val fillPercentage = (calories.toFloat() / 2500f).coerceIn(0f, 1f)
+            val fillPercentage = if (target > 0) (calories.toFloat() / target).coerceIn(0f, 1f) else 0f
             drawArc(
                 color = Color(0xFF4CAF50),
                 startAngle = -90f,
@@ -186,51 +190,53 @@ fun AnalyticsBox(title: String, value: String, icon: ImageVector, modifier: Modi
 fun CalendarScreen(viewModel: CalendarViewModel) {
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
-    val currentMonth by viewModel.currentMonth.collectAsState()
-    val activeDays by viewModel.activeDays.collectAsState()
+    val visibleMonth by viewModel.visibleMonth.collectAsStateWithLifecycle()
+    val weekStart by viewModel.weekStart.collectAsStateWithLifecycle()
+    val targetCalories by viewModel.targetCalories.collectAsStateWithLifecycle()
+    val activeDays by viewModel.activeDays.collectAsStateWithLifecycle()
 
-    val selectedDateId by viewModel.selectedDateId.collectAsState()
-    val snapshot by viewModel.selectedDateSnapshot.collectAsState()
+    val selectedDateId by viewModel.selectedDateId.collectAsStateWithLifecycle()
+    val snapshot by viewModel.selectedDateSnapshot.collectAsStateWithLifecycle()
     val record = snapshot?.record
 
-    val analytics by viewModel.monthlyAnalytics.collectAsState()
-    var isMonthView by remember { mutableStateOf(true) }
+    val analytics by viewModel.monthlyAnalytics.collectAsStateWithLifecycle()
+    var isMonthView by rememberSaveable { mutableStateOf(true) }
 
-    var showFoodDialog by remember { mutableStateOf(false) }
-    var showFoodPantryDialog by remember { mutableStateOf(false) }
+    var showFoodDialog by rememberSaveable { mutableStateOf(false) }
+    var showFoodPantryDialog by rememberSaveable { mutableStateOf(false) }
     var foodToLog by remember { mutableStateOf<FoodItem?>(null) }
-    var showNewFoodDialog by remember { mutableStateOf(false) }
+    var showNewFoodDialog by rememberSaveable { mutableStateOf(false) }
     var foodToDelete by remember { mutableStateOf<FoodItem?>(null) }
     var logDetailsToShow by remember { mutableStateOf<ConsumedFoodLog?>(null) }
 
-    val allPresets by viewModel.allPresets.collectAsState()
-    val globalTemplates by viewModel.exerciseTemplates.collectAsState()
-    var showMacroEditDialog by remember { mutableStateOf(false) }
-    var showDetailedExerciseDialog by remember { mutableStateOf(false) }
+    val allPresets by viewModel.allPresets.collectAsStateWithLifecycle()
+    val globalTemplates by viewModel.exerciseTemplates.collectAsStateWithLifecycle()
+    var showMacroEditDialog by rememberSaveable { mutableStateOf(false) }
+    var showDetailedExerciseDialog by rememberSaveable { mutableStateOf(false) }
     var exerciseToDelete by remember { mutableStateOf<Exercise?>(null) }
     var selectedTabIndex by remember { mutableIntStateOf(0) }
 
-    val skincareRoutines by viewModel.allSkincareRoutines.collectAsState()
-    val skincareProducts by viewModel.allSkincareProducts.collectAsState()
-    var showSkincareDialog by remember { mutableStateOf(false) }
+    val skincareRoutines by viewModel.allSkincareRoutines.collectAsStateWithLifecycle()
+    val skincareProducts by viewModel.allSkincareProducts.collectAsStateWithLifecycle()
+    var showSkincareDialog by rememberSaveable { mutableStateOf(false) }
     var routineToEdit by remember { mutableStateOf<SkincareRoutine?>(null) }
-    var showDeleteConfirmDialog by remember { mutableStateOf(false) }
+    var showDeleteConfirmDialog by rememberSaveable { mutableStateOf(false) }
     var editingProductContext by remember { mutableStateOf<Pair<SkincareRoutine, SkincareProduct>?>(null) }
     var skincareRoutineToRemove by remember { mutableStateOf<String?>(null) }
 
-    val baseWeight by viewModel.weightFlow.collectAsState()
-    var showWeightLogDialog by remember { mutableStateOf(false) }
-    var showSleepDialog by remember { mutableStateOf(false) }
+    val baseWeight by viewModel.weightFlow.collectAsStateWithLifecycle()
+    var showWeightLogDialog by rememberSaveable { mutableStateOf(false) }
+    var showSleepDialog by rememberSaveable { mutableStateOf(false) }
 
-    val supplementsRoster by viewModel.supplementsRoster.collectAsState()
-    val todayScheduled by viewModel.selectedDateScheduledSupplements.collectAsState()
-    val categories by viewModel.supplementCategories.collectAsState()
-    var showSupplementManageDialog by remember { mutableStateOf(false) }
-    var showCategoryDialog by remember { mutableStateOf(false) }
+    val supplementsRoster by viewModel.supplementsRoster.collectAsStateWithLifecycle()
+    val todayScheduled by viewModel.selectedDateScheduledSupplements.collectAsStateWithLifecycle()
+    val categories by viewModel.supplementCategories.collectAsStateWithLifecycle()
+    var showSupplementManageDialog by rememberSaveable { mutableStateOf(false) }
+    var showCategoryDialog by rememberSaveable { mutableStateOf(false) }
     var editingSupplementItem by remember { mutableStateOf<SupplementItem?>(null) }
     var categoryToDelete by remember { mutableStateOf<String?>(null) }
 
-    var selectedDate by remember { mutableStateOf(LocalDate.now()) }
+    var selectedDate by rememberSaveable { mutableStateOf(LocalDate.now()) }
 
     LaunchedEffect(Unit) {
         viewModel.selectDate(selectedDate.format(dayMonthYearFormatter))
@@ -402,7 +408,7 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
     }
 
     if (showCategoryDialog) {
-        var newCategoryName by remember { mutableStateOf("") }
+        var newCategoryName by rememberSaveable { mutableStateOf("") }
         AlertDialog(
             onDismissRequest = { showCategoryDialog = false },
             title = { Text("Manage Categories", fontWeight = FontWeight.Bold) },
@@ -434,10 +440,10 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
         var editRecurrenceType by remember { mutableStateOf(editingSupplementItem!!.recurrenceType.ifBlank { "DAILY" }) }
         var editRecurrenceVal by remember { mutableStateOf(editingSupplementItem!!.recurrenceValue) }
         var editInstruction by remember { mutableStateOf(editingSupplementItem!!.instruction.ifBlank { "None" }) }
-        var showSuggestions by remember { mutableStateOf(false) }
-        var catExpanded by remember { mutableStateOf(false) }
-        var timeExpanded by remember { mutableStateOf(false) }
-        var instExpanded by remember { mutableStateOf(false) }
+        var showSuggestions by rememberSaveable { mutableStateOf(false) }
+        var catExpanded by rememberSaveable { mutableStateOf(false) }
+        var timeExpanded by rememberSaveable { mutableStateOf(false) }
+        var instExpanded by rememberSaveable { mutableStateOf(false) }
 
         val allOptions = (supplementTemplates + supplementsRoster).distinctBy { it.name.lowercase(Locale.getDefault()) }
 
@@ -574,7 +580,7 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
 
                     val unitDisplay = log.servingUnit.ifBlank { "serving" }
                     val uText = unitDisplay.trim()
-                    val mResult = "\\d+(\\.\\d+)?".toRegex().find(uText)
+                    val mResult = TextPatterns.NUMBER.find(uText)
                     val calculatedNumStr: String
                     val finalUnitText: String
                     val showMultiplier: Boolean
@@ -613,7 +619,7 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
     }
 
     if (foodToLog != null && showFoodDialog) {
-        var servingsStr by remember { mutableStateOf("1") }
+        var servingsStr by rememberSaveable { mutableStateOf("1") }
         AlertDialog(
             onDismissRequest = { showFoodDialog = false; foodToLog = null },
             title = { Text("Log ${foodToLog!!.name}") },
@@ -622,7 +628,7 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
                     val currentMultiplier = servingsStr.toFloatOrNull() ?: 1f
                     val dynamicCals = foodToLog!!.calories * currentMultiplier
                     val unitText = foodToLog!!.servingUnit.trim()
-                    val matchResult = "\\d+(\\.\\d+)?".toRegex().find(unitText)
+                    val matchResult = TextPatterns.NUMBER.find(unitText)
 
                     val textPart: String
                     val formattedNum: String
@@ -656,8 +662,8 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
     }
 
     if (showFoodPantryDialog) {
-        val currentSearchQuery by viewModel.foodSearchQuery.collectAsState()
-        val searchedFoods by viewModel.searchedFoodItems.collectAsState()
+        val currentSearchQuery by viewModel.foodSearchQuery.collectAsStateWithLifecycle()
+        val searchedFoods by viewModel.searchedFoodItems.collectAsStateWithLifecycle()
 
         AlertDialog(
             onDismissRequest = { showFoodPantryDialog = false },
@@ -681,7 +687,7 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
                                         Spacer(modifier = Modifier.height(4.dp))
 
                                         val uText = food.servingUnit.trim()
-                                        val mResult = "\\d+(\\.\\d+)?".toRegex().find(uText)
+                                        val mResult = TextPatterns.NUMBER.find(uText)
                                         val numStr = mResult?.value ?: ""
                                         val textStr = if (mResult != null) uText.replaceFirst(numStr, "").trim() else uText
 
@@ -707,12 +713,12 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
     }
 
     if (showNewFoodDialog) {
-        var inputName by remember { mutableStateOf("") }
-        var inputServing by remember { mutableStateOf("Plate") }
-        var inputCals by remember { mutableStateOf("") }
-        var inputPro by remember { mutableStateOf("") }
-        var inputCarbs by remember { mutableStateOf("") }
-        var inputFats by remember { mutableStateOf("") }
+        var inputName by rememberSaveable { mutableStateOf("") }
+        var inputServing by rememberSaveable { mutableStateOf("Plate") }
+        var inputCals by rememberSaveable { mutableStateOf("") }
+        var inputPro by rememberSaveable { mutableStateOf("") }
+        var inputCarbs by rememberSaveable { mutableStateOf("") }
+        var inputFats by rememberSaveable { mutableStateOf("") }
 
         AlertDialog(
             onDismissRequest = { showNewFoodDialog = false },
@@ -804,14 +810,14 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
 
                     Box(modifier = Modifier.padding(16.dp).weight(1f)) {
                         if (selectedTabIndex == 0) {
-                            var inputName by remember { mutableStateOf("") }
-                            var expanded by remember { mutableStateOf(false) }
-                            var isTimeBased by remember { mutableStateOf(false) }
-                            var inputSets by remember { mutableStateOf("3") }
-                            var inputReps by remember { mutableStateOf("10") }
-                            var inputDuration by remember { mutableStateOf("60") }
-                            var varyWeight by remember { mutableStateOf(false) }
-                            var inputWeight by remember { mutableStateOf("60") }
+                            var inputName by rememberSaveable { mutableStateOf("") }
+                            var expanded by rememberSaveable { mutableStateOf(false) }
+                            var isTimeBased by rememberSaveable { mutableStateOf(false) }
+                            var inputSets by rememberSaveable { mutableStateOf("3") }
+                            var inputReps by rememberSaveable { mutableStateOf("10") }
+                            var inputDuration by rememberSaveable { mutableStateOf("60") }
+                            var varyWeight by rememberSaveable { mutableStateOf(false) }
+                            var inputWeight by rememberSaveable { mutableStateOf("60") }
                             var advancedWeights by remember { mutableStateOf(mapOf<Int, String>()) }
 
                             Column(modifier = Modifier.fillMaxSize()) {
@@ -873,8 +879,8 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
                                 }
                             }
                         } else {
-                            var presetDropdownExpanded by remember { mutableStateOf(false) }
-                            var activePresetName by remember { mutableStateOf("") }
+                            var presetDropdownExpanded by rememberSaveable { mutableStateOf(false) }
+                            var activePresetName by rememberSaveable { mutableStateOf("") }
                             var activeExercises by remember { mutableStateOf(listOf<PresetExercise>()) }
 
                             Column(modifier = Modifier.fillMaxSize()) {
@@ -977,9 +983,9 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
             try { Json.decodeFromString<List<SkincareProduct>>(routineToEdit?.productsJson ?: "[]") } catch(_: Exception){ try { Json.decodeFromString<List<String>>(routineToEdit?.productsJson ?: "[]").map { SkincareProduct(name = it) } } catch (_: Exception) { emptyList() } }
         }
         var selectedProducts by remember(routineToEdit) { mutableStateOf(initialProducts) }
-        var routineDropdownExpanded by remember { mutableStateOf(false) }
-        var productSearchText by remember { mutableStateOf("") }
-        var productDropdownExpanded by remember { mutableStateOf(false) }
+        var routineDropdownExpanded by rememberSaveable { mutableStateOf(false) }
+        var productSearchText by rememberSaveable { mutableStateOf("") }
+        var productDropdownExpanded by rememberSaveable { mutableStateOf(false) }
         var dialogProductToEdit by remember { mutableStateOf<SkincareProduct?>(null) }
 
         if (dialogProductToEdit != null) {
@@ -1096,7 +1102,7 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
                     Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "Previous Month")
                 }
                 Text(
-                    text = currentMonth.format(monthYearFormatter),
+                    text = visibleMonth.title,
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onBackground,
@@ -1122,7 +1128,11 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
         Spacer(modifier = Modifier.height(16.dp))
 
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceAround) {
-            listOf("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat").forEach { day ->
+            // Weekday header follows the chosen first day of the week
+            (0..6).map { weekStart.plus(it.toLong()) }.map { dow ->
+                if (visibleMonth.isJalali) persianWeekdays[dow.value % 7]
+                else dow.getDisplayName(java.time.format.TextStyle.SHORT, java.util.Locale.getDefault())
+            }.forEach { day ->
                 Text(
                     text = day, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f), textAlign = TextAlign.Center
@@ -1134,9 +1144,9 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
 
         AnimatedContent(targetState = isMonthView, label = "CalendarGridSwitch") { showMonth ->
             if (showMonth) {
-                val firstDayOfMonth = currentMonth.atDay(1)
-                val dayOfWeekOffset = firstDayOfMonth.dayOfWeek.value % 7
-                val daysInMonth = currentMonth.lengthOfMonth()
+                val firstDayOfMonth = visibleMonth.from
+                val dayOfWeekOffset = (firstDayOfMonth.dayOfWeek.value - weekStart.value + 7) % 7
+                val daysInMonth = (visibleMonth.to.toEpochDay() - visibleMonth.from.toEpochDay()).toInt() + 1
 
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(7),
@@ -1146,9 +1156,10 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
 
                     items(daysInMonth, key = { it }) { dayIndex ->
                         val dayNumber = dayIndex + 1
-                        val date = currentMonth.atDay(dayNumber)
+                        val date = visibleMonth.from.plusDays(dayIndex.toLong())
                         val dateIdStr = date.format(dayMonthYearFormatter)
-                        val hasData = activeDays.contains(dateIdStr)
+                        val activityLevel = activeDays[dateIdStr] ?: 0
+                        val hasData = activityLevel > 0
                         val isSelected = date == selectedDate
 
                         Box(
@@ -1159,7 +1170,7 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
                                 .background(
                                     when {
                                         isSelected -> MaterialTheme.colorScheme.primary
-                                        hasData -> MaterialTheme.colorScheme.secondary.copy(alpha = 0.4f)
+                                        hasData -> MaterialTheme.colorScheme.secondary.copy(alpha = (0.15f + 0.17f * activityLevel).coerceAtMost(0.85f))
                                         else -> MaterialTheme.colorScheme.surface
                                     }
                                 )
@@ -1170,7 +1181,7 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = dayNumber.toString(),
+                                text = visibleMonth.dayLabel(date),
                                 color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
                                 fontWeight = if (isSelected || hasData) FontWeight.Bold else FontWeight.Normal
                             )
@@ -1179,13 +1190,14 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
                 }
             } else {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceAround) {
-                    val currentDayOfWeek = selectedDate.dayOfWeek.value % 7
+                    val currentDayOfWeek = (selectedDate.dayOfWeek.value - weekStart.value + 7) % 7
                     val startOfWeek = selectedDate.minusDays(currentDayOfWeek.toLong())
                     val weekDays = (0..6).map { startOfWeek.plusDays(it.toLong()) }
 
                     weekDays.forEach { date ->
                         val dateIdStr = date.format(dayMonthYearFormatter)
-                        val hasData = activeDays.contains(dateIdStr)
+                        val activityLevel = activeDays[dateIdStr] ?: 0
+                        val hasData = activityLevel > 0
                         val isSelected = date == selectedDate
 
                         Box(
@@ -1197,7 +1209,7 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
                                 .background(
                                     when {
                                         isSelected -> MaterialTheme.colorScheme.primary
-                                        hasData -> MaterialTheme.colorScheme.secondary.copy(alpha = 0.4f)
+                                        hasData -> MaterialTheme.colorScheme.secondary.copy(alpha = (0.15f + 0.17f * activityLevel).coerceAtMost(0.85f))
                                         else -> MaterialTheme.colorScheme.surface
                                     }
                                 )
@@ -1208,7 +1220,7 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = date.dayOfMonth.toString(),
+                                text = visibleMonth.dayLabel(date),
                                 color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
                                 fontWeight = if (isSelected || hasData) FontWeight.Bold else FontWeight.Normal
                             )
@@ -1228,7 +1240,7 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
                     colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)
                 ) {
                     Column(modifier = Modifier.padding(20.dp).verticalScroll(rememberScrollState())) {
-                        Text("${currentMonth.format(monthYearFormatter)} Overview", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                        Text("${visibleMonth.title} Overview", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                         Spacer(modifier = Modifier.height(16.dp))
 
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -1269,7 +1281,7 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
 
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                SimpleMacroRing(calories = record?.calories ?: 0, modifier = Modifier.size(46.dp))
+                                SimpleMacroRing(calories = record?.calories ?: 0, target = targetCalories, modifier = Modifier.size(46.dp))
                                 Spacer(modifier = Modifier.width(12.dp))
                                 Column {
                                     Row(verticalAlignment = Alignment.CenterVertically) {

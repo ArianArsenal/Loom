@@ -1,10 +1,16 @@
 package com.example.loom.ui.calendar
 
+import kotlin.math.roundToInt
+import com.example.loom.ui.health.isScheduledOn
+import com.example.loom.util.TextPatterns
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.loom.data.local.entity.*
 import com.example.loom.data.local.preferences.UserPreferences
 import com.example.loom.data.repository.TrackerRepository
+import com.example.loom.data.repository.addJsonIds
+import com.example.loom.data.repository.removeJsonIds
+import com.example.loom.data.repository.toggleJsonId
 import com.example.loom.ui.health.SupplementItem
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -39,11 +45,23 @@ data class MonthlyAnalytics(
 
 @HiltViewModel
 class CalendarViewModel @Inject constructor(
+    private val foodShortcuts: com.example.loom.data.food.FoodShortcuts,
     private val repository: TrackerRepository,
     private val userPreferences: UserPreferences
 ) : ViewModel() {
 
     val currentMonth = MutableStateFlow(YearMonth.now())
+
+    // --- Visible month: Gregorian or Jalali (a Jalali month spans two Gregorian months) ---
+    private val monthOffset = MutableStateFlow(0)
+    val calendarSystem: StateFlow<String> = userPreferences.calendarSystemFlow.stateIn(viewModelScope, SharingStarted.Eagerly, "Gregorian")
+    val weekStart: StateFlow<java.time.DayOfWeek> = userPreferences.weekStartFlow
+        .map { runCatching { java.time.DayOfWeek.valueOf(it) }.getOrDefault(java.time.DayOfWeek.SUNDAY) }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, java.time.DayOfWeek.SUNDAY)
+
+    val visibleMonth: StateFlow<VisibleMonth> = combine(monthOffset, calendarSystem) { offset, system ->
+        VisibleMonth.of(LocalDate.now(), offset, system == "Jalali")
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, VisibleMonth.of(LocalDate.now(), 0, false))
 
     private val _selectedDateId = MutableStateFlow<String?>(null)
     val selectedDateId: StateFlow<String?> = _selectedDateId.asStateFlow()
@@ -73,81 +91,72 @@ class CalendarViewModel @Inject constructor(
     ) { roster, dateId ->
         if (dateId == null) return@combine emptyList()
         val date = LocalDate.parse(dateId)
-        roster.filter { item ->
-            when (item.recurrenceType) {
-                "DAILY" -> true
-                "SPECIFIC_DAYS" -> {
-                    val dayStr = date.dayOfWeek.name.take(3)
-                    item.recurrenceValue.contains(dayStr, ignoreCase = true)
-                }
-                "INTERVAL" -> {
-                    val interval = item.recurrenceValue.toIntOrNull() ?: 1
-                    (date.toEpochDay() % interval) == 0L
-                }
-                else -> true
-            }
-        }.sortedBy { it.timeOfUse }
+        roster.filter { it.isScheduledOn(date) }.sortedBy { it.timeOfUse }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     @OptIn(ExperimentalCoroutinesApi::class)
-    val activeDays: StateFlow<Set<String>> = currentMonth
-        .flatMapLatest { yearMonth ->
-            val prefix = yearMonth.format(DateTimeFormatter.ofPattern("yyyy-MM"))
+    /** Activity level per day (number of things logged) for the month heat-map. */
+    val activeDays: StateFlow<Map<String, Int>> = visibleMonth
+        .flatMapLatest { month ->
+            val fromId = month.from.toString()
+            val toId = month.to.toString()
+            fun inMonth(dateId: String) = dateId in fromId..toId
             combine(
-                repository.getRecordsForMonth(prefix),
-                repository.getExercisesForMonth(prefix),
-                repository.getAllTasks()
+                repository.getRecordsBetween(month.from, month.to),
+                repository.getExercisesBetween(month.from, month.to),
+                repository.getTasksBetween(month.from, month.to)
             ) { records, exercises, tasks ->
-                val activeSet = mutableSetOf<String>()
+                val activity = mutableMapOf<String, Int>()
+                fun bump(dateId: String, by: Int = 1) { if (by > 0) activity[dateId] = (activity[dateId] ?: 0) + by }
 
                 records.forEach { record ->
-                    val cleanFoods = record.consumedFoodsJson.replace("\\s".toRegex(), "")
+                    val cleanFoods = record.consumedFoodsJson.replace(TextPatterns.WHITESPACE, "")
                     val hasFood = cleanFoods != "" && cleanFoods != "[]" && cleanFoods != "null"
 
-                    val cleanRoutines = record.completedSkincareRoutinesJson.replace("\\s".toRegex(), "")
+                    val cleanRoutines = record.completedSkincareRoutinesJson.replace(TextPatterns.WHITESPACE, "")
                     val hasRoutine = cleanRoutines != "" && cleanRoutines != "[]" && cleanRoutines != "null"
 
-                    val cleanSteps = record.completedSkincareStepsJson.replace("\\s".toRegex(), "")
+                    val cleanSteps = record.completedSkincareStepsJson.replace(TextPatterns.WHITESPACE, "")
                     val hasSteps = cleanSteps != "" && cleanSteps != "[]" && cleanSteps != "null"
 
-                    val cleanSupplements = record.completedSupplementsJson.replace("\\s".toRegex(), "")
+                    val cleanSupplements = record.completedSupplementsJson.replace(TextPatterns.WHITESPACE, "")
                     val hasSupplements = cleanSupplements != "" && cleanSupplements != "[]" && cleanSupplements != "null"
 
                     val hasMacros = record.calories > 0 || record.protein > 0 || record.carbs > 0 || record.fats > 0
 
-                    if (hasMacros || record.waterIntakeMl > 0 || record.diaryEntry.isNotBlank() || hasFood || hasRoutine || hasSteps || hasSupplements) {
-                        activeSet.add(record.dateId)
-                    }
+                    bump(record.dateId, listOf(hasMacros || hasFood, record.waterIntakeMl > 0, record.diaryEntry.isNotBlank(), hasRoutine || hasSteps, hasSupplements).count { it })
                 }
 
-                exercises.forEach { ex -> activeSet.add(ex.dateId) }
+                exercises.map { it.dateId }.distinct().forEach { bump(it) }
 
                 tasks.forEach { task ->
                     if (task.isCompleted) {
                         val dateStr = if (task.completionDateMillis > 0) {
-                            SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date(task.completionDateMillis))
+                            SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(task.completionDateMillis))
                         } else {
                             task.targetDate
                         }
-                        if (dateStr.startsWith(prefix)) activeSet.add(dateStr)
+                        if (inMonth(dateStr)) bump(dateStr)
                     } else {
-                        if (task.targetDate.startsWith(prefix)) activeSet.add(task.targetDate)
+                        if (inMonth(task.targetDate)) bump(task.targetDate)
                     }
                 }
 
-                activeSet
+                activity
             }
         }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptySet())
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
 
     @OptIn(ExperimentalCoroutinesApi::class)
-    val monthlyAnalytics: StateFlow<MonthlyAnalytics> = currentMonth
-        .flatMapLatest { yearMonth ->
-            val prefix = yearMonth.format(DateTimeFormatter.ofPattern("yyyy-MM"))
+    val monthlyAnalytics: StateFlow<MonthlyAnalytics> = visibleMonth
+        .flatMapLatest { month ->
+            val fromId = month.from.toString()
+            val toId = month.to.toString()
+            fun inMonth(dateId: String) = dateId in fromId..toId
             combine(
-                repository.getRecordsForMonth(prefix),
-                repository.getExercisesForMonth(prefix),
-                repository.getAllTasks()
+                repository.getRecordsBetween(month.from, month.to),
+                repository.getExercisesBetween(month.from, month.to),
+                repository.getTasksBetween(month.from, month.to)
             ) { records, exercises, allTasks ->
 
                 val sleepDays = records.filter { it.sleepHours > 0f }
@@ -159,8 +168,8 @@ class CalendarViewModel @Inject constructor(
                 val workoutDays = exercises.map { it.dateId }.distinct().count()
 
                 val monthTasks = allTasks.filter {
-                    it.targetDate.startsWith(prefix) ||
-                            (it.isCompleted && it.completionDateMillis > 0 && SimpleDateFormat("yyyy-MM", Locale.getDefault()).format(Date(it.completionDateMillis)) == prefix)
+                    inMonth(it.targetDate) ||
+                            (it.isCompleted && it.completionDateMillis > 0 && inMonth(SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(it.completionDateMillis))))
                 }
                 val tasksCompleted = monthTasks.count { it.isCompleted }
 
@@ -169,8 +178,13 @@ class CalendarViewModel @Inject constructor(
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), MonthlyAnalytics())
 
-    fun nextMonth() { currentMonth.value = currentMonth.value.plusMonths(1) }
-    fun previousMonth() { currentMonth.value = currentMonth.value.minusMonths(1) }
+    fun nextMonth() { monthOffset.value += 1 }
+    fun previousMonth() { monthOffset.value -= 1 }
+
+    init {
+        // Switching calendar systems jumps back to the current month
+        viewModelScope.launch { calendarSystem.collect { monthOffset.value = 0 } }
+    }
 
     private var snapshotJob: Job? = null
 
@@ -181,11 +195,11 @@ class CalendarViewModel @Inject constructor(
         snapshotJob = viewModelScope.launch {
             combine(
                 repository.getDailyRecordFlow(dateId),
-                repository.getAllTasks(),
+                repository.getTasksBetween(java.time.LocalDate.parse(dateId), java.time.LocalDate.parse(dateId)),
                 repository.getExercisesForDate(dateId)
             ) { record, allTasks, exercises ->
 
-                val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+                val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
                 val dateMillis = sdf.parse(dateId)?.time ?: 0L
                 val endOfDay = dateMillis + 86400000L
 
@@ -223,22 +237,23 @@ class CalendarViewModel @Inject constructor(
     val searchedFoodItems: StateFlow<List<FoodItem>> = _foodSearchQuery
         .debounce(300.milliseconds)
         .flatMapLatest { query ->
-            if (query.isBlank()) repository.searchFoodItems("مرغ")
+            if (query.isBlank()) foodShortcuts.quickFoods()
             else repository.searchFoodItems(query)
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     fun updateFoodSearchQuery(query: String) { _foodSearchQuery.value = query }
-    fun addFoodItem(food: FoodItem) = viewModelScope.launch { repository.insertFoodItem(food) }
+    fun addFoodItem(food: FoodItem) = viewModelScope.launch { repository.insertFoodItem(food.copy(isUserCreated = true)) }
     fun deleteFoodItem(food: FoodItem) = viewModelScope.launch { repository.deleteFoodItem(food) }
 
     fun logFoodItemToPast(food: FoodItem, servings: Float) = viewModelScope.launch {
-        val record = _selectedDateSnapshot.value?.record ?: return@launch
-        val totalCals = (food.calories * servings).toInt()
-        val totalPro = (food.protein * servings).toInt()
-        val totalCarbs = (food.carbs * servings).toInt()
-        val totalFats = (food.fats * servings).toInt()
-        val currentTime = System.currentTimeMillis()
+        val dateId = _selectedDateId.value ?: return@launch
+        val totalCals = (food.calories * servings).roundToInt()
+        val totalPro = (food.protein * servings).roundToInt()
+        val totalCarbs = (food.carbs * servings).roundToInt()
+        val totalFats = (food.fats * servings).roundToInt()
+        // Stamp the meal on the selected day (at the current time of day), not "now"
+        val currentTime = LocalDate.parse(dateId).atTime(java.time.LocalTime.now()).atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
 
         val hour = java.util.Calendar.getInstance().apply { timeInMillis = currentTime }.get(java.util.Calendar.HOUR_OF_DAY)
         val emoji = when (hour) { in 5..9 -> "🍳"; in 10..12 -> "🍎"; in 13..15 -> "🍛"; in 16..19 -> "☕"; in 20..23 -> "🍲"; else -> "🌙" }
@@ -248,49 +263,36 @@ class CalendarViewModel @Inject constructor(
             foodName = food.name, emoji = emoji, servings = servings, servingUnit = food.servingUnit,
             calories = totalCals, protein = totalPro, carbs = totalCarbs, fats = totalFats, timestamp = currentTime
         )
-
-        val currentLogs = try { Json.decodeFromString<List<ConsumedFoodLog>>(record.consumedFoodsJson) } catch (_: Exception) { emptyList() } // --- FIX: Unused 'e' ---
-        repository.updateDailyRecord(record.copy(
-            calories = record.calories + totalCals,
-            protein = record.protein + totalPro,
-            carbs = record.carbs + totalCarbs,
-            fats = record.fats + totalFats,
-            consumedFoodsJson = Json.encodeToString(currentLogs + log)
-        ))
+        repository.addConsumedFood(log, dateId)
     }
 
     fun removeConsumedFoodLog(log: ConsumedFoodLog) = viewModelScope.launch {
-        val record = _selectedDateSnapshot.value?.record ?: return@launch
-        val currentLogs = try { Json.decodeFromString<List<ConsumedFoodLog>>(record.consumedFoodsJson) } catch (_: Exception) { emptyList() } // --- FIX: Unused 'e' ---
-        val updatedLogs = currentLogs.filter { it.id != log.id }
-        repository.updateDailyRecord(record.copy(
-            calories = record.calories - log.calories,
-            protein = record.protein - log.protein,
-            carbs = record.carbs - log.carbs,
-            fats = record.fats - log.fats,
-            consumedFoodsJson = Json.encodeToString(updatedLogs)
-        ))
+        val dateId = _selectedDateId.value ?: return@launch
+        repository.removeConsumedFood(log.id, dateId)
     }
 
     // --- WEIGHT & SLEEP ---
     fun logDailyWeight(weightKg: Float) = viewModelScope.launch {
-        val record = _selectedDateSnapshot.value?.record ?: return@launch
-        repository.updateDailyRecord(record.copy(weightLogKg = weightKg))
+        val dateId = _selectedDateId.value ?: return@launch
+        repository.editRecord(dateId) { it.copy(weightLogKg = weightKg) }
+        if (weightKg > 0f && dateId == com.example.loom.util.DateUtils.getTodayDateId()) userPreferences.updateProfileWeight(weightKg)
     }
 
+    val targetCalories: StateFlow<Int> = userPreferences.targetCaloriesFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 2500)
+
     fun deleteDailyWeight() = viewModelScope.launch {
-        val record = _selectedDateSnapshot.value?.record ?: return@launch
-        repository.updateDailyRecord(record.copy(weightLogKg = 0f))
+        val dateId = _selectedDateId.value ?: return@launch
+        repository.editRecord(dateId) { it.copy(weightLogKg = 0f) }
     }
 
     fun logSleep(hours: Float, rating: Int) = viewModelScope.launch {
-        val record = _selectedDateSnapshot.value?.record ?: return@launch
-        repository.updateDailyRecord(record.copy(sleepHours = hours, sleepRating = rating))
+        val dateId = _selectedDateId.value ?: return@launch
+        repository.editRecord(dateId) { it.copy(sleepHours = hours, sleepRating = rating) }
     }
 
     fun deleteSleep() = viewModelScope.launch {
-        val record = _selectedDateSnapshot.value?.record ?: return@launch
-        repository.updateDailyRecord(record.copy(sleepHours = 0f, sleepRating = 0))
+        val dateId = _selectedDateId.value ?: return@launch
+        repository.editRecord(dateId) { it.copy(sleepHours = 0f, sleepRating = 0) }
     }
 
     // --- SUPPLEMENTS ---
@@ -319,19 +321,13 @@ class CalendarViewModel @Inject constructor(
         val current = supplementsRoster.value.filter { it.id != id }
         userPreferences.saveSupplementsRoster(Json.encodeToString(current))
 
-        val record = _selectedDateSnapshot.value?.record ?: return@launch
-        val currentCompleted = try { Json.decodeFromString<List<String>>(record.completedSupplementsJson) } catch (_: Exception) { emptyList() }.toMutableList() // --- FIX: Unused 'e' ---
-        if (currentCompleted.contains(id)) {
-            currentCompleted.remove(id)
-            repository.updateDailyRecord(record.copy(completedSupplementsJson = Json.encodeToString(currentCompleted)))
-        }
+        val dateId = _selectedDateId.value ?: return@launch
+        repository.editRecord(dateId) { it.copy(completedSupplementsJson = removeJsonIds(it.completedSupplementsJson, listOf(id))) }
     }
 
     fun toggleSupplement(id: String) = viewModelScope.launch {
-        val record = _selectedDateSnapshot.value?.record ?: return@launch
-        val currentList = try { Json.decodeFromString<List<String>>(record.completedSupplementsJson) } catch (_: Exception) { emptyList() }.toMutableList() // --- FIX: Unused 'e' ---
-        if (currentList.contains(id)) currentList.remove(id) else currentList.add(id)
-        repository.updateDailyRecord(record.copy(completedSupplementsJson = Json.encodeToString(currentList)))
+        val dateId = _selectedDateId.value ?: return@launch
+        repository.editRecord(dateId) { it.copy(completedSupplementsJson = toggleJsonId(it.completedSupplementsJson, id)) }
     }
 
     // --- SKINCARE ---
@@ -340,29 +336,23 @@ class CalendarViewModel @Inject constructor(
     fun addSkincareProduct(name: String) = viewModelScope.launch { repository.insertSkincareProduct(SkincareProduct(name = name)) }
 
     fun logSkincareRoutine(routineName: String) = viewModelScope.launch {
-        val record = _selectedDateSnapshot.value?.record ?: return@launch
-        val currentRoutines = try { Json.decodeFromString<List<String>>(record.completedSkincareRoutinesJson) } catch (_: Exception) { emptyList() }.toMutableList() // --- FIX: Unused 'e' ---
-        if (!currentRoutines.contains(routineName)) {
-            currentRoutines.add(routineName)
-            repository.updateDailyRecord(record.copy(completedSkincareRoutinesJson = Json.encodeToString(currentRoutines)))
-        }
+        val dateId = _selectedDateId.value ?: return@launch
+        repository.editRecord(dateId) { it.copy(completedSkincareRoutinesJson = addJsonIds(it.completedSkincareRoutinesJson, listOf(routineName))) }
     }
 
     fun toggleSkincareStep(routineName: String, productName: String) = viewModelScope.launch {
-        val record = _selectedDateSnapshot.value?.record ?: return@launch
-        val stepId = "${routineName}_${productName}"
-        val currentList = try { Json.decodeFromString<List<String>>(record.completedSkincareStepsJson) } catch (_: Exception) { emptyList() }.toMutableList() // --- FIX: Unused 'e' ---
-        if (currentList.contains(stepId)) currentList.remove(stepId) else currentList.add(stepId)
-        repository.updateDailyRecord(record.copy(completedSkincareStepsJson = Json.encodeToString(currentList)))
+        val dateId = _selectedDateId.value ?: return@launch
+        repository.editRecord(dateId) { it.copy(completedSkincareStepsJson = toggleJsonId(it.completedSkincareStepsJson, "${routineName}_${productName}")) }
     }
 
     fun removeLoggedSkincareRoutine(routineName: String, products: List<String>) = viewModelScope.launch {
-        val record = _selectedDateSnapshot.value?.record ?: return@launch
-        val currentRoutines = try { Json.decodeFromString<List<String>>(record.completedSkincareRoutinesJson) } catch (_: Exception) { emptyList() }.toMutableList() // --- FIX: Unused 'e' ---
-        val currentSteps = try { Json.decodeFromString<List<String>>(record.completedSkincareStepsJson) } catch (_: Exception) { emptyList() }.toMutableList() // --- FIX: Unused 'e' ---
-        currentRoutines.remove(routineName)
-        products.forEach { p -> currentSteps.remove("${routineName}_$p") }
-        repository.updateDailyRecord(record.copy(completedSkincareRoutinesJson = Json.encodeToString(currentRoutines), completedSkincareStepsJson = Json.encodeToString(currentSteps)))
+        val dateId = _selectedDateId.value ?: return@launch
+        repository.editRecord(dateId) {
+            it.copy(
+                completedSkincareRoutinesJson = removeJsonIds(it.completedSkincareRoutinesJson, listOf(routineName)),
+                completedSkincareStepsJson = removeJsonIds(it.completedSkincareStepsJson, products.map { p -> "${routineName}_$p" })
+            )
+        }
     }
 
     // --- WORKOUTS ---
@@ -414,6 +404,31 @@ class CalendarViewModel @Inject constructor(
                     duration = it.durationInSeconds, presetName = presetName, targetDateId = dateId
                 )
             }
+        }
+    }
+}
+
+/** The month shown in the Calendar tab as a Gregorian date range plus its display title. */
+data class VisibleMonth(val from: LocalDate, val to: LocalDate, val title: String, val isJalali: Boolean) {
+    /** Day-of-month label for a date in the active calendar system. */
+    fun dayLabel(date: LocalDate): String =
+        if (isJalali) com.example.loom.util.Jalali.persianDigits(com.example.loom.util.Jalali.fromGregorian(date).day.toString())
+        else date.dayOfMonth.toString()
+
+    companion object {
+        fun of(today: LocalDate, offset: Int, jalali: Boolean): VisibleMonth {
+            if (!jalali) {
+                val ym = YearMonth.from(today).plusMonths(offset.toLong())
+                return VisibleMonth(ym.atDay(1), ym.atEndOfMonth(), ym.format(DateTimeFormatter.ofPattern("MMMM yyyy")), false)
+            }
+            val now = com.example.loom.util.Jalali.fromGregorian(today)
+            val index = now.year * 12 + (now.month - 1) + offset
+            val year = Math.floorDiv(index, 12)
+            val month = Math.floorMod(index, 12) + 1
+            val from = com.example.loom.util.Jalali.toGregorian(year, month, 1)
+            val to = com.example.loom.util.Jalali.toGregorian(year, month, com.example.loom.util.Jalali.monthLength(year, month))
+            val title = com.example.loom.util.Jalali.monthNames[month - 1] + " " + com.example.loom.util.Jalali.persianDigits(year.toString())
+            return VisibleMonth(from, to, title, true)
         }
     }
 }

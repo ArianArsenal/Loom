@@ -1,5 +1,6 @@
 package com.example.loom.ui.sandbox.blocks
 
+import kotlinx.coroutines.launch
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
@@ -60,16 +61,19 @@ fun CalendarBlockRenderer(
     var isCalendarEditMode by remember { mutableStateOf(false) }
     var pendingCalendarDate by remember { mutableStateOf<String?>(null) }
 
+    val mediaScope = rememberCoroutineScope()
+    val latestBlock by rememberUpdatedState(block)
     val calendarImageLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        uri?.let {
+        uri?.let { mediaScope.launch {
             val localUrl = copyMediaToLocal(context, it)
             if (localUrl != null) {
                 pendingCalendarDate?.let { dateStr ->
-                    val eventsForDay = block.calendarEvents[dateStr] ?: emptyList()
+                    val current = latestBlock
+                    val eventsForDay = current.calendarEvents[dateStr] ?: emptyList()
                     val newEvents = eventsForDay.toMutableList().apply { add(CalendarEvent(type = "Image", imageUrl = localUrl)) }
-                    onUpdate(block.copy(calendarEvents = block.calendarEvents + (dateStr to newEvents)))
+                    onUpdate(current.copy(calendarEvents = current.calendarEvents + (dateStr to newEvents)))
                 }
-            }
+            } }
         }
     }
 

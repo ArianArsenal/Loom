@@ -1,5 +1,10 @@
 package com.example.loom.ui.health
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.foundation.clickable
+import com.example.loom.util.TextPatterns
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -33,16 +38,16 @@ import java.util.Locale
 @OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun HealthNutrition(viewModel: HealthViewModel) {
-    val todayRecord by viewModel.todayRecord.collectAsState()
-    val consumedList by viewModel.consumedFoods.collectAsState()
-    val targetProteinInt by viewModel.targetProtein.collectAsState()
-    val targetCarbsInt by viewModel.targetCarbs.collectAsState()
-    val targetFatsInt by viewModel.targetFats.collectAsState()
+    val todayRecord by viewModel.todayRecord.collectAsStateWithLifecycle()
+    val consumedList by viewModel.consumedFoods.collectAsStateWithLifecycle()
+    val targetProteinInt by viewModel.targetProtein.collectAsStateWithLifecycle()
+    val targetCarbsInt by viewModel.targetCarbs.collectAsStateWithLifecycle()
+    val targetFatsInt by viewModel.targetFats.collectAsStateWithLifecycle()
 
-    var showFoodDialog by remember { mutableStateOf(false) }
-    var showFoodPantryDialog by remember { mutableStateOf(false) }
+    var showFoodDialog by rememberSaveable { mutableStateOf(false) }
+    var showFoodPantryDialog by rememberSaveable { mutableStateOf(false) }
     var foodToLog by remember { mutableStateOf<FoodItem?>(null) }
-    var showNewFoodDialog by remember { mutableStateOf(false) }
+    var showNewFoodDialog by rememberSaveable { mutableStateOf(false) }
     var foodToDelete by remember { mutableStateOf<FoodItem?>(null) }
     var logDetailsToShow by remember { mutableStateOf<ConsumedFoodLog?>(null) }
 
@@ -82,7 +87,7 @@ fun HealthNutrition(viewModel: HealthViewModel) {
 
                     val unitDisplay = log.servingUnit.ifBlank { "serving" }
                     val uText = unitDisplay.trim()
-                    val mResult = "\\d+(\\.\\d+)?".toRegex().find(uText)
+                    val mResult = TextPatterns.NUMBER.find(uText)
 
                     val calculatedNumStr: String
                     val finalUnitText: String
@@ -151,7 +156,7 @@ fun HealthNutrition(viewModel: HealthViewModel) {
     }
 
     if (foodToLog != null && showFoodDialog) {
-        var servingsStr by remember { mutableStateOf("1") }
+        var servingsStr by rememberSaveable { mutableStateOf("1") }
 
         AlertDialog(
             onDismissRequest = { showFoodDialog = false; foodToLog = null },
@@ -162,7 +167,7 @@ fun HealthNutrition(viewModel: HealthViewModel) {
                     val dynamicCals = foodToLog!!.calories * currentMultiplier
 
                     val unitText = foodToLog!!.servingUnit.trim()
-                    val numberRegex = "\\d+(\\.\\d+)?".toRegex()
+                    val numberRegex = TextPatterns.NUMBER
                     val matchResult = numberRegex.find(unitText)
 
                     val textPart: String
@@ -230,8 +235,9 @@ fun HealthNutrition(viewModel: HealthViewModel) {
     }
 
     if (showFoodPantryDialog) {
-        val currentSearchQuery by viewModel.foodSearchQuery.collectAsState()
-        val searchedFoods by viewModel.searchedFoodItems.collectAsState()
+        val currentSearchQuery by viewModel.foodSearchQuery.collectAsStateWithLifecycle()
+        val searchedFoods by viewModel.searchedFoodItems.collectAsStateWithLifecycle()
+        val favoriteFoods by viewModel.favoriteFoods.collectAsStateWithLifecycle()
 
         AlertDialog(
             onDismissRequest = { showFoodPantryDialog = false },
@@ -254,7 +260,7 @@ fun HealthNutrition(viewModel: HealthViewModel) {
                             }
                         }
 
-                        items(searchedFoods) { food ->
+                        items(searchedFoods, key = { it.id }) { food ->
                             Surface(
                                 shape = RoundedCornerShape(12.dp),
                                 color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
@@ -264,7 +270,13 @@ fun HealthNutrition(viewModel: HealthViewModel) {
                                 )
                             ) {
                                 Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Text("🍽️", fontSize = 24.sp)
+                                    val isFavorite = food.name in favoriteFoods
+                                    Text(
+                                        if (isFavorite) "★" else "☆",
+                                        fontSize = 24.sp,
+                                        color = if (isFavorite) Color(0xFFFFB300) else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.clickable { viewModel.toggleFavoriteFood(food.name) }
+                                    )
                                     Spacer(modifier = Modifier.width(12.dp))
                                     Column(modifier = Modifier.weight(1f)) {
                                         Text(food.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
@@ -277,7 +289,7 @@ fun HealthNutrition(viewModel: HealthViewModel) {
                                         Spacer(modifier = Modifier.height(4.dp))
 
                                         val uText = food.servingUnit.trim()
-                                        val mResult = "\\d+(\\.\\d+)?".toRegex().find(uText)
+                                        val mResult = TextPatterns.NUMBER.find(uText)
                                         val numStr = mResult?.value ?: ""
                                         val textStr = if (mResult != null) uText.replaceFirst(numStr, "").trim() else uText
 
@@ -320,12 +332,12 @@ fun HealthNutrition(viewModel: HealthViewModel) {
     }
 
     if (showNewFoodDialog) {
-        var inputName by remember { mutableStateOf("") }
-        var inputServing by remember { mutableStateOf("Plate") }
-        var inputCals by remember { mutableStateOf("") }
-        var inputPro by remember { mutableStateOf("") }
-        var inputCarbs by remember { mutableStateOf("") }
-        var inputFats by remember { mutableStateOf("") }
+        var inputName by rememberSaveable { mutableStateOf("") }
+        var inputServing by rememberSaveable { mutableStateOf("Plate") }
+        var inputCals by rememberSaveable { mutableStateOf("") }
+        var inputPro by rememberSaveable { mutableStateOf("") }
+        var inputCarbs by rememberSaveable { mutableStateOf("") }
+        var inputFats by rememberSaveable { mutableStateOf("") }
 
         AlertDialog(
             onDismissRequest = { showNewFoodDialog = false },
@@ -379,8 +391,11 @@ fun HealthNutrition(viewModel: HealthViewModel) {
         Column(modifier = Modifier.padding(20.dp)) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text("Nutrition Log", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Button(onClick = { showFoodPantryDialog = true }, shape = RoundedCornerShape(12.dp), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp)) {
-                    Text("Pantry")
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Button(onClick = { showFoodPantryDialog = true }, shape = RoundedCornerShape(12.dp), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp)) {
+                        Text("Pantry")
+                    }
+                    MealShortcutsMenu(viewModel)
                 }
             }
             Spacer(modifier = Modifier.height(16.dp))
@@ -476,7 +491,7 @@ fun HealthNutrition(viewModel: HealthViewModel) {
                                     val unitDisplay = log.servingUnit.ifBlank { "serving" }
 
                                     val uText = unitDisplay.trim()
-                                    val mResult = "\\d+(\\.\\d+)?".toRegex().find(uText)
+                                    val mResult = TextPatterns.NUMBER.find(uText)
 
                                     val calculatedNumStr: String
                                     val finalUnitText: String
@@ -536,5 +551,67 @@ fun HealthNutrition(viewModel: HealthViewModel) {
                 }
             }
         }
+    }
+}
+
+/** Overflow menu on the nutrition card: copy yesterday's meals and meal templates. */
+@Composable
+private fun MealShortcutsMenu(viewModel: HealthViewModel) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val templates by viewModel.mealTemplates.collectAsStateWithLifecycle()
+    var menuOpen by rememberSaveable { mutableStateOf(false) }
+    var showTemplates by rememberSaveable { mutableStateOf(false) }
+    var newTemplateName by rememberSaveable { mutableStateOf("") }
+
+    Box {
+        IconButton(onClick = { menuOpen = true }) { Icon(Icons.Default.MoreVert, "Meal shortcuts") }
+        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+            DropdownMenuItem(text = { Text("Copy yesterday's meals") }, onClick = {
+                menuOpen = false
+                viewModel.copyYesterdaysMeals { n ->
+                    android.widget.Toast.makeText(context, if (n == 0) "Nothing was logged yesterday" else "Copied $n meal${if (n == 1) "" else "s"}", android.widget.Toast.LENGTH_SHORT).show()
+                }
+            })
+            DropdownMenuItem(text = { Text("Meal templates") }, onClick = { menuOpen = false; showTemplates = true })
+        }
+    }
+
+    if (showTemplates) {
+        AlertDialog(
+            onDismissRequest = { showTemplates = false },
+            title = { Text("Meal Templates") },
+            text = {
+                Column {
+                    if (templates.isEmpty()) {
+                        Text("No templates yet. Save today's meals to reuse them later.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    templates.forEach { t ->
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(t.name, fontWeight = FontWeight.Bold)
+                                Text("${t.logs.size} items · ${t.logs.sumOf { it.calories }} kcal", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            TextButton(onClick = {
+                                viewModel.applyMealTemplate(t)
+                                android.widget.Toast.makeText(context, "Logged ${t.name}", android.widget.Toast.LENGTH_SHORT).show()
+                                showTemplates = false
+                            }) { Text("Log") }
+                            IconButton(onClick = { viewModel.deleteMealTemplate(t.name) }) { Icon(Icons.Default.Delete, "Delete template") }
+                        }
+                    }
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                    OutlinedTextField(value = newTemplateName, onValueChange = { newTemplateName = it }, label = { Text("Save today's meals as…") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                }
+            },
+            confirmButton = {
+                TextButton(enabled = newTemplateName.isNotBlank(), onClick = {
+                    viewModel.saveMealTemplate(newTemplateName) { ok ->
+                        android.widget.Toast.makeText(context, if (ok) "Template saved" else "Log some meals today first", android.widget.Toast.LENGTH_SHORT).show()
+                    }
+                    newTemplateName = ""
+                }) { Text("Save") }
+            },
+            dismissButton = { TextButton(onClick = { showTemplates = false }) { Text("Close") } }
+        )
     }
 }

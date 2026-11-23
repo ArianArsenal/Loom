@@ -1,5 +1,7 @@
 package com.example.loom.ui.health
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.runtime.saveable.rememberSaveable
 import android.widget.Toast
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
@@ -44,26 +46,26 @@ import java.util.Collections
 @Composable
 fun HealthWorkout(viewModel: HealthViewModel) {
     val context = LocalContext.current
-    val todayExercises by viewModel.todayExercises.collectAsState()
-    val allPresets by viewModel.allPresets.collectAsState()
-    val globalTemplates by viewModel.exerciseTemplates.collectAsState()
+    val todayExercises by viewModel.todayExercises.collectAsStateWithLifecycle()
+    val allPresets by viewModel.allPresets.collectAsStateWithLifecycle()
+    val globalTemplates by viewModel.exerciseTemplates.collectAsStateWithLifecycle()
 
-    var showExerciseDialog by remember { mutableStateOf(false) }
+    var showExerciseDialog by rememberSaveable { mutableStateOf(false) }
     var selectedTabIndex by remember { mutableIntStateOf(0) }
     var templateToEdit by remember { mutableStateOf<ExerciseTemplate?>(null) }
-    var showTemplateEditDialog by remember { mutableStateOf(false) }
+    var showTemplateEditDialog by rememberSaveable { mutableStateOf(false) }
 
     var activePresetId by remember { mutableIntStateOf(0) }
-    var activePresetName by remember { mutableStateOf("") }
+    var activePresetName by rememberSaveable { mutableStateOf("") }
     var activeExercises by remember { mutableStateOf(listOf<PresetExercise>()) }
-    var isCurrentPresetSaved by remember { mutableStateOf(true) }
-    var showUnsavedPrompt by remember { mutableStateOf(false) }
+    var isCurrentPresetSaved by rememberSaveable { mutableStateOf(true) }
+    var showUnsavedPrompt by rememberSaveable { mutableStateOf(false) }
 
     var presetExerciseToEdit by remember { mutableStateOf<PresetExercise?>(null) }
     var presetExerciseToEditIndex by remember { mutableIntStateOf(-1) }
 
     var loggedPresetToManage by remember { mutableStateOf<String?>(null) }
-    var showLoggedPresetDialog by remember { mutableStateOf(false) }
+    var showLoggedPresetDialog by rememberSaveable { mutableStateOf(false) }
     var loggedExerciseToEdit by remember { mutableStateOf<Exercise?>(null) }
 
     if (showTemplateEditDialog && templateToEdit != null) {
@@ -115,11 +117,11 @@ fun HealthWorkout(viewModel: HealthViewModel) {
     if (loggedExerciseToEdit != null) {
         var editName by remember { mutableStateOf(loggedExerciseToEdit!!.exerciseName) }
         var editIsTimeBased by remember { mutableStateOf(loggedExerciseToEdit!!.isTimeBased) }
-        var editSets by remember { mutableStateOf(loggedExerciseToEdit!!.sets.toString()) }
-        var editReps by remember { mutableStateOf(loggedExerciseToEdit!!.reps.toString()) }
-        var editDuration by remember { mutableStateOf(loggedExerciseToEdit!!.durationInSeconds.toString()) }
+        var editSets by rememberSaveable { mutableStateOf(loggedExerciseToEdit!!.sets.toString()) }
+        var editReps by rememberSaveable { mutableStateOf(loggedExerciseToEdit!!.reps.toString()) }
+        var editDuration by rememberSaveable { mutableStateOf(loggedExerciseToEdit!!.durationInSeconds.toString()) }
         var editVaryWeight by remember { mutableStateOf(loggedExerciseToEdit!!.weightListJson != "[]") }
-        var editWeight by remember { mutableStateOf(loggedExerciseToEdit!!.weight.formatWeight()) }
+        var editWeight by rememberSaveable { mutableStateOf(loggedExerciseToEdit!!.weight.formatWeight()) }
 
         // --- FIX: Restored explicit <Map<Int, String>> type definition ---
         var editAdvancedWeights by remember {
@@ -161,7 +163,7 @@ fun HealthWorkout(viewModel: HealthViewModel) {
                         }
 
                         if (editVaryWeight) {
-                            val setCount = editSets.toIntOrNull() ?: 0
+                            val setCount = (editSets.toIntOrNull() ?: 0).coerceIn(0, MAX_SETS)
                             if (setCount > 0) {
                                 Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                     for (i in 0 until setCount) {
@@ -192,7 +194,7 @@ fun HealthWorkout(viewModel: HealthViewModel) {
                 Button(onClick = {
                     if (editName.isNotBlank()) {
                         val wList = if (editVaryWeight) {
-                            val setCount = editSets.toIntOrNull() ?: 0
+                            val setCount = (editSets.toIntOrNull() ?: 0).coerceIn(0, MAX_SETS)
                             (0 until setCount).map { editAdvancedWeights[it]?.toFloatOrNull() ?: 0f }
                         } else emptyList()
 
@@ -242,17 +244,17 @@ fun HealthWorkout(viewModel: HealthViewModel) {
 
     if (presetExerciseToEdit != null) {
         var editIsTimeBased by remember { mutableStateOf(presetExerciseToEdit!!.isTimeBased) }
-        var editSets by remember { mutableStateOf(presetExerciseToEdit!!.sets.toString()) }
-        var editReps by remember { mutableStateOf(presetExerciseToEdit!!.reps.toString()) }
-        var editDuration by remember { mutableStateOf(presetExerciseToEdit!!.durationInSeconds.toString()) }
+        var editSets by rememberSaveable { mutableStateOf(presetExerciseToEdit!!.sets.toString()) }
+        var editReps by rememberSaveable { mutableStateOf(presetExerciseToEdit!!.reps.toString()) }
+        var editDuration by rememberSaveable { mutableStateOf(presetExerciseToEdit!!.durationInSeconds.toString()) }
         var editVaryWeight by remember { mutableStateOf(presetExerciseToEdit!!.weightListJson != "[]") }
-        var editWeight by remember { mutableStateOf(presetExerciseToEdit!!.weight.formatWeight()) }
+        var editWeight by rememberSaveable { mutableStateOf(presetExerciseToEdit!!.weight.formatWeight()) }
 
         // --- FIX: Restored explicit <Map<Int, String>> type definition ---
         var editAdvancedWeights by remember {
             mutableStateOf(
                 try {
-                    val list = Json.decodeFromString<List<Float>>(loggedExerciseToEdit!!.weightListJson)
+                    val list = Json.decodeFromString<List<Float>>(presetExerciseToEdit!!.weightListJson)
                     list.mapIndexed { index, w -> index to w.formatWeight() }.toMap()
                 } catch(_: Exception) { emptyMap<Int, String>() } // <-- Explicit type moved here!
             )
@@ -286,7 +288,7 @@ fun HealthWorkout(viewModel: HealthViewModel) {
                         }
 
                         if (editVaryWeight) {
-                            val setCount = editSets.toIntOrNull() ?: 0
+                            val setCount = (editSets.toIntOrNull() ?: 0).coerceIn(0, MAX_SETS)
                             if (setCount > 0) {
                                 Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                     for (i in 0 until setCount) {
@@ -316,7 +318,7 @@ fun HealthWorkout(viewModel: HealthViewModel) {
             confirmButton = {
                 Button(onClick = {
                     val wList = if (editVaryWeight) {
-                        val setCount = editSets.toIntOrNull() ?: 0
+                        val setCount = (editSets.toIntOrNull() ?: 0).coerceIn(0, MAX_SETS)
                         (0 until setCount).map { editAdvancedWeights[it]?.toFloatOrNull() ?: 0f }
                     } else emptyList()
 
@@ -364,15 +366,40 @@ fun HealthWorkout(viewModel: HealthViewModel) {
 
                     Box(modifier = Modifier.padding(16.dp)) {
                         if (selectedTabIndex == 0) {
-                            var inputName by remember { mutableStateOf("") }
-                            var expanded by remember { mutableStateOf(false) }
-                            var isTimeBased by remember { mutableStateOf(false) }
-                            var inputSets by remember { mutableStateOf("3") }
-                            var inputReps by remember { mutableStateOf("10") }
-                            var inputDuration by remember { mutableStateOf("60") }
-                            var varyWeight by remember { mutableStateOf(false) }
-                            var inputWeight by remember { mutableStateOf("60") }
+                            var inputName by rememberSaveable { mutableStateOf("") }
+                            var expanded by rememberSaveable { mutableStateOf(false) }
+                            var isTimeBased by rememberSaveable { mutableStateOf(false) }
+                            var inputSets by rememberSaveable { mutableStateOf("3") }
+                            var inputReps by rememberSaveable { mutableStateOf("10") }
+                            var inputDuration by rememberSaveable { mutableStateOf("60") }
+                            var varyWeight by rememberSaveable { mutableStateOf(false) }
+                            var inputWeight by rememberSaveable { mutableStateOf("60") }
                             var advancedWeights by remember { mutableStateOf(mapOf<Int, String>()) }
+
+                            // History for the chosen exercise; picking one from the list pre-fills the last session
+                            var stats by remember { mutableStateOf<ExerciseStats?>(null) }
+                            var prefillFromHistory by rememberSaveable { mutableStateOf(false) }
+                            var showHistory by rememberSaveable { mutableStateOf(false) }
+                            LaunchedEffect(inputName) {
+                                val exact = globalTemplates.firstOrNull { it.name.equals(inputName, ignoreCase = true) }
+                                stats = exact?.let { viewModel.exerciseStats(it.name) }
+                                val last = stats?.last
+                                if (prefillFromHistory && last != null) {
+                                    isTimeBased = last.isTimeBased
+                                    inputSets = last.sets.toString()
+                                    inputReps = last.reps.toString()
+                                    inputDuration = last.durationInSeconds.toString()
+                                    inputWeight = last.weight.formatWeight()
+                                    val perSet = com.example.loom.data.repository.decodeList<Float>(last.weightListJson)
+                                    varyWeight = perSet.isNotEmpty()
+                                    advancedWeights = perSet.mapIndexed { i, w -> i to w.formatWeight() }.toMap()
+                                }
+                                prefillFromHistory = false
+                            }
+
+                            if (showHistory && stats != null) {
+                                ExerciseHistoryDialog(inputName, stats!!) { showHistory = false }
+                            }
 
                             Column(modifier = Modifier.fillMaxWidth().wrapContentHeight()) {
                                 Column(modifier = Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
@@ -389,7 +416,7 @@ fun HealthWorkout(viewModel: HealthViewModel) {
                                             ExposedDropdownMenu(expanded = true, onDismissRequest = { expanded = false }, modifier = Modifier.heightIn(max = 200.dp)) {
                                                 filtered.forEach { option ->
                                                     Box(modifier = Modifier.fillMaxWidth().combinedClickable(
-                                                        onClick = { inputName = option.name; expanded = false },
+                                                        onClick = { prefillFromHistory = true; inputName = option.name; expanded = false },
                                                         onLongClick = { templateToEdit = option; showTemplateEditDialog = true }
                                                     ).padding(16.dp)) { Text(option.name) }
                                                 }
@@ -402,6 +429,19 @@ fun HealthWorkout(viewModel: HealthViewModel) {
                                                     }
                                                 }
                                             }
+                                        }
+                                    }
+
+                                    stats?.last?.let { last ->
+                                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(top = 6.dp)) {
+                                            val lastText = if (last.isTimeBased) "${last.sets}×${last.durationInSeconds}s" else "${last.sets}×${last.reps} @ ${ExerciseStats.topWeight(last).formatWeight()} kg"
+                                            Text(
+                                                "Last: $lastText (${last.dateId})" + (if (stats!!.prWeight > 0f) " · PR ${stats!!.prWeight.formatWeight()} kg" else ""),
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                            TextButton(onClick = { showHistory = true }, contentPadding = PaddingValues(horizontal = 8.dp)) { Text("History") }
                                         }
                                     }
 
@@ -430,7 +470,7 @@ fun HealthWorkout(viewModel: HealthViewModel) {
                                         }
 
                                         if (varyWeight) {
-                                            val setCount = inputSets.toIntOrNull() ?: 0
+                                            val setCount = (inputSets.toIntOrNull() ?: 0).coerceIn(0, MAX_SETS)
                                             if (setCount > 0) {
                                                 Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                                     for (i in 0 until setCount) {
@@ -463,7 +503,7 @@ fun HealthWorkout(viewModel: HealthViewModel) {
                                     Button(onClick = {
                                         if (inputName.isNotBlank()) {
                                             val wList = if (varyWeight) {
-                                                val setCount = inputSets.toIntOrNull() ?: 0
+                                                val setCount = (inputSets.toIntOrNull() ?: 0).coerceIn(0, MAX_SETS)
                                                 (0 until setCount).map { advancedWeights[it]?.toFloatOrNull() ?: 0f }
                                             } else emptyList()
 
@@ -474,19 +514,19 @@ fun HealthWorkout(viewModel: HealthViewModel) {
                                             )
                                         }
                                         showExerciseDialog = false
-                                    }) { Text("Log Exercise") }
+                                    }, enabled = inputName.isNotBlank()) { Text("Log Exercise") }
                                 }
                             }
                         } else {
-                            var presetDropdownExpanded by remember { mutableStateOf(false) }
-                            var builderName by remember { mutableStateOf("") }
-                            var builderExpanded by remember { mutableStateOf(false) }
-                            var builderIsTimeBased by remember { mutableStateOf(false) }
-                            var builderSets by remember { mutableStateOf("3") }
-                            var builderReps by remember { mutableStateOf("10") }
-                            var builderDuration by remember { mutableStateOf("60") }
-                            var builderVaryWeight by remember { mutableStateOf(false) }
-                            var builderWeight by remember { mutableStateOf("60") }
+                            var presetDropdownExpanded by rememberSaveable { mutableStateOf(false) }
+                            var builderName by rememberSaveable { mutableStateOf("") }
+                            var builderExpanded by rememberSaveable { mutableStateOf(false) }
+                            var builderIsTimeBased by rememberSaveable { mutableStateOf(false) }
+                            var builderSets by rememberSaveable { mutableStateOf("3") }
+                            var builderReps by rememberSaveable { mutableStateOf("10") }
+                            var builderDuration by rememberSaveable { mutableStateOf("60") }
+                            var builderVaryWeight by rememberSaveable { mutableStateOf(false) }
+                            var builderWeight by rememberSaveable { mutableStateOf("60") }
                             var builderAdvancedWeights by remember { mutableStateOf(mapOf<Int, String>()) }
 
                             Column(modifier = Modifier.fillMaxWidth().wrapContentHeight()) {
@@ -629,7 +669,7 @@ fun HealthWorkout(viewModel: HealthViewModel) {
                                             Text("Different weight per set", style = MaterialTheme.typography.bodySmall)
                                         }
                                         if (builderVaryWeight) {
-                                            val setCount = builderSets.toIntOrNull() ?: 0
+                                            val setCount = (builderSets.toIntOrNull() ?: 0).coerceIn(0, MAX_SETS)
                                             if (setCount > 0) {
                                                 Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                                     for (i in 0 until setCount) {
@@ -659,7 +699,7 @@ fun HealthWorkout(viewModel: HealthViewModel) {
                                         onClick = {
                                             if (builderName.isNotBlank()) {
                                                 val wList = if (builderVaryWeight) {
-                                                    val setCount = builderSets.toIntOrNull() ?: 0
+                                                    val setCount = (builderSets.toIntOrNull() ?: 0).coerceIn(0, MAX_SETS)
                                                     (0 until setCount).map { builderAdvancedWeights[it]?.toFloatOrNull() ?: 0f }
                                                 } else emptyList()
 
@@ -795,4 +835,33 @@ fun HealthWorkout(viewModel: HealthViewModel) {
             }
         }
     }
+}
+
+// Each set renders its own input field; cap it so a typo like "1000" cannot freeze the UI
+private const val MAX_SETS = 50
+
+@Composable
+private fun ExerciseHistoryDialog(name: String, stats: ExerciseStats, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(name) },
+        text = {
+            Column {
+                Text("Best weight ${stats.prWeight.formatWeight()} kg · best volume ${stats.prVolume.toInt()} kg", style = MaterialTheme.typography.bodySmall)
+                Spacer(Modifier.height(12.dp))
+                if (stats.sessions.size >= 2) {
+                    MiniLineChart(stats.sessions.map { it.second }, MaterialTheme.colorScheme.primary)
+                    Text("Top weight per session", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.height(12.dp))
+                }
+                stats.sessions.takeLast(8).reversed().forEach { (date, weight) ->
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text(date, style = MaterialTheme.typography.bodySmall)
+                        Text("${weight.formatWeight()} kg", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } }
+    )
 }

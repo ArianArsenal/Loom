@@ -106,7 +106,7 @@ fun TimelineBlockRenderer(
 
     var showSettings by remember { mutableStateOf(false) }
 
-    val settings = try { Json.decodeFromString<TimelineSettings>(currentBlock.secondaryContent) } catch (_: Exception) { TimelineSettings() } // --- FIX: Unused 'e' ---
+    val settings = remember(currentBlock.secondaryContent) { try { Json.decodeFromString<TimelineSettings>(currentBlock.secondaryContent) } catch (_: Exception) { TimelineSettings() } }
 
     val rowHeight = 60.dp
     val hourWidth = 120.dp
@@ -744,7 +744,7 @@ fun TimelineBlockRenderer(
                                         Text("${settings.endHour}:00", style = MaterialTheme.typography.labelSmall, color = Color.Gray, modifier = Modifier.align(Alignment.BottomEnd).padding(end = 4.dp, bottom = 4.dp))
                                     }
 
-                                    val ticksPerHour = 60 / settings.granularityMin
+                                    val ticksPerHour = 60 / settings.granularityMin.coerceIn(1, 60)
                                     val tickSpacingPx = hourWidth / ticksPerHour
                                     for (t in 0 until ticksPerHour) {
                                         val tickHeight = if (t == 0) 12.dp else 6.dp

@@ -43,7 +43,7 @@ object TemplateManager {
                 SandboxBlock(id = UUID.randomUUID().toString(), type = BlockType.HEADING, content = "\u200BProject Overview"),
                 SandboxBlock(id = UUID.randomUUID().toString(), type = BlockType.TEXT, content = "\u200BDefine the main objectives and scope here."),
                 SandboxBlock(id = UUID.randomUUID().toString(), type = BlockType.HEADING_4, content = "\u200BTask Board"),
-                SandboxBlock(id = UUID.randomUUID().toString(), type = BlockType.KANBAN, content = "\u200B[]"),
+                SandboxBlock(id = UUID.randomUUID().toString(), type = BlockType.KANBAN, content = "\u200B"),
                 SandboxBlock(id = UUID.randomUUID().toString(), type = BlockType.DIVIDER, content = "\u200B"),
                 SandboxBlock(id = UUID.randomUUID().toString(), type = BlockType.HEADING_2, content = "\u200BMeeting Notes"),
                 SandboxBlock(id = UUID.randomUUID().toString(), type = BlockType.BULLET, content = "\u200BKickoff discussion points...")
@@ -74,7 +74,11 @@ object TemplateManager {
             icon = "💰",
             blocksJson = gson.toJson(listOf(
                 SandboxBlock(id = UUID.randomUUID().toString(), type = BlockType.HEADING, content = "\u200BMonthly Budget"),
-                SandboxBlock(id = UUID.randomUUID().toString(), type = BlockType.TABLE, content = "\u200B[[\"Expense\",\"Amount\",\"Status\"],[\"Rent / Mortgage\",\"\",\"\"],[\"Groceries\",\"\",\"\"]]"),
+                SandboxBlock(id = UUID.randomUUID().toString(), type = BlockType.TABLE, content = "\u200B", tableData = listOf(
+                    listOf("Expense", "Amount", "Status"),
+                    listOf("Rent / Mortgage", "", ""),
+                    listOf("Groceries", "", "")
+                )),
                 SandboxBlock(id = UUID.randomUUID().toString(), type = BlockType.HEADING_2, content = "\u200BFinancial Goals"),
                 SandboxBlock(id = UUID.randomUUID().toString(), type = BlockType.TODO, content = "\u200BSave 20% of income"),
                 SandboxBlock(id = UUID.randomUUID().toString(), type = BlockType.TODO, content = "\u200BPay off remaining debt")
@@ -184,7 +188,7 @@ object TemplateManager {
         val current = getCustomTemplates(context).toMutableList()
 
         // Strip out sensitive IDs to make the template fully reusable
-        val cleanBlocks = blocks.map { it.copy(id = UUID.randomUUID().toString()) }
+        val cleanBlocks = com.example.loom.ui.sandbox.reIdBlocks(blocks)
 
         val newTemplate = SpaceTemplate(
             id = UUID.randomUUID().toString(),

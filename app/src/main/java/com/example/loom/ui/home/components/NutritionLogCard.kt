@@ -1,5 +1,6 @@
 package com.example.loom.ui.home.components
 
+import com.example.loom.util.TextPatterns
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
@@ -39,7 +40,7 @@ private fun Float.formatWeight(): String {
 
 @Composable
 fun LoggedServingDisplay(servings: Float, servingUnit: String, textStyle: androidx.compose.ui.text.TextStyle, color: Color) {
-    val mResult = "\\d+(\\.\\d+)?".toRegex().find(servingUnit)
+    val mResult = TextPatterns.NUMBER.find(servingUnit)
     val textStr: String
     val calculatedNumStr: String
     val showMultiplier: Boolean
@@ -57,7 +58,7 @@ fun LoggedServingDisplay(servings: Float, servingUnit: String, textStyle: androi
         showMultiplier = true
     }
 
-    val isPersian = Regex("[\\u0600-\\u06FF]").containsMatchIn(textStr)
+    val isPersian = TextPatterns.PERSIAN.containsMatchIn(textStr)
     val finalMultiplierStr = servings.formatWeight()
 
     Row(

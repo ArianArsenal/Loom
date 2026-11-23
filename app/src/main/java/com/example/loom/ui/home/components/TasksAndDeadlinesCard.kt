@@ -1,5 +1,8 @@
 package com.example.loom.ui.home.components
 
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.runtime.saveable.rememberSaveable
+import com.example.loom.util.DateUtils
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -67,17 +70,30 @@ fun TasksAndDeadlinesCard(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            val activeSections = sections.filter { sec -> allTasks.any { it.sectionId == sec.id } }
+            // Done tasks stay visible (struck through, at the bottom) for the rest of the day they were
+            // completed, then hide. They are never deleted, so Calendar history and stats keep them.
+            var showAllCompleted by rememberSaveable { mutableStateOf(false) }
+            val dayStart = DateUtils.logicalDayStartMillis()
+            val hiddenDoneCount = allTasks.count { it.isCompleted && it.completionDateMillis < dayStart }
+            val allTasks = allTasks
+                .filter { !it.isCompleted || showAllCompleted || it.completionDateMillis >= dayStart }
+                .sortedBy { it.isCompleted }
+
+            // Tasks whose section was deleted used to vanish; show them under a virtual "Unsectioned" group
+            val knownSectionIds = sections.map { it.id }.toSet()
+            val hasOrphans = allTasks.any { it.sectionId !in knownSectionIds }
+            val activeSections = sections.filter { sec -> allTasks.any { it.sectionId == sec.id } } +
+                (if (hasOrphans) listOf(TaskSection(id = UNSECTIONED_ID, name = "Unsectioned", orderIndex = Int.MAX_VALUE)) else emptyList())
 
             if (activeSections.isEmpty()) {
                 Text("No tasks here yet.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
                 activeSections.forEach { section ->
-                    val sectionTasks = allTasks.filter { it.sectionId == section.id }
+                    val sectionTasks = if (section.id == UNSECTIONED_ID) allTasks.filter { it.sectionId !in knownSectionIds } else allTasks.filter { it.sectionId == section.id }
                     if (sectionTasks.isNotEmpty()) {
                         Column(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
                             Row(
-                                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp).combinedClickable(onClick = {}, onLongClick = { onDeleteSection(section) }),
+                                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp).combinedClickable(onClick = {}, onLongClick = { if (section.id != UNSECTIONED_ID) onDeleteSection(section) }),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(text = section.name, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
@@ -102,16 +118,22 @@ fun TasksAndDeadlinesCard(
                                             if (colTasks.isEmpty()) {
                                                 Text(text = "Empty", style = MaterialTheme.typography.bodySmall, color = Color.Gray, modifier = Modifier.padding(vertical = 8.dp))
                                             } else {
-                                                colTasks.forEach { task -> TaskCard(task, tags, viewModel, true, onEdit = { onEditTask(it) }) }
+                                                colTasks.forEach { task -> TaskCard(task, tags, viewModel, true, sections = sections, onEdit = { onEditTask(it) }) }
                                             }
                                         }
                                     }
                                 }
                             } else {
-                                sectionTasks.forEach { task -> TaskCard(task, tags, viewModel, false, onEdit = { onEditTask(it) }) }
+                                sectionTasks.forEach { task -> TaskCard(task, tags, viewModel, false, sections = sections, onEdit = { onEditTask(it) }) }
                             }
                         }
                     }
+                }
+            }
+
+            if (hiddenDoneCount > 0) {
+                TextButton(onClick = { showAllCompleted = !showAllCompleted }) {
+                    Text(if (showAllCompleted) "Hide older completed tasks" else "Show $hiddenDoneCount older completed", style = MaterialTheme.typography.labelMedium)
                 }
             }
         }
@@ -120,7 +142,7 @@ fun TasksAndDeadlinesCard(
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun TaskCard(task: Task, allTags: List<NoteTag>, viewModel: HomeViewModel, isKanbanView: Boolean, onEdit: (Task) -> Unit) {
+fun TaskCard(task: Task, allTags: List<NoteTag>, viewModel: HomeViewModel, isKanbanView: Boolean, sections: List<TaskSection> = emptyList(), onEdit: (Task) -> Unit) {
     val priorityColor = when (task.priority) { 1 -> Color(0xFF4CAF50); 2 -> Color(0xFF8BC34A); 3 -> Color(0xFFFFEB3B); 4 -> Color(0xFFFF9800); 5 -> Color(0xFFF44336); else -> Color.Gray }
     var showMenu by remember { mutableStateOf(false) }
 
@@ -128,7 +150,7 @@ fun TaskCard(task: Task, allTags: List<NoteTag>, viewModel: HomeViewModel, isKan
     val taskTags = remember(task.tagsJson) { try { Json.decodeFromString<List<String>>(task.tagsJson) } catch (_: Exception) { emptyList() } } // FIX: Unused 'e'
 
     ElevatedCard(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).combinedClickable(onClick = { viewModel.toggleTaskCompletion(task) }, onLongClick = { onEdit(task) }),
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).combinedClickable(onClick = { onEdit(task) }, onLongClick = { showMenu = true }),
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
@@ -203,7 +225,12 @@ fun TaskCard(task: Task, allTags: List<NoteTag>, viewModel: HomeViewModel, isKan
         }
         DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
             DropdownMenuItem(text = { Text("Edit Task") }, onClick = { onEdit(task); showMenu = false }, leadingIcon = { Icon(Icons.Default.Edit, null) })
+            sections.filter { it.id != task.sectionId }.forEach { section ->
+                DropdownMenuItem(text = { Text("Move to ${section.name}") }, onClick = { viewModel.updateTask(task.copy(sectionId = section.id)); showMenu = false }, leadingIcon = { Icon(Icons.AutoMirrored.Filled.ArrowForward, null) })
+            }
             DropdownMenuItem(text = { Text("Delete Task", color = MaterialTheme.colorScheme.error) }, onClick = { viewModel.deleteTask(task); showMenu = false }, leadingIcon = { Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error) })
         }
     }
 }
+
+private const val UNSECTIONED_ID = -1

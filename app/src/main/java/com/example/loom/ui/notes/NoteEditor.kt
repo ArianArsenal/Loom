@@ -1,5 +1,6 @@
 package com.example.loom.ui.notes
 
+import androidx.compose.runtime.saveable.rememberSaveable
 import android.content.Intent
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -67,6 +68,8 @@ import com.example.loom.data.local.entity.NoteTag
 import com.example.loom.ui.home.HomeViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.text.SimpleDateFormat // --- FIX ---
@@ -79,11 +82,11 @@ import kotlin.time.Duration.Companion.milliseconds
 @Composable
 fun NoteEditor(initialNote: DiaryNote?, allTags: List<NoteTag>, viewModel: HomeViewModel, onNavigateBack: () -> Unit) {
     var currentId by remember { mutableIntStateOf(initialNote?.id ?: 0) }
-    var title by remember { mutableStateOf(initialNote?.title ?: "") }
-    var selectedTag by remember { mutableStateOf(initialNote?.tag ?: "Personal") }
-    var isFavorite by remember { mutableStateOf(initialNote?.isFavorite ?: false) }
-    var isPrivate by remember { mutableStateOf(initialNote?.isPrivate ?: false) }
-    var isPinned by remember { mutableStateOf(initialNote?.isPinned ?: false) }
+    var title by rememberSaveable { mutableStateOf(initialNote?.title ?: "") }
+    var selectedTag by rememberSaveable { mutableStateOf(initialNote?.tag ?: "Personal") }
+    var isFavorite by rememberSaveable { mutableStateOf(initialNote?.isFavorite ?: false) }
+    var isPrivate by rememberSaveable { mutableStateOf(initialNote?.isPrivate ?: false) }
+    var isPinned by rememberSaveable { mutableStateOf(initialNote?.isPinned ?: false) }
 
     val initialBlocks = try { Json.decodeFromString<List<NoteBlock>>(initialNote?.blocksJson ?: "[]") } catch (_: Exception) { emptyList() }
     val blocks = remember { mutableStateListOf<NoteBlock>().apply {
@@ -101,7 +104,7 @@ fun NoteEditor(initialNote: DiaryNote?, allTags: List<NoteTag>, viewModel: HomeV
     }}
 
     var focusedBlockId by remember { mutableStateOf<String?>(null) }
-    var showTagDialog by remember { mutableStateOf(false) }
+    var showTagDialog by rememberSaveable { mutableStateOf(false) }
     var tagToDelete by remember { mutableStateOf<NoteTag?>(null) }
 
     val focusRequesters = remember { mutableStateMapOf<String, FocusRequester>() }
@@ -117,25 +120,57 @@ fun NoteEditor(initialNote: DiaryNote?, allTags: List<NoteTag>, viewModel: HomeV
     }
 
     val photoPickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia()) { uris ->
-        uris.forEach { uri ->
-            context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            val insertIndex = blocks.indexOfFirst { it.id == focusedBlockId }.takeIf { it >= 0 }?.plus(1) ?: blocks.size
-            blocks.add(insertIndex, NoteBlock(id = UUID.randomUUID().toString(), type = "image", content = uri.toString()))
+        scope.launch {
+            uris.forEach { uri ->
+                // Copy into the app (like Space images) so the photo survives gallery deletions and is
+                // included in backups; fall back to the gallery link if copying fails
+                val stored = com.example.loom.ui.sandbox.copyMediaToLocal(context, uri) ?: run {
+                    try { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_: SecurityException) {}
+                    uri.toString()
+                }
+                val insertIndex = blocks.indexOfFirst { it.id == focusedBlockId }.takeIf { it >= 0 }?.plus(1) ?: blocks.size
+                blocks.add(insertIndex, NoteBlock(id = UUID.randomUUID().toString(), type = "image", content = stored))
 
-            val newTextId = UUID.randomUUID().toString()
-            blocks.add(insertIndex + 1, NoteBlock(id = newTextId, type = "text", content = ZWSP))
-            focusedBlockId = newTextId
+                val newTextId = UUID.randomUUID().toString()
+                blocks.add(insertIndex + 1, NoteBlock(id = newTextId, type = "text", content = ZWSP))
+                focusedBlockId = newTextId
+            }
         }
     }
 
-    val performSave: suspend () -> Unit = {
-        val cleanBlocks = blocks.map {
-            if (it.type == "text" || it.type == "check") it.copy(content = it.content.replace(ZWSP, "")) else it
+    // Older notes link to gallery photos (content://): copy any that are still readable into the app
+    LaunchedEffect(Unit) {
+        blocks.toList().forEach { block ->
+            if (block.type == "image" && block.content.startsWith("content://")) {
+                val local = com.example.loom.ui.sandbox.copyMediaToLocal(context, android.net.Uri.parse(block.content))
+                if (local != null) {
+                    val index = blocks.indexOfFirst { it.id == block.id }
+                    if (index != -1) blocks[index] = blocks[index].copy(content = local)
+                }
+            }
         }
-        if (currentId != 0 || title.isNotBlank() || cleanBlocks.any { it.content.isNotBlank() || it.type == "image" }) {
-            val blocksJson = Json.encodeToString(cleanBlocks)
-            val returnedId = viewModel.saveDiaryNoteWithReturn(currentId, title, "", selectedTag, "[]", blocksJson, isFavorite, isPrivate, isPinned, false)
-            if (currentId == 0) currentId = returnedId.toInt()
+    }
+
+    fun cleanBlocksJson(): String = Json.encodeToString(blocks.map {
+        if (it.type == "text" || it.type == "check") it.copy(content = it.content.replace(ZWSP, "")) else it
+    })
+    fun editorSnapshot(): List<Any> = listOf(title, selectedTag, isFavorite, isPrivate, isPinned, cleanBlocksJson())
+
+    // Autosave and the back button can fire together: serialize them so a new note is inserted once,
+    // and skip saves when nothing changed so merely opening a note doesn't bump it to the top.
+    val saveMutex = remember { Mutex() }
+    var lastSavedSnapshot by remember { mutableStateOf(editorSnapshot()) }
+
+    val performSave: suspend () -> Unit = {
+        saveMutex.withLock {
+            val snapshot = editorSnapshot()
+            val blocksJson = snapshot.last() as String
+            val hasContent = title.isNotBlank() || blocks.any { it.content.replace(ZWSP, "").isNotBlank() || it.type == "image" }
+            if (snapshot != lastSavedSnapshot && (currentId != 0 || hasContent)) {
+                val returnedId = viewModel.saveDiaryNoteWithReturn(currentId, title, "", selectedTag, "[]", blocksJson, isFavorite, isPrivate, isPinned, false)
+                if (currentId == 0) currentId = returnedId.toInt()
+                lastSavedSnapshot = snapshot
+            }
         }
     }
 
@@ -152,7 +187,7 @@ fun NoteEditor(initialNote: DiaryNote?, allTags: List<NoteTag>, viewModel: HomeV
     }
 
     if (showTagDialog) {
-        var newTagName by remember { mutableStateOf("") }
+        var newTagName by rememberSaveable { mutableStateOf("") }
         var hue by remember { mutableFloatStateOf(210f) }
         var saturation by remember { mutableFloatStateOf(0.9f) }
         var value by remember { mutableFloatStateOf(0.9f) }

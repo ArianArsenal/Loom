@@ -84,10 +84,10 @@ fun TableBlockRenderer(
                 block.tableData.forEachIndexed { rIndex, row ->
                     Row(modifier = Modifier.height(IntrinsicSize.Max)) {
                         row.forEachIndexed { cIndex, rawCell ->
-                            val cell = parseCell(rawCell)
+                            val cell = remember(rawCell) { parseCell(rawCell) }
                             val isFocused = focusedCell == (rIndex to cIndex)
 
-                            Box(modifier = Modifier.width(colWidths[cIndex].dp).height(rowHeights[rIndex].dp)) {
+                            Box(modifier = Modifier.width(colWidths.getOrElse(cIndex) { 120f }.dp).height(rowHeights.getOrElse(rIndex) { 48f }.dp)) {
                                 if (cell.isDeleted) {
                                     Box(modifier = Modifier.fillMaxSize().padding(4.dp))
                                 } else {

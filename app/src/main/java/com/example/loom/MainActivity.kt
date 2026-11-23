@@ -1,5 +1,6 @@
 package com.example.loom
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -24,7 +25,6 @@ import com.example.loom.ui.LoomMainScreen
 import com.example.loom.ui.home.HomeViewModel
 import com.example.loom.ui.theme.LoomTheme
 import com.example.loom.worker.CleanupScheduler
-import com.example.loom.worker.NotificationScheduler
 import dagger.hilt.android.AndroidEntryPoint
 import java.io.File
 import java.text.SimpleDateFormat
@@ -41,12 +41,18 @@ class MainActivity : FragmentActivity() {
         if (uri != null) {
             val file = File(cacheDir, "emergency_backup.json")
             if (file.exists()) {
-                contentResolver.openOutputStream(uri)?.use { out ->
-                    file.inputStream().use { input ->
-                        input.copyTo(out)
+                // A failure here must not crash the app again and start a crash loop
+                try {
+                    contentResolver.openOutputStream(uri)?.use { out ->
+                        file.inputStream().use { input ->
+                            input.copyTo(out)
+                        }
                     }
+                    file.delete()
+                } catch (e: Exception) {
+                    android.util.Log.e("MainActivity", "Emergency backup export failed", e)
+                    android.widget.Toast.makeText(this, "Could not save backup: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
                 }
-                file.delete()
             }
         }
     }
@@ -56,15 +62,18 @@ class MainActivity : FragmentActivity() {
         enableEdgeToEdge()
         CleanupScheduler.scheduleBackgroundCleanup(this)
 
-        // Catch cold-boot App Shortcuts
-        intent?.action?.let { handleShortcutIntent(it) }
+        // Catch cold-boot App Shortcuts. Only on a fresh start: after rotation or a theme change the
+        // same intent is redelivered and would log another glass of water.
+        if (savedInstanceState == null) {
+            intent?.action?.let { handleShortcutIntent(it) }
+        }
 
         val emergencyFile = File(cacheDir, "emergency_backup.json")
         val hasEmergencyBackup = emergencyFile.exists()
 
         setContent {
             var showEmergencyDialog by remember { mutableStateOf(hasEmergencyBackup) }
-            val appTheme by viewModel.appTheme.collectAsState()
+            val appTheme by viewModel.appTheme.collectAsStateWithLifecycle()
 
             val darkTheme = when (appTheme) {
                 "Dark" -> true
@@ -72,7 +81,16 @@ class MainActivity : FragmentActivity() {
                 else -> isSystemInDarkTheme()
             }
 
-            LoomTheme(darkTheme = darkTheme) {
+            val dynamicColor by viewModel.dynamicColor.collectAsStateWithLifecycle()
+            val amoled by viewModel.amoled.collectAsStateWithLifecycle()
+            val accent by viewModel.accentColor.collectAsStateWithLifecycle()
+
+            LoomTheme(
+                darkTheme = darkTheme,
+                dynamicColor = dynamicColor,
+                amoled = amoled,
+                accentColor = accent.takeIf { it != 0 }?.let { androidx.compose.ui.graphics.Color(it) }
+            ) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
@@ -82,21 +100,19 @@ class MainActivity : FragmentActivity() {
                     val permissionLauncher = rememberLauncherForActivityResult(
                         contract = ActivityResultContracts.RequestPermission(),
                         onResult = { isGranted ->
-                            if (isGranted) NotificationScheduler.scheduleDailyReminder(context, 21, 0)
+                            // Reminders are armed by LoomApplication; they post once permission exists
                         }
                     )
 
                     LaunchedEffect(Unit) {
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                             val permissionCheckResult = ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS)
-                            if (permissionCheckResult == PackageManager.PERMISSION_GRANTED) {
-                                NotificationScheduler.scheduleDailyReminder(context, 21, 0)
-                            } else {
+                            if (permissionCheckResult != PackageManager.PERMISSION_GRANTED) {
                                 permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                             }
-                        } else {
-                            NotificationScheduler.scheduleDailyReminder(context, 21, 0)
                         }
+                        // The old fixed 21:00 reminder is now the configurable "daily recap"
+                        androidx.work.WorkManager.getInstance(context).cancelUniqueWork("daily_reminder")
                     }
 
                     // Pass ViewModel to main screen

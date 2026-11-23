@@ -14,7 +14,7 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 // 1. The Cleaned Space Table (Notice `blocksJson` is completely gone!)
-@Entity(tableName = "notion_spaces")
+@Entity(tableName = "notion_spaces", indices = [Index("isDeleted")])
 data class NotionSpaceEntity(
     @PrimaryKey val id: String,
     val title: String,
@@ -57,10 +57,11 @@ data class NotionSpaceEntity(
             onDelete = ForeignKey.CASCADE // If you delete a space, SQLite nukes all blocks instantly
         )
     ],
+    primaryKeys = ["spaceId", "id"],
     indices = [Index("spaceId"), Index("parentId")]
 )
 data class SandboxBlockEntity(
-    @PrimaryKey val id: String,
+    val id: String,
     val spaceId: String,
     val parentId: String?,
     val orderIndex: Int,
@@ -85,7 +86,8 @@ data class SandboxBlockEntity(
 ) {
     fun toDomainModel(): SandboxBlock {
         return SandboxBlock(
-            id = id, type = BlockType.valueOf(type), content = content,
+            // Unknown types (e.g. from a newer backup) must not crash the whole spaces flow
+            id = id, type = runCatching { BlockType.valueOf(type) }.getOrDefault(BlockType.TEXT), content = content,
             textFormats = try { Json.decodeFromString(textFormatsJson) } catch(_: Exception){ emptyList() }, // --- FIX: Unused e ---
             secondaryContent = secondaryContent, icon = icon, url = url, isChecked = isChecked,
             isExpanded = isExpanded, progress = progress,

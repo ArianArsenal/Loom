@@ -40,7 +40,7 @@ interface TrackerDao {
     @Query("SELECT * FROM daily_records WHERE dateId = :dateId")
     suspend fun getDailyRecordSync(dateId: String): DailyRecord?
 
-    @Query("SELECT * FROM daily_records WHERE dateId LIKE :monthPrefix || '%'")
+    @Query("SELECT * FROM daily_records WHERE dateId BETWEEN :monthPrefix || '-01' AND :monthPrefix || '-31'")
     fun getRecordsForMonth(monthPrefix: String): Flow<List<DailyRecord>>
 
     // --- Tasks Engine ---
@@ -58,6 +58,40 @@ interface TrackerDao {
 
     @Query("SELECT * FROM tasks ORDER BY priority DESC, targetDate ASC")
     fun getAllTasks(): Flow<List<Task>>
+
+    @Query("SELECT * FROM daily_records WHERE dateId BETWEEN :fromId AND :toId ORDER BY dateId ASC")
+    fun getRecordsBetween(fromId: String, toId: String): Flow<List<DailyRecord>>
+
+    @Query("SELECT * FROM exercises WHERE dateId BETWEEN :fromId AND :toId")
+    fun getExercisesBetween(fromId: String, toId: String): Flow<List<Exercise>>
+
+    @Query("SELECT * FROM exercises WHERE exerciseName = :name COLLATE NOCASE ORDER BY dateId DESC, id DESC")
+    suspend fun getExerciseHistory(name: String): List<Exercise>
+
+    @Query("""
+        SELECT food_items.* FROM food_items JOIN food_items_fts ON food_items.rowid = food_items_fts.rowid
+        WHERE food_items_fts MATCH :ftsQuery GROUP BY food_items.name ORDER BY food_items.name ASC LIMIT 30
+    """)
+    fun searchFoodItemsFts(ftsQuery: String): Flow<List<FoodItem>>
+
+    @Query("SELECT * FROM food_items WHERE name IN (:names) GROUP BY name")
+    suspend fun getFoodsByNames(names: List<String>): List<FoodItem>
+
+    /** The most pressing open task: dated tasks first (earliest), then by priority. */
+    @Query("SELECT * FROM tasks WHERE isCompleted = 0 ORDER BY CASE WHEN targetDate = '' THEN 1 ELSE 0 END, targetDate ASC, priority DESC LIMIT 1")
+    suspend fun getNextOpenTask(): Task?
+
+    /** Open tasks due today or earlier (for the morning deadline reminder). */
+    @Query("SELECT * FROM tasks WHERE isCompleted = 0 AND targetDate != '' AND targetDate <= :todayId ORDER BY targetDate ASC, priority DESC")
+    suspend fun getDueTasks(todayId: String): List<Task>
+
+    /** Tasks due in a date range, or completed inside a time range (both sides use an index). */
+    @Query("""
+        SELECT * FROM tasks
+        WHERE targetDate BETWEEN :fromDate AND :toDate
+           OR (isCompleted = 1 AND completionDateMillis >= :fromMillis AND completionDateMillis < :toMillis)
+    """)
+    fun getTasksInRange(fromDate: String, toDate: String, fromMillis: Long, toMillis: Long): Flow<List<Task>>
 
     // --- Task Sections ---
     @Query("SELECT * FROM task_sections ORDER BY orderIndex ASC")
@@ -139,8 +173,6 @@ interface TrackerDao {
     @Delete
     suspend fun deleteNoteTag(tag: NoteTag)
 
-    @Query("DELETE FROM tasks WHERE status = 'DONE' AND completionDateMillis > 0 AND completionDateMillis < :thresholdMillis")
-    suspend fun deleteOldDoneTasks(thresholdMillis: Long)
 
     // --- Skincare Engine ---
     @Query("SELECT * FROM skincare_routines")
@@ -181,7 +213,7 @@ interface TrackerDao {
     fun getUserCreatedFoodItems(): Flow<List<FoodItem>>
 
     // --- NEW: Grouped search for the hierarchical UI ---
-    @Query("SELECT * FROM food_items WHERE name LIKE '%' || :searchQuery || '%' GROUP BY name ORDER BY name ASC LIMIT 30")
+    @Query("SELECT * FROM food_items WHERE name LIKE '%' || :searchQuery || '%' GROUP BY name ORDER BY (name LIKE :searchQuery || '%') DESC, name ASC LIMIT 30")
     fun searchFoodItemsGrouped(searchQuery: String): Flow<List<FoodItem>>
 
     // --- NEW: Fetch specific variants of a food ---
@@ -194,7 +226,7 @@ interface TrackerDao {
     @Delete
     suspend fun deleteFoodItem(food: FoodItem)
 
-    @Query("SELECT * FROM exercises WHERE dateId LIKE :monthPrefix || '%'")
+    @Query("SELECT * FROM exercises WHERE dateId BETWEEN :monthPrefix || '-01' AND :monthPrefix || '-31'")
     fun getExercisesForMonth(monthPrefix: String): Flow<List<Exercise>>
 
 

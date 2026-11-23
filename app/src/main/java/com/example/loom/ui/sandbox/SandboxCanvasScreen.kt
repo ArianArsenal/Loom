@@ -1,5 +1,8 @@
 package com.example.loom.ui.sandbox
 
+import kotlinx.coroutines.flow.collectLatest
+import androidx.compose.material.icons.automirrored.filled.Redo
+import androidx.compose.material.icons.automirrored.filled.Undo
 import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -64,7 +67,7 @@ import kotlinx.coroutines.launch
 import java.io.InputStreamReader
 import java.util.UUID
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Suppress("DiscouragedApi") // --- FIX: Tell compiler dynamic resource reflection is intentional ---
 @Composable
 fun NotionCanvasScreen(
@@ -73,7 +76,8 @@ fun NotionCanvasScreen(
     onBack: () -> Unit,
     onNavigateToSpace: (String) -> Unit,
     onCreateLinkedSpace: () -> String,
-    onSave: (SandboxSpace) -> Unit
+    onSave: (SandboxSpace) -> Unit,
+    backlinks: List<SandboxSpace> = emptyList()
 ) {
     var title by remember { mutableStateOf(space.title) }
     var spaceIcon by remember { mutableStateOf(space.icon) }
@@ -100,12 +104,20 @@ fun NotionCanvasScreen(
     val focusRequesters = remember { mutableStateMapOf<String, FocusRequester>() }
     val focusManager = LocalFocusManager.current
     val blockPositions = remember { mutableStateMapOf<String, Float>() }
+    // Blocks report positions relative to the padded body Column; add the body's own offset
+    // (banner, icon, title) so scroll targets land on the block, not a header-height above it.
+    var bodyOffsetY by remember { mutableFloatStateOf(0f) }
+    val numberIndices by remember {
+        derivedStateOf {
+            var run = 0
+            blocks.map { b -> if (b.type == BlockType.NUMBER) ++run else { run = 0; 1 } }
+        }
+    }
 
     val canvasScrollState = rememberScrollState()
     val scope = rememberCoroutineScope()
     var showBannerPicker by remember { mutableStateOf(false) }
     var showIconPicker by remember { mutableStateOf(false) }
-    val imeBottomPadding = WindowInsets.ime.asPaddingValues().calculateBottomPadding()
     val context = LocalContext.current
 
     var showSaveTemplateDialog by remember { mutableStateOf(false) }
@@ -118,8 +130,7 @@ fun NotionCanvasScreen(
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         uri?.let {
             try {
-                val stream = context.contentResolver.openInputStream(it)
-                val text = InputStreamReader(stream!!).readText()
+                val text = context.contentResolver.openInputStream(it)?.use { stream -> InputStreamReader(stream).readText() } ?: return@let
                 val importedBlocks = parseMarkdownToBlocks(text)
                 blocks.clear()
                 blocks.addAll(importedBlocks)
@@ -127,10 +138,56 @@ fun NotionCanvasScreen(
         }
     }
 
-    val currentBlocks = blocks.toList()
-    LaunchedEffect(title, spaceIcon, bannerUrl, isPrivate, currentBlocks) {
-        if (title != space.title || spaceIcon != space.icon || bannerUrl != space.bannerUrl || isPrivate != space.isPrivate || cleanBlocksForDB(currentBlocks) != space.blocks) {
-            onSave(space.copy(title = title, icon = spaceIcon, bannerUrl = bannerUrl, isPrivate = isPrivate, updatedAt = System.currentTimeMillis(), blocks = cleanBlocksForDB(currentBlocks)))
+    // Save only when the page's state actually changes. Keying a LaunchedEffect on blocks.toList()
+    // copied and deep-compared the whole block tree on every recomposition (every keystroke/scroll).
+    val latestSpace by rememberUpdatedState(space)
+    LaunchedEffect(currentSpaceId) {
+        snapshotFlow { listOf(title, spaceIcon, bannerUrl, isPrivate) to blocks.toList() }
+            .collect { (_, currentBlocks) ->
+                val saved = latestSpace
+                if (saved.id != currentSpaceId) return@collect
+                val cleaned = cleanBlocksForDB(currentBlocks)
+                if (title != saved.title || spaceIcon != saved.icon || bannerUrl != saved.bannerUrl || isPrivate != saved.isPrivate || cleaned != saved.blocks) {
+                    onSave(saved.copy(title = title, icon = spaceIcon, bannerUrl = bannerUrl, isPrivate = isPrivate, updatedAt = System.currentTimeMillis(), blocks = cleaned))
+                }
+            }
+    }
+
+    // Undo/redo: snapshots of the block list, recorded after edits settle (so a burst of typing
+    // is one step). Restoring a snapshot goes through the normal autosave.
+    val undoStack = remember(currentSpaceId) { ArrayDeque<List<SandboxBlock>>() }
+    val redoStack = remember(currentSpaceId) { ArrayDeque<List<SandboxBlock>>() }
+    var historyVersion by remember { mutableIntStateOf(0) }
+    var lastSnapshot by remember(currentSpaceId) { mutableStateOf(blocks.toList()) }
+    LaunchedEffect(currentSpaceId) {
+        snapshotFlow { blocks.toList() }.collectLatest { current ->
+            kotlinx.coroutines.delay(700)
+            if (current != lastSnapshot) {
+                undoStack.addLast(lastSnapshot)
+                if (undoStack.size > 50) undoStack.removeFirst()
+                redoStack.clear()
+                lastSnapshot = current
+                historyVersion++
+            }
+        }
+    }
+    fun restore(snapshot: List<SandboxBlock>) {
+        focusManager.clearFocus()
+        blocks.clear()
+        blocks.addAll(snapshot)
+        lastSnapshot = snapshot
+        historyVersion++
+    }
+    val undo = {
+        undoStack.removeLastOrNull()?.let { prev ->
+            redoStack.addLast(blocks.toList())
+            restore(prev)
+        }
+    }
+    val redo = {
+        redoStack.removeLastOrNull()?.let { next ->
+            undoStack.addLast(blocks.toList())
+            restore(next)
         }
     }
 
@@ -148,13 +205,12 @@ fun NotionCanvasScreen(
 
                 if (bannerUrl.isNotEmpty()) {
                     val bannerColor = try { Color(bannerUrl.toColorInt()) } catch(_:Exception){ Color.LightGray } // --- FIX: KTX & Unused e ---
-                    val scrollOffset = canvasScrollState.value.toFloat()
-
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(220.dp)
                             .graphicsLayer {
+                                val scrollOffset = canvasScrollState.value.toFloat()
                                 translationY = scrollOffset * 0.5f
                                 alpha = (1f - (scrollOffset / 500f)).coerceIn(0f, 1f)
                             }
@@ -190,6 +246,20 @@ fun NotionCanvasScreen(
                                 Text("Change Cover", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                             }
                             Spacer(Modifier.width(12.dp))
+                        }
+
+                        @Suppress("UNUSED_EXPRESSION") historyVersion // re-read so the buttons update
+                        val barTint = if (bannerUrl.isNotEmpty()) Color.White else MaterialTheme.colorScheme.onSurface
+                        val barBg = if (bannerUrl.isNotEmpty()) Color.Black.copy(alpha = 0.4f) else Color.Transparent
+                        if (undoStack.isNotEmpty() || redoStack.isNotEmpty()) {
+                            IconButton(onClick = { undo() }, enabled = undoStack.isNotEmpty(), modifier = Modifier.background(barBg, CircleShape).size(40.dp)) {
+                                Icon(Icons.AutoMirrored.Filled.Undo, "Undo", tint = barTint.copy(alpha = if (undoStack.isNotEmpty()) 1f else 0.4f))
+                            }
+                            Spacer(Modifier.width(8.dp))
+                            IconButton(onClick = { redo() }, enabled = redoStack.isNotEmpty(), modifier = Modifier.background(barBg, CircleShape).size(40.dp)) {
+                                Icon(Icons.AutoMirrored.Filled.Redo, "Redo", tint = barTint.copy(alpha = if (redoStack.isNotEmpty()) 1f else 0.4f))
+                            }
+                            Spacer(Modifier.width(8.dp))
                         }
 
                         Box {
@@ -258,6 +328,7 @@ fun NotionCanvasScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .onGloballyPositioned { bodyOffsetY = it.positionInParent().y }
                     .padding(horizontal = 24.dp)
             ) {
                 Box(
@@ -273,7 +344,7 @@ fun NotionCanvasScreen(
                 ) {
                     AnimatedContent(targetState = isCustomIcon, label = "IconTransition") { custom ->
                         if (custom) {
-                            val resId = context.resources.getIdentifier(iconName, "drawable", context.packageName)
+                            val resId = remember(iconName) { context.resources.getIdentifier(iconName, "drawable", context.packageName) }
                             if (resId != 0) {
                                 Icon(painterResource(resId), contentDescription = "Space Icon", tint = iconTint, modifier = Modifier.size(48.dp))
                             } else {
@@ -319,13 +390,7 @@ fun NotionCanvasScreen(
                 )
 
                 blocks.forEachIndexed { index, block ->
-                    val currentNumberedIndex = if (block.type == BlockType.NUMBER) {
-                        var count = 1
-                        for (i in index - 1 downTo 0) {
-                            if (blocks[i].type == BlockType.NUMBER) count++ else break
-                        }
-                        count
-                    } else 1
+                    val currentNumberedIndex = numberIndices.getOrElse(index) { 1 }
 
                     key(block.id) {
                         Box(modifier = Modifier.onGloballyPositioned { coords ->
@@ -334,6 +399,10 @@ fun NotionCanvasScreen(
                             BlockRenderer(
                                 block = block,
                                 numberIndex = currentNumberedIndex,
+                                onDuplicate = {
+                                    val index = blocks.indexOfFirst { it.id == block.id }
+                                    if (index != -1) blocks.add(index + 1, reIdBlocks(listOf(blocks[index])).first())
+                                },
                                 allSpaces = allSpaces,
                                 currentSpaceId = currentSpaceId,
                                 recentTableColors = recentTableColors,
@@ -341,9 +410,11 @@ fun NotionCanvasScreen(
                                 focusTargetId = focusedBlockId,
                                 allBlocks = blocks,
                                 onScrollToBlock = { targetId ->
+                                    // Nested targets (e.g. a heading inside a toggle) scroll to their top-level block
+                                    val topId = blocks.getOrNull(topLevelIndexOf(blocks, targetId))?.id
                                     scope.launch {
-                                        blockPositions[targetId]?.let { yPos ->
-                                            canvasScrollState.animateScrollTo(yPos.toInt())
+                                        blockPositions[topId]?.let { yPos ->
+                                            canvasScrollState.animateScrollTo((bodyOffsetY + yPos).toInt())
                                         }
                                     }
                                 },
@@ -413,10 +484,24 @@ fun NotionCanvasScreen(
                     }
                     Spacer(modifier = Modifier.height(4.dp))
                 }
+
+                if (backlinks.isNotEmpty()) {
+                    HorizontalDivider(modifier = Modifier.padding(top = 24.dp, bottom = 8.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                    Text("Linked from", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        backlinks.forEach { linked ->
+                            AssistChip(
+                                onClick = { onNavigateToSpace(linked.id) },
+                                label = { Text(linked.title.ifBlank { "Untitled Space" }) },
+                                leadingIcon = { Text(if (linked.icon.contains("|")) "📄" else linked.icon.ifEmpty { "📄" }) }
+                            )
+                        }
+                    }
+                }
             }
 
             Spacer(
-                modifier = Modifier.fillMaxWidth().height(300.dp + imeBottomPadding).pointerInput(Unit) {
+                modifier = Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.ime.only(WindowInsetsSides.Bottom)).height(300.dp).pointerInput(Unit) {
                     detectTapGestures(onTap = {
                         focusManager.clearFocus()
                         val lastBlock = blocks.lastOrNull()
@@ -724,7 +809,7 @@ fun SpaceIconPicker(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     items(iconsToShow) { iconName ->
-                        val resId = context.resources.getIdentifier(iconName, "drawable", context.packageName)
+                        val resId = remember(iconName) { context.resources.getIdentifier(iconName, "drawable", context.packageName) }
 
                         if (resId != 0) {
                             val isSelected = selectedIconName == iconName
@@ -765,4 +850,10 @@ fun SpaceIconPicker(
             }
         }
     }
+}
+
+/** Index of the top-level block that is [id] or contains it somewhere in its children; -1 if absent. */
+private fun topLevelIndexOf(blocks: List<SandboxBlock>, id: String): Int {
+    fun contains(block: SandboxBlock): Boolean = block.id == id || block.children.any { contains(it) }
+    return blocks.indexOfFirst { contains(it) }
 }

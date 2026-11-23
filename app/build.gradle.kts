@@ -36,6 +36,15 @@ android {
                 "proguard-rules.pro"
             )
         }
+        // Release-speed build for testing on the phone next to the real app (R8 + baseline profile,
+        // not debuggable). Debug builds run Compose unoptimized and scroll noticeably worse.
+        create("bench") {
+            initWith(getByName("release"))
+            applicationIdSuffix = ".bench"
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += listOf("release")
+            isDebuggable = false
+        }
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
@@ -45,6 +54,10 @@ android {
     buildFeatures {
         compose = true
     }
+}
+
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
 }
 
 // --- FIX: Modern Kotlin 2.0 compilerOptions format ---
@@ -57,13 +70,14 @@ kotlin {
 dependencies {
     implementation(libs.androidx.profileinstaller)
     implementation("org.jsoup:jsoup:1.17.2")
-    implementation("androidx.biometric:biometric:1.2.0-alpha05")
-    implementation("com.google.code.gson:gson:2.10.1")
+    implementation("androidx.biometric:biometric:1.1.0")
+    implementation("com.google.code.gson:gson:2.11.0")
 
     // --- FIX: Removed the duplicate hardcoded coil-compose dependency ---
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.activity.compose)
     "baselineProfile"(project(":baselineprofile"))
 
@@ -87,34 +101,29 @@ dependencies {
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)
     ksp(libs.room.compiler)
-    implementation("androidx.room:room-paging:2.6.1")
 
-    // Compose Navigation & Paging
-    implementation("androidx.navigation:navigation-compose:2.8.0")
-    implementation("androidx.paging:paging-runtime:3.2.1")
-    implementation("androidx.paging:paging-compose:3.2.1")
+    // Compose Navigation
+    implementation("androidx.navigation:navigation-compose:2.8.5")
 
     // Hilt for Dependency Injection
-    implementation("com.google.dagger:hilt-android:2.51.1")
-    ksp("com.google.dagger:hilt-compiler:2.51.1")
+    implementation("com.google.dagger:hilt-android:2.53.1")
+    ksp("com.google.dagger:hilt-compiler:2.53.1")
     implementation("androidx.hilt:hilt-navigation-compose:1.2.0")
 
-    // Supabase & Networking
-    implementation("io.github.jan-tennert.supabase:storage-kt:2.5.0")
-    implementation(libs.supabase.postgrest)
-    implementation(libs.ktor.client.okhttp)
+    // Serialization
     implementation(libs.kotlinx.serialization.json)
 
     // Media & UI Utils
-    implementation("androidx.media3:media3-exoplayer:1.4.0")
-    implementation("androidx.media3:media3-session:1.4.0")
-    implementation("androidx.media3:media3-ui:1.4.0")
-    implementation("androidx.palette:palette-ktx:1.0.0")
     implementation(libs.androidx.compose.material.icons.extended)
     implementation(libs.coil.compose)
-    implementation("androidx.appcompat:appcompat:1.6.1")
+    implementation("androidx.appcompat:appcompat:1.7.0")
 
     // DataStore & WorkManager
     implementation("androidx.datastore:datastore-preferences:1.1.1")
-    implementation("androidx.work:work-runtime-ktx:2.9.0")
+    implementation("androidx.work:work-runtime-ktx:2.10.0")
+
+    // Home-screen widgets and Health Connect sync
+    implementation("androidx.glance:glance-appwidget:1.1.1")
+    implementation("androidx.glance:glance-material3:1.1.1")
+    implementation("androidx.health.connect:connect-client:1.1.0-alpha10")
 }

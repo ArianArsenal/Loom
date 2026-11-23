@@ -108,6 +108,7 @@ fun BookmarkBlockRenderer(
     var ogDesc by remember { mutableStateOf("") }
     var ogImage by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
+    val latestBlock by rememberUpdatedState(block)
 
     LaunchedEffect(block.url) {
         if (block.url.isNotBlank() && block.url.contains(".")) {
@@ -121,6 +122,9 @@ fun BookmarkBlockRenderer(
                 return@LaunchedEffect
             }
 
+            // Wait for typing to pause: this effect restarts on every keystroke in the URL field,
+            // and each restart used to fire a new (uncancellable) network request
+            kotlinx.coroutines.delay(800)
             isLoading = true
             val fetchUrl = if (!block.url.startsWith("http")) "https://${block.url}" else block.url
             var tempTitle = ""
@@ -146,7 +150,7 @@ fun BookmarkBlockRenderer(
             isLoading = false
 
             if (tempTitle.isNotEmpty() && tempTitle != "Preview unavailable") {
-                onUpdate(block.copy(secondaryContent = "${block.url}|||$tempTitle|||$tempDesc|||$tempImage"))
+                onUpdate(latestBlock.copy(secondaryContent = "${latestBlock.url}|||$tempTitle|||$tempDesc|||$tempImage"))
             }
         } else {
             ogTitle = ""; ogDesc = ""; ogImage = ""; isLoading = false

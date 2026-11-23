@@ -1,5 +1,6 @@
 package com.example.loom.ui.home
 
+import kotlin.math.roundToInt
 import android.content.Context
 import android.net.Uri
 import androidx.annotation.Keep
@@ -12,6 +13,9 @@ import com.example.loom.data.local.preferences.UserPreferences
 import com.example.loom.data.models.SandboxBlock
 import com.example.loom.data.models.SandboxSpace
 import com.example.loom.data.repository.TrackerRepository
+import com.example.loom.data.repository.addJsonIds
+import com.example.loom.data.repository.removeJsonIds
+import com.example.loom.data.repository.toggleJsonId
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -65,6 +69,7 @@ data class SpaceBackupDto(
 
 @Keep
 data class LoomBackup(
+    val backupVersion: Int = 1,
     val dailyRecords: List<DailyRecord> = emptyList(),
     val tasks: List<Task> = emptyList(),
     val taskSections: List<TaskSection> = emptyList(),
@@ -84,7 +89,11 @@ data class LoomBackup(
     val defaultWaterIncrement: Int = 250,
     val appTheme: String = "System",
     val isBiometricEnabled: Boolean = true,
-    val dayRolloverHour: Int = 2 // --- NEW: Added to Backup ---
+    val dayRolloverHour: Int = 2, // --- NEW: Added to Backup ---
+    // v2+: every DataStore setting and the template store, restored verbatim
+    val preferences: List<com.example.loom.data.backup.PrefBackup>? = null,
+    val templatePrefs: List<com.example.loom.data.backup.PrefBackup>? = null,
+    val reminderPrefs: List<com.example.loom.data.backup.PrefBackup>? = null
 )
 
 @HiltViewModel
@@ -92,7 +101,9 @@ class HomeViewModel @Inject constructor(
     private val repository: TrackerRepository,
     private val userPreferences: UserPreferences,
     private val trackerDao: TrackerDao,
-    private val sandboxDao: SandboxDao
+    private val sandboxDao: SandboxDao,
+    private val backupManager: com.example.loom.data.backup.BackupManager,
+    private val foodShortcuts: com.example.loom.data.food.FoodShortcuts
 ) : ViewModel() {
 
     // --- User Name State ---
@@ -128,6 +139,17 @@ class HomeViewModel @Inject constructor(
     val appTheme: StateFlow<String> = userPreferences.appThemeFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "System")
 
+    val dynamicColor: StateFlow<Boolean> = userPreferences.dynamicColorFlow.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+    val amoled: StateFlow<Boolean> = userPreferences.amoledFlow.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+    val accentColor: StateFlow<Int> = userPreferences.accentColorFlow.stateIn(viewModelScope, SharingStarted.Eagerly, 0)
+    val calendarSystem: StateFlow<String> = userPreferences.calendarSystemFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "Gregorian")
+    val weekStart: StateFlow<String> = userPreferences.weekStartFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "SUNDAY")
+    fun setDynamicColor(on: Boolean) = viewModelScope.launch { userPreferences.setDynamicColor(on) }
+    fun setAmoled(on: Boolean) = viewModelScope.launch { userPreferences.setAmoled(on) }
+    fun setAccentColor(argb: Int) = viewModelScope.launch { userPreferences.setAccentColor(argb) }
+    fun setCalendarSystem(system: String) = viewModelScope.launch { userPreferences.setCalendarSystem(system) }
+    fun setWeekStart(day: String) = viewModelScope.launch { userPreferences.setWeekStart(day) }
+
     fun setAppTheme(theme: String) = viewModelScope.launch {
         userPreferences.saveAppTheme(theme)
     }
@@ -156,7 +178,7 @@ class HomeViewModel @Inject constructor(
 
     val pinnedHomeCards: StateFlow<List<Pair<SandboxSpace, SandboxBlock>>> = allSpaces.map { spaces ->
         val cards = mutableListOf<Pair<SandboxSpace, SandboxBlock>>()
-        spaces.filter { !it.isDeleted }.forEach { space ->
+        spaces.filter { !it.isDeleted && !it.isPrivate }.forEach { space ->
             val foundCards = com.example.loom.ui.sandbox.findPinnedCards(space.blocks, "Home")
             foundCards.forEach { card -> cards.add(Pair(space, card)) }
         }
@@ -232,7 +254,7 @@ class HomeViewModel @Inject constructor(
         .debounce(300.milliseconds)
         .flatMapLatest { query ->
             if (query.isBlank()) {
-                trackerDao.searchFoodItemsGrouped("مرغ")
+                foodShortcuts.quickFoods()
             } else {
                 trackerDao.searchFoodItemsGrouped(query)
             }
@@ -260,49 +282,11 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             _isLoading.value = true
             try {
-                val activeSpaces = sandboxDao.getActiveSpaces().first().map { it.toDomainModel() }
-                val backupSpaces = activeSpaces.map { space ->
-                    SpaceBackupDto(
-                        id = space.id, title = space.title, icon = space.icon, bannerUrl = space.bannerUrl,
-                        updatedAt = space.updatedAt, isPinned = space.isPinned,
-                        tagsJson = Json.encodeToString(space.tags),
-                        isPrivate = space.isPrivate, isDeleted = space.isDeleted,
-                        blocks = space.blocks
-                    )
-                }
-
-                val backup = LoomBackup(
-                    dailyRecords = trackerDao.getAllDailyRecords().first(),
-                    tasks = trackerDao.getAllTasks().first(),
-                    taskSections = trackerDao.getAllTaskSections().first(),
-                    exercises = trackerDao.getAllExercises().first(),
-                    workoutPresets = trackerDao.getAllPresets().first(),
-                    exerciseTemplates = trackerDao.getAllTemplates().first(),
-                    diaryNotes = trackerDao.getAllDiaryNotes().first(),
-                    noteTags = trackerDao.getAllNoteTags().first(),
-                    skincareProducts = trackerDao.getAllSkincareProducts().first(),
-                    skincareRoutines = trackerDao.getAllSkincareRoutines().first(),
-                    foodItems = trackerDao.getUserCreatedFoodItems().first(),
-                    notionSpaces = backupSpaces,
-                    targetCalories = targetCalories.value,
-                    targetProtein = targetProtein.value,
-                    targetCarbs = targetCarbs.value,
-                    targetFats = targetFats.value,
-                    defaultWaterIncrement = defaultWaterIncrement.value,
-                    appTheme = appTheme.value,
-                    isBiometricEnabled = isBiometricEnabled.value,
-                    dayRolloverHour = dayRolloverHour.value // --- NEW: Added to JSON payload ---
-                )
-
-                val gson = com.google.gson.GsonBuilder().setPrettyPrinting().create()
-                val jsonStr = gson.toJson(backup)
-
-                context.contentResolver.openOutputStream(uri)?.use { outputStream ->
-                    outputStream.write(jsonStr.toByteArray())
-                }
-
+                val out = context.contentResolver.openOutputStream(uri) ?: error("Could not open file")
+                out.use { backupManager.writeZip(it) }
                 launch(Dispatchers.Main) { onSuccess() }
             } catch (e: Exception) {
+                android.util.Log.e("BackupManager", "Export failed", e)
                 launch(Dispatchers.Main) { onError(e.message ?: "Unknown Error") }
             } finally {
                 _isLoading.value = false
@@ -310,77 +294,36 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    fun importDatabase(context: Context, uri: Uri, onSuccess: () -> Unit, onError: (String) -> Unit) {
+    fun importDatabase(context: Context, uri: Uri, onSuccess: (skippedItems: Int) -> Unit, onError: (String) -> Unit) {
         viewModelScope.launch(Dispatchers.IO) {
             _isLoading.value = true
             try {
-                context.contentResolver.openInputStream(uri)?.use { inputStream ->
-                    val jsonStr = inputStream.bufferedReader().use { it.readText() }
-                    val backup = com.google.gson.Gson().fromJson(jsonStr, LoomBackup::class.java)
+                val input = context.contentResolver.openInputStream(uri) ?: error("Could not open file")
+                val skipped = input.use { backupManager.restoreFrom(it) }
 
-                    // 1. WIPE SLATE CLEAN TO PREVENT DUPLICATES
-                    trackerDao.wipeDailyRecords()
-                    trackerDao.wipeTasks()
-                    trackerDao.wipeTaskSections()
-                    trackerDao.wipeExercises()
-                    trackerDao.wipeWorkoutPresets()
-                    trackerDao.wipeExerciseTemplates()
-                    trackerDao.wipeDiaryNotes()
-                    trackerDao.wipeNoteTags()
-                    trackerDao.wipeSkincareProducts()
-                    trackerDao.wipeSkincareRoutines()
-                    trackerDao.wipeUserCreatedFoodItems()
-                    sandboxDao.wipeAllSpaces()
+                repository.initializeTodayRecord()
+                repository.prepopulateTemplatesIfEmpty()
+                repository.prepopulateTagsIfEmpty()
+                repository.prepopulateTaskSectionsIfEmpty()
+                repository.prepopulateSkincareProductsIfEmpty()
 
-                    // 2. BULK INSERT FROM BACKUP
-                    trackerDao.insertDailyRecords(backup.dailyRecords)
-                    trackerDao.insertTasks(backup.tasks)
-                    trackerDao.insertTaskSections(backup.taskSections)
-                    trackerDao.insertExercises(backup.exercises)
-                    trackerDao.insertPresets(backup.workoutPresets)
-                    trackerDao.insertTemplates(backup.exerciseTemplates)
-                    trackerDao.insertDiaryNotes(backup.diaryNotes)
-                    trackerDao.insertNoteTags(backup.noteTags)
-                    trackerDao.insertSkincareProducts(backup.skincareProducts)
-                    trackerDao.insertSkincareRoutines(backup.skincareRoutines)
-                    trackerDao.insertFoodItems(backup.foodItems)
-
-                    // 3. RESTORE SPACES
-                    backup.notionSpaces.forEach { dto ->
-                        val domainSpace = dto.toDomainModel()
-                        val spaceEntity = NotionSpaceEntity.fromDomainModel(domainSpace)
-                        val blockEntities = com.example.loom.ui.sandbox.flattenTree(domainSpace.blocks, domainSpace.id)
-                        sandboxDao.saveSpaceWithBlocks(spaceEntity, blockEntities)
-                    }
-
-                    // 4. RESTORE PREFERENCES
-                    userPreferences.saveTargets(backup.targetCalories, backup.targetProtein, backup.targetCarbs, backup.targetFats)
-                    userPreferences.saveDefaultWaterIncrement(backup.defaultWaterIncrement)
-                    userPreferences.saveAppTheme(backup.appTheme)
-                    userPreferences.setBiometricEnabled(backup.isBiometricEnabled)
-                    userPreferences.saveDayRolloverHour(backup.dayRolloverHour) // --- NEW: Restore Rollover Hour ---
-
-                    // 5. FILL GAPS
-                    repository.initializeTodayRecord()
-                    repository.prepopulateTemplatesIfEmpty()
-                    repository.prepopulateTagsIfEmpty()
-                    repository.prepopulateTaskSectionsIfEmpty()
-                    repository.prepopulateSkincareProductsIfEmpty()
-
-                    launch(Dispatchers.Main) { onSuccess() }
-                }
+                launch(Dispatchers.Main) { onSuccess(skipped) }
             } catch (e: Exception) {
-                launch(Dispatchers.Main) { onError(e.message ?: "Invalid Backup File") }
+                android.util.Log.e("BackupManager", "Import failed", e)
+                launch(Dispatchers.Main) { onError("${e.javaClass.simpleName}: ${e.message ?: "Invalid Backup File"}") }
             } finally {
                 _isLoading.value = false
             }
         }
     }
 
-    fun wipeAllData(onSuccess: () -> Unit, onError: (String) -> Unit) {
+    fun wipeAllData(context: Context, onSuccess: () -> Unit, onError: (String) -> Unit) {
         viewModelScope.launch(Dispatchers.IO) {
             _isLoading.value = true
             try {
+                // Last-resort copy in app storage in case the wipe was a mistake
+                backupManager.writeSafetyCopy("pre-wipe")
+
                 trackerDao.wipeDailyRecords()
                 trackerDao.wipeTasks()
                 trackerDao.wipeTaskSections()
@@ -394,11 +337,9 @@ class HomeViewModel @Inject constructor(
                 trackerDao.wipeUserCreatedFoodItems()
                 sandboxDao.wipeAllSpaces()
 
-                userPreferences.saveTargets(2800, 140, 350, 75)
-                userPreferences.saveDefaultWaterIncrement(250)
-                userPreferences.saveAppTheme("System")
-                userPreferences.setBiometricEnabled(true)
-                userPreferences.saveDayRolloverHour(2) // --- NEW: Reset to 2 AM default ---
+                // "Wipe database and preferences" must also clear bio data, supplements, name and PIN
+                userPreferences.clearAll()
+                com.example.loom.util.SecurityManager.clearPin(context)
 
                 repository.initializeTodayRecord()
                 repository.prepopulateTemplatesIfEmpty()
@@ -415,8 +356,22 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    fun addWater() = viewModelScope.launch(Dispatchers.IO) { repository.addWater(defaultWaterIncrement.value) }
-    fun removeWater() = viewModelScope.launch(Dispatchers.IO) { repository.removeWater(defaultWaterIncrement.value) }
+    fun syncHealthConnect(context: Context, onResult: (String) -> Unit) = viewModelScope.launch(Dispatchers.IO) {
+        val msg = try {
+            com.example.loom.data.health.HealthConnectSync.sync(context.applicationContext, repository)
+        } catch (e: Exception) {
+            android.util.Log.e("HealthConnect", "Sync failed", e)
+            "Health Connect sync failed: ${e.message ?: e.javaClass.simpleName}"
+        }
+        launch(Dispatchers.Main) { onResult(msg) }
+    }
+
+    fun rescheduleReminders(context: Context) = viewModelScope.launch(Dispatchers.IO) {
+        com.example.loom.reminders.ReminderScheduler.rescheduleAll(context.applicationContext, userPreferences)
+    }
+
+    fun addWater() = viewModelScope.launch(Dispatchers.IO) { repository.addWater(userPreferences.defaultWaterIncrementFlow.first()) }
+    fun removeWater() = viewModelScope.launch(Dispatchers.IO) { repository.removeWater(userPreferences.defaultWaterIncrementFlow.first()) }
 
     fun updateFoodSearchQuery(query: String) {
         _foodSearchQuery.value = query
@@ -427,11 +382,10 @@ class HomeViewModel @Inject constructor(
     }
 
     fun logFoodItem(food: FoodItem, servings: Float) = viewModelScope.launch(Dispatchers.IO) {
-        val record = todayRecord.value ?: return@launch
-        val totalCals = (food.calories * servings).toInt()
-        val totalPro = (food.protein * servings).toInt()
-        val totalCarbs = (food.carbs * servings).toInt()
-        val totalFats = (food.fats * servings).toInt()
+        val totalCals = (food.calories * servings).roundToInt()
+        val totalPro = (food.protein * servings).roundToInt()
+        val totalCarbs = (food.carbs * servings).roundToInt()
+        val totalFats = (food.fats * servings).roundToInt()
         val currentTime = System.currentTimeMillis()
 
         val log = ConsumedFoodLog(
@@ -443,38 +397,34 @@ class HomeViewModel @Inject constructor(
             calories = totalCals, protein = totalPro, carbs = totalCarbs, fats = totalFats,
             timestamp = currentTime
         )
-
-        val currentLogs = try { Json.decodeFromString<List<ConsumedFoodLog>>(record.consumedFoodsJson) } catch (_: Exception) { emptyList() }
-        repository.logConsumedFood(totalCals, totalPro, totalCarbs, totalFats, Json.encodeToString(currentLogs + log))
+        repository.addConsumedFood(log)
     }
 
     fun toggleSkincareStep(routineName: String, productName: String) = viewModelScope.launch(Dispatchers.IO) {
-        val record = todayRecord.value ?: return@launch
-        val stepId = "${routineName}_${productName}"
-        val currentList = try { Json.decodeFromString<List<String>>(record.completedSkincareStepsJson) } catch (_: Exception) { emptyList() }.toMutableList()
-        if (currentList.contains(stepId)) currentList.remove(stepId) else currentList.add(stepId)
-        repository.updateCompletedSkincareSteps(Json.encodeToString(currentList))
+        repository.editRecord { it.copy(completedSkincareStepsJson = toggleJsonId(it.completedSkincareStepsJson, "${routineName}_${productName}")) }
     }
 
     fun toggleAllSkincareSteps(routineName: String, products: List<String>, isCompleted: Boolean) = viewModelScope.launch(Dispatchers.IO) {
-        val record = todayRecord.value ?: return@launch
-        val currentSteps = try { Json.decodeFromString<List<String>>(record.completedSkincareStepsJson) } catch (_: Exception) { emptyList() }.toMutableList()
-
-        products.forEach { p ->
-            val stepId = "${routineName}_$p"
-            if (isCompleted) {
-                if (!currentSteps.contains(stepId)) currentSteps.add(stepId)
-            } else {
-                currentSteps.remove(stepId)
-            }
+        val stepIds = products.map { p -> "${routineName}_$p" }
+        repository.editRecord {
+            it.copy(completedSkincareStepsJson = if (isCompleted) addJsonIds(it.completedSkincareStepsJson, stepIds) else removeJsonIds(it.completedSkincareStepsJson, stepIds))
         }
-        repository.updateCompletedSkincareSteps(Json.encodeToString(currentSteps))
     }
 
     fun saveSkincareRoutine(routine: SkincareRoutine) = viewModelScope.launch(Dispatchers.IO) { repository.insertSkincareRoutine(routine) }
 
     fun addTask(task: Task) = viewModelScope.launch(Dispatchers.IO) { repository.insertTask(task) }
     fun updateTask(task: Task) = viewModelScope.launch(Dispatchers.IO) { repository.updateTask(task) }
+
+    /** Saves the task editor; marking a recurring task done there must still spawn the next one. */
+    fun saveEditedTask(previous: Task, edited: Task) = viewModelScope.launch(Dispatchers.IO) {
+        if (edited.isCompleted && !previous.isCompleted && edited.isRecurring && edited.recurringInterval != "NONE") {
+            spawnNextRecurringTask(edited)
+            repository.updateTask(edited.copy(isRecurring = false))
+        } else {
+            repository.updateTask(edited)
+        }
+    }
 
     fun updateTaskStatus(task: Task, newStatus: String) = viewModelScope.launch(Dispatchers.IO) {
         val isNowDone = newStatus == "DONE"
@@ -514,15 +464,15 @@ class HomeViewModel @Inject constructor(
 
     private suspend fun spawnNextRecurringTask(task: Task) {
         val parts = task.recurringInterval.split(" ")
-        val amount = parts.getOrNull(0)?.toIntOrNull() ?: 1
+        val amount = parts.getOrNull(0)?.toIntOrNull()?.coerceAtLeast(1) ?: 1
         val type = parts.getOrNull(1) ?: "DAYS"
 
         val currentDate = try { LocalDate.parse(task.targetDate) } catch (_: Exception) { LocalDate.now() }
         val nextDate = when (type) {
-            "DAYS" -> currentDate.plusDays(amount.toLong())
+            "DAYS", "DAILY" -> currentDate.plusDays(amount.toLong()) // "DAILY" was an old buggy default
             "WEEKS" -> currentDate.plusWeeks(amount.toLong())
             "MONTHS" -> currentDate.plusMonths(amount.toLong())
-            else -> currentDate
+            else -> currentDate.plusDays(amount.toLong())
         }
         val nextDateStr = nextDate.toString()
 
@@ -548,6 +498,7 @@ class HomeViewModel @Inject constructor(
         return repository.insertDiaryNoteAndGetId(DiaryNote(id = id, title = title, content = content, tag = tag, imagesJson = imagesJson, blocksJson = blocksJson, isFavorite = isFav, isPrivate = isPrivate, isPinned = isPinned, isChecklistMode = isChecklist))
     }
     fun deleteDiaryNote(note: DiaryNote) = viewModelScope.launch(Dispatchers.IO) { repository.deleteDiaryNote(note) }
+    fun restoreDiaryNote(note: DiaryNote) = viewModelScope.launch(Dispatchers.IO) { repository.insertDiaryNoteAndGetId(note) }
     fun addNoteTag(name: String, colorHex: String) = viewModelScope.launch(Dispatchers.IO) { repository.insertNoteTag(name, colorHex) }
     fun deleteNoteTag(tag: NoteTag) = viewModelScope.launch(Dispatchers.IO) { repository.deleteNoteTag(tag) }
 
@@ -564,9 +515,6 @@ class HomeViewModel @Inject constructor(
     }
 
     fun logManualMeal(cals: Int, pro: Int, carbs: Int, fats: Int) = viewModelScope.launch(Dispatchers.IO) {
-        val record = todayRecord.value ?: return@launch
-        val currentTime = System.currentTimeMillis()
-
         val log = ConsumedFoodLog(
             id = UUID.randomUUID().toString(),
             foodName = "Manual Entry",
@@ -574,19 +522,13 @@ class HomeViewModel @Inject constructor(
             servings = 1f,
             servingUnit = "serving",
             calories = cals, protein = pro, carbs = carbs, fats = fats,
-            timestamp = currentTime
+            timestamp = System.currentTimeMillis()
         )
-
-        val currentLogs = try { Json.decodeFromString<List<ConsumedFoodLog>>(record.consumedFoodsJson) } catch (_: Exception) { emptyList() }
-        repository.logConsumedFood(cals, pro, carbs, fats, Json.encodeToString(currentLogs + log))
+        repository.addConsumedFood(log)
     }
 
     fun removeConsumedFoodLog(log: ConsumedFoodLog) = viewModelScope.launch(Dispatchers.IO) {
-        val record = todayRecord.value ?: return@launch
-        val currentLogs = try { Json.decodeFromString<List<ConsumedFoodLog>>(record.consumedFoodsJson) } catch (_: Exception) { emptyList() }
-
-        val updatedLogs = currentLogs.filter { it.id != log.id }
-        repository.logConsumedFood(-log.calories, -log.protein, -log.carbs, -log.fats, Json.encodeToString(updatedLogs))
+        repository.removeConsumedFood(log.id)
     }
 
     private val _shortcutAction = MutableStateFlow<String?>(null)

@@ -5,9 +5,13 @@ import coil.ImageLoader
 import coil.ImageLoaderFactory
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
-import com.example.loom.data.local.dao.SandboxDao
-import com.example.loom.data.local.dao.TrackerDao
+import com.example.loom.data.backup.BackupManager
 import com.example.loom.data.local.preferences.UserPreferences
+import com.example.loom.reminders.ReminderScheduler
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import com.example.loom.util.EmergencyCrashHandler
 import dagger.hilt.android.HiltAndroidApp
 import javax.inject.Inject
@@ -16,12 +20,23 @@ import javax.inject.Inject
 class LoomApplication : Application(), ImageLoaderFactory {
 
     // Inject the databases globally so the Crash Handler can reach them
-    @Inject lateinit var trackerDao: TrackerDao
-    @Inject lateinit var sandboxDao: SandboxDao
+    @Inject lateinit var backupManager: BackupManager
     @Inject lateinit var userPreferences: UserPreferences
+    @Inject lateinit var trackerRepository: com.example.loom.data.repository.TrackerRepository
 
     override fun onCreate() {
         super.onCreate()
+
+        ReminderScheduler.createChannels(this)
+        val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        appScope.launch {
+            ReminderScheduler.rescheduleAll(this@LoomApplication, userPreferences)
+        }
+        com.example.loom.widget.LoomWidgets.keepUpdated(this, appScope)
+        // Health Connect: sync on each start while the app is in use (if the user turned it on)
+        appScope.launch {
+            runCatching { com.example.loom.data.health.HealthConnectSync.syncIfEnabled(this@LoomApplication, trackerRepository) }
+        }
 
         // Grab the OS default crash handler
         val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
@@ -30,9 +45,7 @@ class LoomApplication : Application(), ImageLoaderFactory {
         Thread.setDefaultUncaughtExceptionHandler(
             EmergencyCrashHandler(
                 context = this,
-                trackerDao = trackerDao,
-                sandboxDao = sandboxDao,
-                userPreferences = userPreferences,
+                backupManager = backupManager,
                 defaultHandler = defaultHandler
             )
         )

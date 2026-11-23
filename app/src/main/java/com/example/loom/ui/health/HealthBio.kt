@@ -1,5 +1,7 @@
 package com.example.loom.ui.health
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -56,28 +58,28 @@ fun MacroBadge(emoji: String, amount: String, label: String) {
 @Suppress("SpellCheckingInspection") // --- FIX: Tell compiler to ignore standard fitness names ---
 @Composable
 fun HealthBio(viewModel: HealthViewModel) {
-    val weight by viewModel.weight.collectAsState()
-    val height by viewModel.height.collectAsState()
-    val age by viewModel.age.collectAsState()
-    val gender by viewModel.gender.collectAsState()
-    val activity by viewModel.activity.collectAsState()
-    val goal by viewModel.goal.collectAsState()
-    val bodyFat by viewModel.bodyFat.collectAsState()
-    val dietType by viewModel.dietType.collectAsState()
-    val phaseWeeks by viewModel.phaseWeeks.collectAsState()
-    val phaseStart by viewModel.phaseStartTime.collectAsState()
-    val isCycling by viewModel.calorieCycling.collectAsState()
+    val weight by viewModel.weight.collectAsStateWithLifecycle()
+    val height by viewModel.height.collectAsStateWithLifecycle()
+    val age by viewModel.age.collectAsStateWithLifecycle()
+    val gender by viewModel.gender.collectAsStateWithLifecycle()
+    val activity by viewModel.activity.collectAsStateWithLifecycle()
+    val goal by viewModel.goal.collectAsStateWithLifecycle()
+    val bodyFat by viewModel.bodyFat.collectAsStateWithLifecycle()
+    val dietType by viewModel.dietType.collectAsStateWithLifecycle()
+    val phaseWeeks by viewModel.phaseWeeks.collectAsStateWithLifecycle()
+    val phaseStart by viewModel.phaseStartTime.collectAsStateWithLifecycle()
+    val isCycling by viewModel.calorieCycling.collectAsStateWithLifecycle()
 
-    val targetCalories by viewModel.targetCalories.collectAsState()
-    val targetProtein by viewModel.targetProtein.collectAsState()
-    val targetCarbs by viewModel.targetCarbs.collectAsState()
-    val targetFats by viewModel.targetFats.collectAsState()
+    val targetCalories by viewModel.targetCalories.collectAsStateWithLifecycle()
+    val targetProtein by viewModel.targetProtein.collectAsStateWithLifecycle()
+    val targetCarbs by viewModel.targetCarbs.collectAsStateWithLifecycle()
+    val targetFats by viewModel.targetFats.collectAsStateWithLifecycle()
 
-    val todayRecord by viewModel.todayRecord.collectAsState()
+    val todayRecord by viewModel.todayRecord.collectAsStateWithLifecycle()
 
-    var isEditingBio by remember { mutableStateOf(false) }
-    var showEnergyInfoDialog by remember { mutableStateOf(false) }
-    var viewCyclingTab by remember { mutableStateOf("Train") }
+    var isEditingBio by rememberSaveable { mutableStateOf(false) }
+    var showEnergyInfoDialog by rememberSaveable { mutableStateOf(false) }
+    var viewCyclingTab by rememberSaveable { mutableStateOf("Train") }
 
     if (showEnergyInfoDialog) {
         AlertDialog(
@@ -105,18 +107,18 @@ fun HealthBio(viewModel: HealthViewModel) {
 
             AnimatedContent(targetState = isEditingBio, transitionSpec = { fadeIn(tween(300)) togetherWith fadeOut(tween(300)) }, label = "BioEditTransition") { editing ->
                 if (editing) {
-                    var editWeight by remember { mutableStateOf(weight.formatWeight()) }
-                    var editHeight by remember { mutableStateOf(height.toString()) }
-                    var editAge by remember { mutableStateOf(age.toString()) }
+                    var editWeight by rememberSaveable { mutableStateOf(weight.formatWeight()) }
+                    var editHeight by rememberSaveable { mutableStateOf(height.toString()) }
+                    var editAge by rememberSaveable { mutableStateOf(age.toString()) }
                     var editGender by remember { mutableStateOf(gender) }
                     var editActivity by remember { mutableStateOf(activity) }
                     var editGoal by remember { mutableStateOf(goal) }
                     var editBodyFat by remember { mutableStateOf(if (bodyFat > 0f) bodyFat.toString() else "") }
                     var editDietType by remember { mutableStateOf(dietType) }
-                    var editPhaseWeeks by remember { mutableStateOf(phaseWeeks.toString()) }
+                    var editPhaseWeeks by rememberSaveable { mutableStateOf(phaseWeeks.toString()) }
                     var editCycling by remember { mutableStateOf(isCycling) }
 
-                    var activityExpanded by remember { mutableStateOf(false) }
+                    var activityExpanded by rememberSaveable { mutableStateOf(false) }
 
                     Column(modifier = Modifier.fillMaxWidth()) {
                         Spacer(modifier = Modifier.height(8.dp))
@@ -174,7 +176,7 @@ fun HealthBio(viewModel: HealthViewModel) {
                         // Phase Tracking
                         val daysElapsed = ((System.currentTimeMillis() - phaseStart) / (1000 * 60 * 60 * 24)).toInt()
                         val currentWeek = (daysElapsed / 7) + 1
-                        val phaseProgress = (daysElapsed.toFloat() / (phaseWeeks * 7).toFloat()).coerceIn(0f, 1f)
+                        val phaseProgress = if (phaseWeeks > 0) (daysElapsed.toFloat() / (phaseWeeks * 7).toFloat()).coerceIn(0f, 1f) else 0f
 
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             Text("Phase Progress", style = MaterialTheme.typography.labelMedium)
@@ -251,7 +253,7 @@ fun HealthBio(viewModel: HealthViewModel) {
                         }
 
                         // Daily Weight Logger
-                        var showWeightLogDialog by remember { mutableStateOf(false) }
+                        var showWeightLogDialog by rememberSaveable { mutableStateOf(false) }
 
                         if (showWeightLogDialog) {
                             var sliderWeight by remember { mutableFloatStateOf(if ((todayRecord?.weightLogKg ?: 0f) > 0f) todayRecord!!.weightLogKg else weight) }

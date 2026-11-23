@@ -163,7 +163,8 @@ fun ChartBlockRenderer(
                         "PIE" -> {
                             val total = chartData.sumOf { it.second.toDouble() }.toFloat()
                             var startAngle = -90f
-                            chartData.forEachIndexed { index, dataPoint ->
+                            // An all-zero dataset would produce NaN sweep angles
+                            if (total > 0f) chartData.forEachIndexed { index, dataPoint ->
                                 val sweepAngle = (dataPoint.second / total) * 360f
                                 drawArc(color = chartColors[index % chartColors.size], startAngle = startAngle, sweepAngle = sweepAngle, useCenter = true)
                                 startAngle += sweepAngle
@@ -275,14 +276,16 @@ fun ProgressBlockRenderer(
     var showBlockMenu by remember { mutableStateOf(false) }
     var showEditDialog by remember { mutableStateOf(false) }
 
-    val meta = try {
-        if (block.secondaryContent.isNotBlank()) {
-            Json.decodeFromString<ProgressMeta>(block.secondaryContent)
-        } else {
+    val meta = remember(block.secondaryContent, block.progress) {
+        try {
+            if (block.secondaryContent.isNotBlank()) {
+                Json.decodeFromString<ProgressMeta>(block.secondaryContent)
+            } else {
+                ProgressMeta(current = block.progress * 100f, max = 100f, unit = "%")
+            }
+        } catch (_: Exception) {
             ProgressMeta(current = block.progress * 100f, max = 100f, unit = "%")
         }
-    } catch (_: Exception) {
-        ProgressMeta(current = block.progress * 100f, max = 100f, unit = "%")
     }
 
     val formatNum = { value: Float -> if (value % 1f == 0f) value.toInt().toString() else value.toString() }
@@ -357,6 +360,10 @@ fun ProgressBlockRenderer(
 
         Spacer(Modifier.height(8.dp))
 
+        // Gesture handlers outlive recompositions: read the newest block/meta, not the first ones
+        val latestBlock by rememberUpdatedState(block)
+        val latestMeta by rememberUpdatedState(meta)
+
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -367,10 +374,10 @@ fun ProgressBlockRenderer(
                     detectTapGestures(
                         onTap = { offset ->
                             val newRatio = (offset.x / size.width.toFloat()).coerceIn(0f, 1f)
-                            val newVal = newRatio * meta.max
-                            val finalVal = if (meta.max % 1f == 0f) kotlin.math.round(newVal) else newVal
-                            val newMeta = meta.copy(current = finalVal)
-                            onUpdate(block.copy(progress = finalVal / meta.max, secondaryContent = Json.encodeToString(newMeta)))
+                            val newVal = newRatio * latestMeta.max
+                            val finalVal = if (latestMeta.max % 1f == 0f) kotlin.math.round(newVal) else newVal
+                            val newMeta = latestMeta.copy(current = finalVal)
+                            onUpdate(latestBlock.copy(progress = finalVal / latestMeta.max, secondaryContent = Json.encodeToString(newMeta)))
                         }
                     )
                 }
@@ -378,10 +385,10 @@ fun ProgressBlockRenderer(
                     detectDragGestures { change, _ ->
                         change.consume()
                         val newRatio = (change.position.x / size.width.toFloat()).coerceIn(0f, 1f)
-                        val newVal = newRatio * meta.max
-                        val finalVal = if (meta.max % 1f == 0f) kotlin.math.round(newVal) else newVal
-                        val newMeta = meta.copy(current = finalVal)
-                        onUpdate(block.copy(progress = finalVal / meta.max, secondaryContent = Json.encodeToString(newMeta)))
+                        val newVal = newRatio * latestMeta.max
+                        val finalVal = if (latestMeta.max % 1f == 0f) kotlin.math.round(newVal) else newVal
+                        val newMeta = latestMeta.copy(current = finalVal)
+                        onUpdate(latestBlock.copy(progress = finalVal / latestMeta.max, secondaryContent = Json.encodeToString(newMeta)))
                     }
                 }
         ) {

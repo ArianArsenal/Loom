@@ -9,6 +9,11 @@
 # ----------------------------------------------------------------------
 -keep @kotlinx.serialization.Serializable class com.example.loom.data.models.** { *; }
 -keep @androidx.room.Entity class com.example.loom.data.local.entity.** { *; }
+# Gson reflects on field names for backups: keep every entity/helper (e.g. PresetExercise) and the backup DTOs
+-keep class com.example.loom.data.local.entity.** { *; }
+-keep class com.example.loom.data.models.** { *; }
+-keep class com.example.loom.ui.home.LoomBackup { *; }
+-keep class com.example.loom.ui.home.SpaceBackupDto { *; }
 
 # ----------------------------------------------------------------------
 # GSON

@@ -1,7 +1,9 @@
 package com.example.loom.ui.settings
 
+import androidx.compose.runtime.saveable.rememberSaveable
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.widget.Toast
 import androidx.compose.foundation.layout.*
@@ -20,11 +22,11 @@ import androidx.core.net.toUri
 fun BugReportScreen(onNavigateBack: () -> Unit) {
     val context = LocalContext.current
 
-    var title by remember { mutableStateOf("") }
-    var description by remember { mutableStateOf("") }
+    var title by rememberSaveable { mutableStateOf("") }
+    var description by rememberSaveable { mutableStateOf("") }
 
     val tags = listOf("UI / UX", "Logic / Functionality", "Performance", "Crash", "Feature Request", "Other")
-    var expanded by remember { mutableStateOf(false) }
+    var expanded by rememberSaveable { mutableStateOf(false) }
     var selectedTag by remember { mutableStateOf(tags[0]) }
 
     Scaffold(
@@ -47,8 +49,8 @@ fun BugReportScreen(onNavigateBack: () -> Unit) {
                     if (title.isBlank() || description.isBlank()) {
                         Toast.makeText(context, "Please fill in all fields", Toast.LENGTH_SHORT).show()
                     } else {
-                        sendBugReportEmail(context, selectedTag, title, description)
-                        onNavigateBack()
+                        // Only leave once an email app actually took the report; otherwise keep the text
+                        if (sendBugReportEmail(context, selectedTag, title, description)) onNavigateBack()
                     }
                 },
                 containerColor = MaterialTheme.colorScheme.primary
@@ -128,7 +130,7 @@ fun BugReportScreen(onNavigateBack: () -> Unit) {
 }
 
 // Intent Logic to Launch Gmail / Email Client
-private fun sendBugReportEmail(context: Context, tag: String, title: String, description: String) {
+private fun sendBugReportEmail(context: Context, tag: String, title: String, description: String): Boolean {
     val deviceModel = Build.MODEL
     val androidVersion = Build.VERSION.RELEASE
     val sdkInt = Build.VERSION.SDK_INT
@@ -153,16 +155,21 @@ private fun sendBugReportEmail(context: Context, tag: String, title: String, des
         |App Version: $appVersion
     """.trimMargin()
 
+    val subject = "Loom Bug Report: [$tag] $title"
+    // Many email apps ignore EXTRA_SUBJECT/EXTRA_TEXT for SENDTO, so put them in the mailto: URI too
+    val mailto = "mailto:arianmohseni1382@gmail.com?subject=" + Uri.encode(subject) + "&body=" + Uri.encode(emailBody)
     val intent = Intent(Intent.ACTION_SENDTO).apply {
-        data = "mailto:".toUri()
+        data = mailto.toUri()
         putExtra(Intent.EXTRA_EMAIL, arrayOf("arianmohseni1382@gmail.com"))
-        putExtra(Intent.EXTRA_SUBJECT, "Loom Bug Report: [$tag] $title")
+        putExtra(Intent.EXTRA_SUBJECT, subject)
         putExtra(Intent.EXTRA_TEXT, emailBody)
     }
 
-    try {
+    return if (intent.resolveActivity(context.packageManager) != null) {
         context.startActivity(Intent.createChooser(intent, "Send Bug Report via..."))
-    } catch (_: Exception) {
-        Toast.makeText(context, "No email app found.", Toast.LENGTH_SHORT).show()
+        true
+    } else {
+        Toast.makeText(context, "No email app found. Your report was kept.", Toast.LENGTH_LONG).show()
+        false
     }
 }

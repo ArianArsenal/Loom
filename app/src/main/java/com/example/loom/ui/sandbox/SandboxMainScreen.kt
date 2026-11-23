@@ -1,7 +1,12 @@
 package com.example.loom.ui.sandbox
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.ui.Alignment
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -39,7 +44,9 @@ enum class SandboxRoute { HUB, CANVAS }
 @Composable
 fun SandboxMainScreen(
     viewModel: SandboxViewModel,
-    onCanvasVisibilityChanged: (Boolean) -> Unit
+    onCanvasVisibilityChanged: (Boolean) -> Unit,
+    openSpaceId: String? = null,
+    onOpenSpaceHandled: () -> Unit = {}
 ) {
     val context = LocalContext.current
     var currentRoute by remember { mutableStateOf(SandboxRoute.HUB) }
@@ -49,10 +56,14 @@ fun SandboxMainScreen(
         onCanvasVisibilityChanged(currentRoute == SandboxRoute.CANVAS)
     }
 
-    val allSpaces by viewModel.allSpaces.collectAsState()
-    val isBiometricEnabled by viewModel.isBiometricEnabled.collectAsState()
+    // Titles/flags only; the full block content is loaded per space (canvas) or by the hub when shown
+    val spaceSummaries by viewModel.spaceSummaries.collectAsStateWithLifecycle()
+    val isBiometricEnabled by viewModel.isBiometricEnabled.collectAsStateWithLifecycle()
 
-    val activeSpace = allSpaces.find { it.id == spaceBackstack.lastOrNull() }
+    val activeSpaceId = spaceBackstack.lastOrNull()
+    val activeSpace by remember(activeSpaceId) {
+        activeSpaceId?.let { viewModel.observeSpace(it) } ?: kotlinx.coroutines.flow.flowOf(null)
+    }.collectAsState(initial = null)
 
     var spaceToUnlock by remember { mutableStateOf<SandboxSpace?>(null) }
     var showPinFallback by remember { mutableStateOf(false) }
@@ -72,7 +83,7 @@ fun SandboxMainScreen(
             isNavigating = true
             focusManager.clearFocus()
 
-            val targetSpace = allSpaces.find { it.id == spaceId }
+            val targetSpace = spaceSummaries.find { it.id == spaceId }
 
             val executeNavigation = {
                 if (isNested) spaceBackstack = spaceBackstack + spaceId
@@ -118,6 +129,14 @@ fun SandboxMainScreen(
         }
     }
 
+    // Open a space requested from another tab once the spaces have loaded (goes through the private-space lock)
+    LaunchedEffect(openSpaceId, spaceSummaries) {
+        val requested = openSpaceId ?: return@LaunchedEffect
+        if (spaceSummaries.isEmpty()) return@LaunchedEffect
+        if (spaceSummaries.any { it.id == requested }) attemptNavigateToSpace(requested, false)
+        onOpenSpaceHandled()
+    }
+
     if (showNoSecurityDialog) {
         AlertDialog(
             onDismissRequest = { showNoSecurityDialog = false; isNavigating = false },
@@ -155,7 +174,7 @@ fun SandboxMainScreen(
             confirmButton = {
                 if (!savedPin.isNullOrBlank()) {
                     Button(onClick = {
-                        if (passwordInput == savedPin) {
+                        if (SecurityManager.verifyPin(context, passwordInput)) {
                             pendingNavigation?.let { (id, isNested) ->
                                 if (isNested) spaceBackstack = spaceBackstack + id
                                 else {
@@ -183,6 +202,8 @@ fun SandboxMainScreen(
     }
 
     if (currentRoute == SandboxRoute.HUB) {
+        // Full spaces (with blocks) are only needed for hub search/cloning, so only collected here
+        val allSpaces by viewModel.allSpaces.collectAsStateWithLifecycle()
         SandboxHubScreen(
             viewModel = viewModel,
             allSpaces = allSpaces,
@@ -203,7 +224,8 @@ fun SandboxMainScreen(
 
             NotionCanvasScreen(
                 space = space,
-                allSpaces = allSpaces,
+                allSpaces = spaceSummaries,
+                backlinks = remember(space.id) { viewModel.backlinks(space.id) }.collectAsState(initial = emptyList()).value,
                 onBack = {
                     if (spaceBackstack.size > 1) {
                         spaceBackstack = spaceBackstack.dropLast(1)
@@ -215,14 +237,21 @@ fun SandboxMainScreen(
                 onNavigateToSpace = { spaceId -> attemptNavigateToSpace(spaceId, true) },
                 onCreateLinkedSpace = {
                     val newSpace = SandboxSpace(title = "", blocks = listOf(SandboxBlock(content = ZWSP)))
-                    viewModel.saveSpace(newSpace)
+                    viewModel.createSpace(newSpace)
                     newSpace.id
                 },
                 onSave = { updatedSpace -> viewModel.saveSpace(updatedSpace) }
             )
         } ?: run {
-            currentRoute = SandboxRoute.HUB
-            spaceBackstack = emptyList()
+            // A just-created space takes a moment to arrive from the database: wait briefly
+            // instead of bouncing straight back to the hub, and only give up if it never shows.
+            val missingId = spaceBackstack.lastOrNull()
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+            LaunchedEffect(missingId) {
+                delay(1500.milliseconds)
+                currentRoute = SandboxRoute.HUB
+                spaceBackstack = emptyList()
+            }
         }
     }
 }

@@ -1,5 +1,8 @@
 package com.example.loom.ui.sandbox
 
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.animateDpAsState
@@ -35,6 +38,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -96,11 +100,18 @@ fun BlockRenderer(
     onCreateLinkedSpace: () -> String,
     onUpdate: (SandboxBlock) -> Unit,
     onSplitBlock: (String, BlockType, String) -> Unit,
-    onDeleteBlock: (remainder: String, deleteEntirely: Boolean) -> Unit
+    onDeleteBlock: (remainder: String, deleteEntirely: Boolean) -> Unit,
+    onDuplicate: (() -> Unit)? = null
 ) {
     val currentBlock by rememberUpdatedState(block)
     val context = LocalContext.current
-    val focusRequester = focusRequesters.getOrPut(block.id) { FocusRequester() }
+    // Registered while this block is composed (lazy items come and go): writing the shared map during
+    // composition and never removing entries left requesters for blocks no longer on screen.
+    val focusRequester = remember(block.id) { FocusRequester() }
+    DisposableEffect(block.id) {
+        focusRequesters[block.id] = focusRequester
+        onDispose { if (focusRequesters[block.id] === focusRequester) focusRequesters.remove(block.id) }
+    }
     val keyboardController = LocalSoftwareKeyboardController.current
     val scope = rememberCoroutineScope()
 
@@ -120,24 +131,32 @@ fun BlockRenderer(
         }
     }
 
+    val mediaScope = rememberCoroutineScope()
+    val latestBlock by rememberUpdatedState(currentBlock)
     val mediaLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         uri?.let {
-            val localUrl = copyMediaToLocal(context, it)
-            if (localUrl != null) onUpdate(currentBlock.copy(url = localUrl))
+            mediaScope.launch {
+                val localUrl = copyMediaToLocal(context, it)
+                if (localUrl != null) onUpdate(latestBlock.copy(url = localUrl))
+            }
         }
     }
 
     val videoLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         uri?.let {
-            val localUrl = copyMediaToLocal(context, it)
-            if (localUrl != null) onUpdate(currentBlock.copy(url = localUrl))
+            mediaScope.launch {
+                val localUrl = copyMediaToLocal(context, it)
+                if (localUrl != null) onUpdate(latestBlock.copy(url = localUrl))
+            }
         }
     }
 
     val audioLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
+    // True when the text field itself has focus (e.g. the user tapped it): then keep their cursor
+    var fieldHasFocus by remember { mutableStateOf(false) }
     LaunchedEffect(isFocused, block.type) {
-        if (isFocused && !isReadOnly) {
+        if (isFocused && !isReadOnly && !fieldHasFocus) {
             try {
                 focusRequester.requestFocus()
                 keyboardController?.show()
@@ -286,7 +305,10 @@ fun BlockRenderer(
         .fillMaxWidth()
         .defaultMinSize(minHeight = 24.dp)
         .focusRequester(focusRequester)
-        .onFocusChanged { state -> if (state.isFocused) onFocusRequest(block.id) }
+        .onFocusChanged { state ->
+            fieldHasFocus = state.isFocused
+            if (state.isFocused) onFocusRequest(block.id)
+        }
 
     val placeholderUI: @Composable (innerTextField: @Composable () -> Unit) -> Unit = { inner ->
         Box {
@@ -368,7 +390,22 @@ fun BlockRenderer(
                     },
                 contentAlignment = Alignment.TopStart
             ) {
-                if (showHandle) { Icon(Icons.Default.DragIndicator, "Drag to reorder", tint = Color.LightGray, modifier = Modifier.size(20.dp)) }
+                // Tap the handle for block actions; drag it to reorder
+                var showHandleMenu by remember { mutableStateOf(false) }
+                if (showHandle) {
+                    Icon(
+                        Icons.Default.DragIndicator, "Drag to reorder, tap for options", tint = Color.LightGray,
+                        modifier = Modifier.size(20.dp).pointerInput(block.id) {
+                            if (!isReadOnly) detectTapGestures(onTap = { showHandleMenu = true })
+                        }
+                    )
+                }
+                DropdownMenu(expanded = showHandleMenu, onDismissRequest = { showHandleMenu = false }) {
+                    if (onDuplicate != null) {
+                        DropdownMenuItem(text = { Text("Duplicate") }, onClick = { showHandleMenu = false; onDuplicate() })
+                    }
+                    DropdownMenuItem(text = { Text("Delete", color = MaterialTheme.colorScheme.error) }, onClick = { showHandleMenu = false; onDeleteBlock("", true) })
+                }
             }
         }
 

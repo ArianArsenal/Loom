@@ -1,5 +1,8 @@
 package com.example.loom.ui.home
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.runtime.saveable.rememberSaveable
+import com.example.loom.util.TextPatterns
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -76,10 +79,10 @@ private fun Float.formatWeight(): String {
 
 @Composable
 fun ServingUnitDisplay(servingUnit: String, textStyle: androidx.compose.ui.text.TextStyle, modifier: Modifier = Modifier) {
-    val mResult = "\\d+(\\.\\d+)?".toRegex().find(servingUnit)
+    val mResult = TextPatterns.NUMBER.find(servingUnit)
     val numStr = mResult?.value ?: ""
     val textStr = if (mResult != null) servingUnit.replaceFirst(numStr, "").trim() else servingUnit.trim()
-    val isPersian = Regex("[\\u0600-\\u06FF]").containsMatchIn(textStr)
+    val isPersian = TextPatterns.PERSIAN.containsMatchIn(textStr)
 
     Row(
         modifier = modifier,
@@ -105,8 +108,8 @@ fun HomeScreen(
     onNavigateToSpace: (String) -> Unit
 ) {
 
-    val userName by viewModel.userName.collectAsState()
-    var showWelcomeDialog by remember { mutableStateOf(false) }
+    val userName by viewModel.userName.collectAsStateWithLifecycle()
+    var showWelcomeDialog by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(userName) {
         if (userName.isNotBlank()) {
@@ -119,40 +122,40 @@ fun HomeScreen(
         }
     }
 
-    val hiddenHomeCards by viewModel.hiddenHomeCards.collectAsState()
-    val agendaText by viewModel.agendaText.collectAsState()
+    val hiddenHomeCards by viewModel.hiddenHomeCards.collectAsStateWithLifecycle()
+    val agendaText by viewModel.agendaText.collectAsStateWithLifecycle()
 
-    val pinnedCards by viewModel.pinnedHomeCards.collectAsState()
-    val allSpaces by viewModel.allSpaces.collectAsState()
+    val pinnedCards by viewModel.pinnedHomeCards.collectAsStateWithLifecycle()
+    val allSpaces by viewModel.allSpaces.collectAsStateWithLifecycle()
 
-    val todayRecord by viewModel.todayRecord.collectAsState()
-    val allTasks by viewModel.allTasks.collectAsState()
-    val sections by viewModel.allTaskSections.collectAsState()
-    val tags by viewModel.allNoteTags.collectAsState()
+    val todayRecord by viewModel.todayRecord.collectAsStateWithLifecycle()
+    val allTasks by viewModel.allTasks.collectAsStateWithLifecycle()
+    val sections by viewModel.allTaskSections.collectAsStateWithLifecycle()
+    val tags by viewModel.allNoteTags.collectAsStateWithLifecycle()
 
-    val pinnedRoutines by viewModel.pinnedSkincareRoutines.collectAsState()
-    val completedRoutines by viewModel.completedSkincareRoutines.collectAsState()
-    val completedSteps by viewModel.completedSkincareSteps.collectAsState()
-    val consumedList by viewModel.consumedFoods.collectAsState()
+    val pinnedRoutines by viewModel.pinnedSkincareRoutines.collectAsStateWithLifecycle()
+    val completedRoutines by viewModel.completedSkincareRoutines.collectAsStateWithLifecycle()
+    val completedSteps by viewModel.completedSkincareSteps.collectAsStateWithLifecycle()
+    val consumedList by viewModel.consumedFoods.collectAsStateWithLifecycle()
 
-    val targetCaloriesInt by viewModel.targetCalories.collectAsState()
-    val targetProteinInt by viewModel.targetProtein.collectAsState()
-    val targetCarbsInt by viewModel.targetCarbs.collectAsState()
-    val targetFatsInt by viewModel.targetFats.collectAsState()
-    val defaultWaterIncrement by viewModel.defaultWaterIncrement.collectAsState()
-    val dailyGoal by viewModel.waterDailyGoal.collectAsState()
+    val targetCaloriesInt by viewModel.targetCalories.collectAsStateWithLifecycle()
+    val targetProteinInt by viewModel.targetProtein.collectAsStateWithLifecycle()
+    val targetCarbsInt by viewModel.targetCarbs.collectAsStateWithLifecycle()
+    val targetFatsInt by viewModel.targetFats.collectAsStateWithLifecycle()
+    val defaultWaterIncrement by viewModel.defaultWaterIncrement.collectAsStateWithLifecycle()
+    val dailyGoal by viewModel.waterDailyGoal.collectAsStateWithLifecycle()
 
-    var showNutritionDialog by remember { mutableStateOf(false) }
-    var isManualEntry by remember { mutableStateOf(false) }
-    var showNewFoodDialog by remember { mutableStateOf(false) }
-    var showDashboardConfig by remember { mutableStateOf(false) }
+    var showNutritionDialog by rememberSaveable { mutableStateOf(false) }
+    var isManualEntry by rememberSaveable { mutableStateOf(false) }
+    var showNewFoodDialog by rememberSaveable { mutableStateOf(false) }
+    var showDashboardConfig by rememberSaveable { mutableStateOf(false) }
 
-    var showTaskDialog by remember { mutableStateOf(false) }
+    var showTaskDialog by rememberSaveable { mutableStateOf(false) }
     var taskToEdit by remember { mutableStateOf<Task?>(null) }
-    var isKanbanView by remember { mutableStateOf(false) }
+    var isKanbanView by rememberSaveable { mutableStateOf(false) }
     var sectionToDelete by remember { mutableStateOf<TaskSection?>(null) }
 
-    val shortcutAction by viewModel.shortcutAction.collectAsState()
+    val shortcutAction by viewModel.shortcutAction.collectAsStateWithLifecycle()
 
     LaunchedEffect(shortcutAction) {
         if (shortcutAction == "com.example.loom.ACTION_QUICK_TASK") {
@@ -173,7 +176,7 @@ fun HomeScreen(
     }
 
     if (showWelcomeDialog) {
-        var nameInput by remember { mutableStateOf("") }
+        var nameInput by rememberSaveable { mutableStateOf("") }
 
         AlertDialog(
             onDismissRequest = { },
@@ -304,13 +307,13 @@ fun HomeScreen(
     }
 
     if (showNutritionDialog) {
-        var foodDropdownExpanded by remember { mutableStateOf(false) }
-        var localSearchText by remember { mutableStateOf("") }
+        var foodDropdownExpanded by rememberSaveable { mutableStateOf(false) }
+        var localSearchText by rememberSaveable { mutableStateOf("") }
         var selectedFoodName by remember { mutableStateOf<String?>(null) }
         var selectedVariant by remember { mutableStateOf<FoodItem?>(null) }
-        var servingsStr by remember { mutableStateOf("1") }
+        var servingsStr by rememberSaveable { mutableStateOf("1") }
 
-        val variants by viewModel.selectedFoodVariants.collectAsState()
+        val variants by viewModel.selectedFoodVariants.collectAsStateWithLifecycle()
 
         AlertDialog(
             onDismissRequest = { showNutritionDialog = false },
@@ -334,10 +337,10 @@ fun HomeScreen(
                     Spacer(modifier = Modifier.height(8.dp))
 
                     if (isManualEntry) {
-                        var inputCalories by remember { mutableStateOf("") }
-                        var inputProtein by remember { mutableStateOf("") }
-                        var inputCarbs by remember { mutableStateOf("") }
-                        var inputFats by remember { mutableStateOf("") }
+                        var inputCalories by rememberSaveable { mutableStateOf("") }
+                        var inputProtein by rememberSaveable { mutableStateOf("") }
+                        var inputCarbs by rememberSaveable { mutableStateOf("") }
+                        var inputFats by rememberSaveable { mutableStateOf("") }
 
                         OutlinedTextField(
                             value = inputCalories,
@@ -383,7 +386,7 @@ fun HomeScreen(
                             showNutritionDialog = false
                         }, modifier = Modifier.fillMaxWidth()) { Text("Add Macros") }
                     } else {
-                        val searchedFoods by viewModel.searchedFoodItems.collectAsState()
+                        val searchedFoods by viewModel.searchedFoodItems.collectAsStateWithLifecycle()
 
                         ExposedDropdownMenuBox(
                             expanded = foodDropdownExpanded,
@@ -415,7 +418,7 @@ fun HomeScreen(
                                         DropdownMenuItem(
                                             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
                                             text = {
-                                                val isNamePersian = Regex("[\\u0600-\\u06FF]").containsMatchIn(food.name)
+                                                val isNamePersian = TextPatterns.PERSIAN.containsMatchIn(food.name)
                                                 Text(
                                                     text = food.name,
                                                     style = MaterialTheme.typography.titleMedium.copy(
@@ -559,12 +562,12 @@ fun HomeScreen(
     }
 
     if (showNewFoodDialog) {
-        var inputName by remember { mutableStateOf("") }
-        var inputServing by remember { mutableStateOf("Plate") }
-        var inputCals by remember { mutableStateOf("") }
-        var inputPro by remember { mutableStateOf("") }
-        var inputCarbs by remember { mutableStateOf("") }
-        var inputFats by remember { mutableStateOf("") }
+        var inputName by rememberSaveable { mutableStateOf("") }
+        var inputServing by rememberSaveable { mutableStateOf("Plate") }
+        var inputCals by rememberSaveable { mutableStateOf("") }
+        var inputPro by rememberSaveable { mutableStateOf("") }
+        var inputCarbs by rememberSaveable { mutableStateOf("") }
+        var inputFats by rememberSaveable { mutableStateOf("") }
 
         AlertDialog(
             onDismissRequest = { showNewFoodDialog = false }, title = { Text("Add to Pantry") },
@@ -667,7 +670,7 @@ fun HomeScreen(
             sections = sections, tags = tags, initialTask = taskToEdit,
             onDismiss = { showTaskDialog = false; taskToEdit = null },
             onSave = { newTask ->
-                if (taskToEdit != null) viewModel.updateTask(newTask) else viewModel.addTask(
+                if (taskToEdit != null) viewModel.saveEditedTask(taskToEdit!!, newTask) else viewModel.addTask(
                     newTask
                 ); showTaskDialog = false; taskToEdit = null
             },
@@ -854,7 +857,7 @@ fun HomeScreen(
 
 @Composable
 fun AgendaCard(agendaText: String, onUpdateText: (String) -> Unit) {
-    var isEditing by remember { mutableStateOf(false) }
+    var isEditing by rememberSaveable { mutableStateOf(false) }
     var editText by remember(agendaText) { mutableStateOf(agendaText) }
 
     ElevatedCard(
@@ -942,21 +945,21 @@ fun CreateTaskDialog(
     onAddSection: (String) -> Unit, onDeleteSection: (TaskSection) -> Unit,
     onAddTag: (String, String) -> Unit, onDeleteTag: (NoteTag) -> Unit
 ) {
-    var title by remember { mutableStateOf(initialTask?.title ?: "") }
-    var description by remember { mutableStateOf(initialTask?.description ?: "") }
+    var title by rememberSaveable { mutableStateOf(initialTask?.title ?: "") }
+    var description by rememberSaveable { mutableStateOf(initialTask?.description ?: "") }
     var priority by remember { mutableIntStateOf(initialTask?.priority ?: 1) }
     var selectedSectionId by remember { mutableIntStateOf(initialTask?.sectionId ?: sections.firstOrNull()?.id ?: 1) }
-    var status by remember { mutableStateOf(initialTask?.status ?: "TO DO") }
+    var status by rememberSaveable { mutableStateOf(initialTask?.status ?: "TO DO") }
 
     val initialTags = try { Json.decodeFromString<List<String>>(initialTask?.tagsJson ?: "[]") } catch (_: Exception) { emptyList() }
     var selectedTags by remember { mutableStateOf(initialTags.toSet()) }
 
     val initialSubtasks = try { Json.decodeFromString<List<SubTask>>(initialTask?.subtasksJson ?: "[]") } catch (_: Exception) { emptyList() }
     var subtasks by remember { mutableStateOf(initialSubtasks) }
-    var newSubtaskText by remember { mutableStateOf("") }
+    var newSubtaskText by rememberSaveable { mutableStateOf("") }
 
-    var isRecurring by remember { mutableStateOf(initialTask?.isRecurring ?: false) }
-    val initialRecInterval = initialTask?.recurringInterval?.split(" ")?.getOrNull(1) ?: "DAILY"
+    var isRecurring by rememberSaveable { mutableStateOf(initialTask?.isRecurring ?: false) }
+    val initialRecInterval = initialTask?.recurringInterval?.split(" ")?.getOrNull(1)?.takeIf { it != "DAILY" } ?: "DAYS"
     val initialRecCount = initialTask?.recurringInterval?.split(" ")?.getOrNull(0) ?: "1"
 
     var recurringType by remember { mutableStateOf(initialRecInterval) }
@@ -964,16 +967,16 @@ fun CreateTaskDialog(
 
     var selectedDays by remember { mutableStateOf(setOf<Int>()) }
 
-    var deadlineStr by remember { mutableStateOf(initialTask?.targetDate ?: "") }
-    var showDatePicker by remember { mutableStateOf(false) }
+    var deadlineStr by rememberSaveable { mutableStateOf(initialTask?.targetDate ?: "") }
+    var showDatePicker by rememberSaveable { mutableStateOf(false) }
 
-    var showNewSectionDialog by remember { mutableStateOf(false) }
-    var showNewTagDialog by remember { mutableStateOf(false) }
+    var showNewSectionDialog by rememberSaveable { mutableStateOf(false) }
+    var showNewTagDialog by rememberSaveable { mutableStateOf(false) }
     var tagToDelete by remember { mutableStateOf<NoteTag?>(null) }
     var dialogSectionToDelete by remember { mutableStateOf<TaskSection?>(null) }
 
     if (showNewSectionDialog) {
-        var newSecName by remember { mutableStateOf("") }
+        var newSecName by rememberSaveable { mutableStateOf("") }
         AlertDialog(
             onDismissRequest = { showNewSectionDialog = false }, title = { Text("New Section") },
             text = { OutlinedTextField(value = newSecName, onValueChange = { newSecName = it }, singleLine = true) },
@@ -1007,7 +1010,7 @@ fun CreateTaskDialog(
     }
 
     if (showNewTagDialog) {
-        var newTagName by remember { mutableStateOf("") }
+        var newTagName by rememberSaveable { mutableStateOf("") }
         var hue by remember { mutableFloatStateOf(210f) }
         var saturation by remember { mutableFloatStateOf(0.9f) }
         var value by remember { mutableFloatStateOf(0.9f) }
@@ -1058,6 +1061,10 @@ fun CreateTaskDialog(
             }.timeInMillis
         }
         val datePickerState = rememberDatePickerState(
+            // Open on the current deadline instead of today
+            initialSelectedDateMillis = runCatching {
+                java.time.LocalDate.parse(deadlineStr).atStartOfDay(java.time.ZoneOffset.UTC).toInstant().toEpochMilli()
+            }.getOrNull(),
             selectableDates = object : SelectableDates {
                 override fun isSelectableDate(utcTimeMillis: Long): Boolean {
                     return utcTimeMillis >= currentUtcDateMillis
@@ -1069,8 +1076,7 @@ fun CreateTaskDialog(
             confirmButton = {
                 TextButton(onClick = {
                     datePickerState.selectedDateMillis?.let {
-                        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-                        deadlineStr = sdf.format(Date(it))
+                        deadlineStr = java.time.Instant.ofEpochMilli(it).atZone(java.time.ZoneOffset.UTC).toLocalDate().toString()
                     }
                     showDatePicker = false
                 }) { Text("OK") }
@@ -1291,8 +1297,12 @@ fun CreateTaskDialog(
                 }
                 Button(onClick = {
                     if (title.isNotBlank()) {
-                        val finalIntervalString = if (isRecurring) "$recurringCount $recurringType" else "NONE"
-                        val completionTime = if (status == "DONE") System.currentTimeMillis() else 0L
+                        val safeCount = recurringCount.toIntOrNull()?.coerceAtLeast(1) ?: 1
+                        val finalIntervalString = if (isRecurring) "$safeCount $recurringType" else "NONE"
+                        // Re-saving an already-done task must keep its original completion time
+                        val completionTime = if (status == "DONE") {
+                            initialTask?.completionDateMillis?.takeIf { initialTask.isCompleted && it > 0 } ?: System.currentTimeMillis()
+                        } else 0L
 
                         val task = Task(
                             id = initialTask?.id ?: 0, title = title, description = description, priority = priority,
@@ -1342,6 +1352,8 @@ fun PinnedCardWidget(
     }
 
     var debounceJob by remember { mutableStateOf<Job?>(null) }
+    // Saves must apply to the newest copy of the space, not the one captured on first composition
+    val latestSpace by rememberUpdatedState(space)
 
     BlockRenderer(
         block = localCard,
@@ -1365,21 +1377,22 @@ fun PinnedCardWidget(
 
             debounceJob?.cancel()
             @OptIn(DelicateCoroutinesApi::class)
-            debounceJob = GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                withContext(NonCancellable) {
-                    delay(500.milliseconds)
-                    val cleanCard = cleanBlocksForDB(listOf(updatedCard)).first()
-                    val newBlocks = replaceBlockRecursively(space.blocks, cleanCard)
-                    onUpdateSpace(space.copy(blocks = newBlocks, updatedAt = System.currentTimeMillis()))
-                }
+            // GlobalScope so leaving Home doesn't drop the edit; the delay stays cancellable so
+            // only the last keystroke in a burst is written
+            debounceJob = GlobalScope.launch(kotlinx.coroutines.Dispatchers.Default) {
+                delay(500.milliseconds)
+                val cleanCard = cleanBlocksForDB(listOf(updatedCard)).first()
+                val current = latestSpace
+                val newBlocks = replaceBlockRecursively(current.blocks, cleanCard)
+                onUpdateSpace(current.copy(blocks = newBlocks, updatedAt = System.currentTimeMillis()))
             }
         },
         onSplitBlock = { _, _, _ -> },
         onDeleteBlock = { _, deleteEntirely ->
             if (deleteEntirely) {
                 debounceJob?.cancel()
-                val newBlocks = removeBlockRecursively(space.blocks, localCard.id)
-                onUpdateSpace(space.copy(blocks = newBlocks, updatedAt = System.currentTimeMillis()))
+                val newBlocks = removeBlockRecursively(latestSpace.blocks, localCard.id)
+                onUpdateSpace(latestSpace.copy(blocks = newBlocks, updatedAt = System.currentTimeMillis()))
             }
         }
     )

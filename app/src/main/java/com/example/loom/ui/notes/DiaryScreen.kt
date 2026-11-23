@@ -1,14 +1,15 @@
 package com.example.loom.ui.notes
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.*
 import com.example.loom.data.local.entity.DiaryNote
 import com.example.loom.ui.home.HomeViewModel
 
 @Composable
 fun DiaryScreen(viewModel: HomeViewModel) {
-    val allNotes by viewModel.allDiaryNotes.collectAsState()
-    val allTags by viewModel.allNoteTags.collectAsState()
-    val viewMode by viewModel.diaryViewMode.collectAsState()
+    val allNotes by viewModel.allDiaryNotes.collectAsStateWithLifecycle()
+    val allTags by viewModel.allNoteTags.collectAsStateWithLifecycle()
+    val viewMode by viewModel.diaryViewMode.collectAsStateWithLifecycle()
 
     var isEditing by remember { mutableStateOf(false) }
     var noteToEdit by remember { mutableStateOf<DiaryNote?>(null) }

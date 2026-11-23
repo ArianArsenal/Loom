@@ -5,6 +5,8 @@ import com.example.loom.data.local.entity.PresetExercise
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
+private val lenientJson = Json { ignoreUnknownKeys = true }
+
 class Converters {
     @TypeConverter
     fun fromPresetList(value: List<PresetExercise>): String {
@@ -14,7 +16,7 @@ class Converters {
     @TypeConverter
     fun toPresetList(value: String): List<PresetExercise> {
         return try {
-            Json.decodeFromString(value)
+            lenientJson.decodeFromString(value)
         } catch (_: Exception) { // --- FIX: Unused 'e' ---
             emptyList()
         }
